@@ -1,0 +1,11 @@
+services:
+  spotify-clone:
+    image: vndangkhoa/spotify-clone:latest
+    container_name: spotify-clone
+    restart: always
+    network_mode: bridge # Synology often prefers explicit bridge or host
+    ports:
+      - "3110:3000" # Web UI
+
+    volumes:
+      - ./data:/app/backend/data

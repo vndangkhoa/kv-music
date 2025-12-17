@@ -1,0 +1,23 @@
+
+> frontend@0.1.0 build
+> next build
+
+  ▲ Next.js 14.2.0
+
+   Creating an optimized production build ...
+ ✓ Compiled successfully
+   Skipping validation of types
+   Skipping linting
+   Collecting page data ...
+
+> Build error occurred
+Error: Page "/playlist/[id]" is missing "generateStaticParams()" so it cannot be used with "output: export" config.
+    at /Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/build/index.js:1294:59
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async Span.traceAsyncFn (/Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/trace/trace.js:154:20)
+    at async Promise.all (index 8)
+    at async /Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/build/index.js:1172:17
+    at async Span.traceAsyncFn (/Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/trace/trace.js:154:20)
+    at async /Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/build/index.js:1095:124
+    at async Span.traceAsyncFn (/Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/trace/trace.js:154:20)
+    at async build (/Users/khoa.vo/Desktop/khoavo-spotify/frontend/node_modules/next/dist/build/index.js:366:9)

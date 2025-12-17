@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+spotdl
+pydantic
+python-multipart
+requests
+yt-dlp
+ytmusicapi
+syncedlyrics
