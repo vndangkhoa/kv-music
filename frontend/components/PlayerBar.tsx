@@ -38,10 +38,53 @@ export default function PlayerBar() {
         }
     }, [currentTrack?.url]);
 
+    // Media Session API (Lock Screen Controls)
+    useEffect(() => {
+        if (!currentTrack || !('mediaSession' in navigator)) return;
+
+        navigator.mediaSession.metadata = new MediaMetadata({
+            title: currentTrack.title,
+            artist: currentTrack.artist,
+            album: currentTrack.album,
+            artwork: [
+                { src: currentTrack.cover_url, sizes: '96x96', type: 'image/jpeg' },
+                { src: currentTrack.cover_url, sizes: '128x128', type: 'image/jpeg' },
+                { src: currentTrack.cover_url, sizes: '192x192', type: 'image/jpeg' },
+                { src: currentTrack.cover_url, sizes: '256x256', type: 'image/jpeg' },
+                { src: currentTrack.cover_url, sizes: '384x384', type: 'image/jpeg' },
+                { src: currentTrack.cover_url, sizes: '512x512', type: 'image/jpeg' },
+            ]
+        });
+
+        // Action Handlers
+        navigator.mediaSession.setActionHandler('play', () => {
+            togglePlay();
+            navigator.mediaSession.playbackState = "playing";
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+            togglePlay();
+            navigator.mediaSession.playbackState = "paused";
+        });
+        navigator.mediaSession.setActionHandler('previoustrack', () => prevTrack());
+        navigator.mediaSession.setActionHandler('nexttrack', () => nextTrack());
+        navigator.mediaSession.setActionHandler('seekto', (details) => {
+            if (details.seekTime !== undefined && audioRef.current) {
+                audioRef.current.currentTime = details.seekTime;
+                setProgress(details.seekTime);
+            }
+        });
+
+    }, [currentTrack]); // access to togglePlay etc. via closure is safe from context
+
     useEffect(() => {
         if (audioRef.current) {
-            if (isPlaying) audioRef.current.play().catch(e => console.error("Play error:", e));
-            else audioRef.current.pause();
+            if (isPlaying) {
+                audioRef.current.play().catch(e => console.error("Play error:", e));
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
+            } else {
+                audioRef.current.pause();
+                if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
+            }
         }
     }, [isPlaying]);
 
@@ -57,6 +100,20 @@ export default function PlayerBar() {
             setProgress(audioRef.current.currentTime);
             if (!isNaN(audioRef.current.duration)) {
                 setDuration(audioRef.current.duration);
+            }
+
+            // Update Position State for standard progress bar on lock screen
+            // Throttle this in real apps, but for simplicity:
+            if ('mediaSession' in navigator && !isNaN(audioRef.current.duration)) {
+                try {
+                    navigator.mediaSession.setPositionState({
+                        duration: audioRef.current.duration,
+                        playbackRate: audioRef.current.playbackRate,
+                        position: audioRef.current.currentTime
+                    });
+                } catch (e) {
+                    // Ignore errors (often due to duration being infinite/NaN at start)
+                }
             }
         }
     };

@@ -14,7 +14,7 @@ fi
 
 echo "Staging and Committing changes..."
 git add .
-git commit -m "Update: Fix empty album and iOS playback issues, add diverse home content"
+git commit -m "Update: Add Media Session API for native mobile controls"
 
 echo "Pushing code..."
 # This might fail if the repo doesn't exist on GitHub yet.

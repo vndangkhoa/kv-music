@@ -108,8 +108,17 @@ This app runs perfectly on Synology NAS using **Container Manager** (formerly Do
           - ./data:/app/backend/data
     ```
 3.  In Container Manager, go to **Project** -> **Create**.
-4.  Select the folder path, give it a name, and it will detect the compose file.
-5.  Click **Build** / **Run**.
+4. Select the folder path, give it a name, and it will detect the compose file.
+5. Click **Build** / **Run**.
+
+#### ✨ Auto-Update Enabled
+When using the `docker-compose.yml` above, a **Watchtower** container is included. It will automatically:
+- Check for updates to `vndangkhoa/spotify-clone:latest` every hour.
+- Download the new image if available.
+- Restart the application with the new version.
+- Remove old image versions to save space.
+
+You don't need to do anything manually to keep it updated! 🚀
 
 ---
 

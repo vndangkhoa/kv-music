@@ -9,3 +9,13 @@ services:
 
     volumes:
       - ./data:/app/backend/data
+
+  watchtower:
+    image: containrrr/watchtower
+    container_name: spotify-watchtower
+    restart: always
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: --interval 3600 --cleanup
+    environment:
+      - WATCHTOWER_INCLUDE_RESTARTING=true
