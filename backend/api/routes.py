@@ -130,9 +130,31 @@ async def get_playlist(id: str):
     try:
         from ytmusicapi import YTMusic
         yt = YTMusic()
-        # ytmusicapi returns a dict with 'tracks' list
-        playlist_data = yt.get_playlist(id, limit=100)
         
+        playlist_data = None
+        is_album = False
+        
+        # Try as Album first if ID looks like an album (MPREb...) or just try block
+        if id.startswith("MPREb"):
+             try:
+                playlist_data = yt.get_album(id)
+                is_album = True
+             except:
+                pass
+        
+        if not playlist_data:
+            try:
+                # ytmusicapi returns a dict with 'tracks' list
+                playlist_data = yt.get_playlist(id, limit=100)
+            except Exception as e:
+                # Fallback: Try as album if not tried yet
+                if not is_album:
+                    try:
+                        playlist_data = yt.get_album(id)
+                        is_album = True
+                    except:
+                        raise e # Re-raise if both fail
+
         # Format to match our app's Protocol
         formatted_tracks = []
         if 'tracks' in playlist_data:
@@ -146,17 +168,22 @@ async def get_playlist(id: str):
 
                 # Safely extract thumbnails
                 thumbnails = track.get('thumbnails', [])
+                if not thumbnails and is_album:
+                     # Albums sometimes have thumbnails at root level, not per track
+                     thumbnails = playlist_data.get('thumbnails', [])
+                     
                 cover_url = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
                 
                 # Safely extract album
                 album_info = track.get('album')
-                album_name = album_info.get('name', 'Single') if album_info else "Single"
+                # If it's an album fetch, the album name is the playlist title
+                album_name = album_info.get('name', playlist_data.get('title')) if album_info else playlist_data.get('title', 'Single')
 
                 formatted_tracks.append({
                     "title": track.get('title', 'Unknown Title'),
                     "artist": artist_names,
                     "album": album_name,
-                    "duration": track.get('duration_seconds', 0), 
+                    "duration": track.get('duration_seconds', track.get('length_seconds', 0)), 
                     "cover_url": cover_url,
                     "id": track.get('videoId'),
                     "url": f"https://music.youtube.com/watch?v={track.get('videoId')}"
@@ -167,10 +194,10 @@ async def get_playlist(id: str):
         p_cover = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
 
         formatted_playlist = {
-            "id": playlist_data.get('id'),
+            "id": playlist_data.get('browseId', playlist_data.get('id')),
             "title": clean_title(playlist_data.get('title', 'Unknown')),
             "description": clean_description(playlist_data.get('description', '')),
-            "author": playlist_data.get('author', {}).get('name', 'YouTube Music'),
+            "author": playlist_data.get('author', {}).get('name', 'YouTube Music') if not is_album else ", ".join([a.get('name','') for a in playlist_data.get('artists', [])]),
             "cover_url": p_cover,
             "tracks": formatted_tracks
         }
@@ -403,7 +430,7 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                'format': 'bestaudio/best',
+                'format': 'bestaudio[ext=m4a]/best[ext=mp4]/best', # Prefer m4a/aac for iOS
                 'quiet': True,
                 'noplaylist': True,
             }
