@@ -1,7 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
     // strict mode true is default but good to be explicit
+    // strict mode true is default but good to be explicit
     reactStrictMode: true,
+    output: "standalone",
     eslint: {
         ignoreDuringBuilds: true,
     },
