@@ -657,6 +657,7 @@ async def stream_audio(id: str):
                     info = ydl.extract_info(url, download=False)
                     stream_url = info.get('url')
                     ext = info.get('ext')
+                    http_headers = info.get('http_headers', {}) # Get headers required for the URL
                     
                     # Determine MIME type
                     if ext == 'm4a':
@@ -672,7 +673,7 @@ async def stream_audio(id: str):
                 raise ydl_error
             
             if stream_url:
-                cache_data = {"url": stream_url, "mime": mime_type}
+                cache_data = {"url": stream_url, "mime": mime_type, "headers": http_headers}
                 cache.set(cache_key, cache_data, ttl_seconds=3600)
 
         if not stream_url:
@@ -682,7 +683,10 @@ async def stream_audio(id: str):
 
         # Pre-open the connection to verify it works and get headers
         try:
-            external_req = requests.get(stream_url, stream=True, timeout=30)
+            # Use headers from yt-dlp (User-Agent, etc.)
+            req_headers = cached_data.get('headers', {}) if 'cached_data' in locals() else http_headers
+            
+            external_req = requests.get(stream_url, stream=True, timeout=30, headers=req_headers)
             external_req.raise_for_status() # Check for 403/404 immediately
         except requests.exceptions.HTTPError as http_err:
             print(f"DEBUG: Stream Pre-flight HTTP Error: {http_err}")
