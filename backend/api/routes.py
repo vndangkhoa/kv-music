@@ -608,18 +608,25 @@ async def stream_audio(id: str):
     """
     try:
         # Check Cache for stream URL
-        cache_key = f"stream:{id}"
-        cached_url = cache.get(cache_key)
+        cache_key = f"v2:stream:{id}" # v2 cache key for new format
+        cached_data = cache.get(cache_key)
         
         stream_url = None
-        if cached_url:
-            print(f"DEBUG: Using cached stream URL for '{id}'")
-            stream_url = cached_url
-        else:
+        mime_type = "audio/mp4"
+
+        if cached_data:
+            print(f"DEBUG: Using cached stream data for '{id}'")
+            if isinstance(cached_data, dict):
+                stream_url = cached_data.get('url')
+                mime_type = cached_data.get('mime', 'audio/mp4')
+            else:
+                stream_url = cached_data # Legacy fallback
+
+        if not stream_url:
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio/best', # Prefer m4a for direct streaming
+                'format': 'bestaudio[ext=m4a]/bestaudio/best',
                 'quiet': True,
                 'noplaylist': True,
                 'nocheckcertificate': True,
@@ -627,27 +634,37 @@ async def stream_audio(id: str):
                 'socket_timeout': 30,
                 'retries': 3,
                 'force_ipv4': True,
-                'extractor_args': {'youtube': {'player_client': ['ios', 'android']}}, # Remove 'web' to avoid blocking
+                'extractor_args': {'youtube': {'player_client': ['ios', 'android']}},
             }
             
-            # Extract direct URL
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                     stream_url = info.get('url')
-                    print(f"DEBUG: Got stream URL format: {info.get('format')}, ext: {info.get('ext')}")
+                    ext = info.get('ext')
+                    
+                    # Determine MIME type
+                    if ext == 'm4a':
+                        mime_type = "audio/mp4"
+                    elif ext == 'webm':
+                        mime_type = "audio/webm"
+                    else:
+                        mime_type = "audio/mpeg" # Fallback
+                        
+                    print(f"DEBUG: Got stream URL format: {info.get('format')}, ext: {ext}, mime: {mime_type}")
             except Exception as ydl_error:
                 print(f"DEBUG: yt-dlp extraction error: {type(ydl_error).__name__}: {str(ydl_error)}")
                 raise ydl_error
             
             if stream_url:
-                # Cache for 1 hour (3600 seconds) - URLs expire
-                cache.set(cache_key, stream_url, ttl_seconds=3600)
+                cache_data = {"url": stream_url, "mime": mime_type}
+                cache.set(cache_key, cache_data, ttl_seconds=3600)
 
         if not stream_url:
             raise HTTPException(status_code=404, detail="Audio stream not found")
             
-        # Stream the content
+        print(f"Streaming {id} with Content-Type: {mime_type}")
+
         def iterfile():
             try:
                 with requests.get(stream_url, stream=True, timeout=30) as r:
@@ -656,7 +673,6 @@ async def stream_audio(id: str):
                         yield chunk
             except requests.exceptions.HTTPError as http_err:
                 print(f"DEBUG: Stream HTTP Error: {http_err}")
-                # Invalidate cache on 403
                 if http_err.response.status_code == 403:
                     cache.delete(cache_key)
                 raise
@@ -664,7 +680,7 @@ async def stream_audio(id: str):
                 print(f"DEBUG: Stream Iterator Error: {e}")
                 raise
 
-        return StreamingResponse(iterfile(), media_type="audio/mp4")
+        return StreamingResponse(iterfile(), media_type=mime_type)
         
     except HTTPException:
         raise
