@@ -1,8 +1,7 @@
-```python
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from backend.api import routes
+from backend.api.routes import router as api_router
 from backend.scheduler import start_scheduler
 import os
 
