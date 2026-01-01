@@ -646,16 +646,16 @@ async def stream_audio(id: str):
                     http_headers = info.get('http_headers', {}) # Get headers required for the URL
                     
                     # Determine MIME type
-                    if ext == 'm4a':
+                    if ext == 'm4a' or ext == 'mp4':
                         mime_type = "audio/mp4"
                     elif ext == 'webm':
                         mime_type = "audio/webm"
                     else:
                         mime_type = "audio/mpeg"
                         
-                    print(f"DEBUG: Got stream URL format: {info.get('format')}, ext: {ext}, mime: {mime_type}")
+                    print(f"DEBUG: Got stream URL format: {info.get('format')}, ext: {ext}, mime: {mime_type}", flush=True)
             except Exception as ydl_error:
-                print(f"DEBUG: yt-dlp extraction error: {type(ydl_error).__name__}: {str(ydl_error)}")
+                print(f"DEBUG: yt-dlp extraction error: {type(ydl_error).__name__}: {str(ydl_error)}", flush=True)
                 raise ydl_error
             
             if stream_url:
@@ -665,12 +665,17 @@ async def stream_audio(id: str):
         if not stream_url:
             raise HTTPException(status_code=404, detail="Audio stream not found")
             
-        print(f"Streaming {id} with Content-Type: {mime_type}")
+        print(f"Streaming {id} with Content-Type: {mime_type}", flush=True)
 
         # Pre-open the connection to verify it works and get headers
         try:
             # Sanitize headers: prevent Host/Cookie conflicts, but keep User-Agent and Cookies
-            base_headers = cached_data.get('headers', {}) if 'cached_data' in locals() else http_headers
+            base_headers = {}
+            if 'http_headers' in locals():
+                base_headers = http_headers
+            elif cached_data and isinstance(cached_data, dict):
+                base_headers = cached_data.get('headers', {})
+                
             req_headers = {
                 'User-Agent': base_headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'),
                 'Referer': 'https://www.youtube.com/',
