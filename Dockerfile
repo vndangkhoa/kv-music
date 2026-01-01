@@ -1,8 +1,8 @@
 # --- Stage 1: Frontend Builder ---
-FROM node:18-alpine AS builder
+FROM node:18-slim AS builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-# Install dependencies including devDependencies for build
+# Install dependencies including sharp for build
 RUN npm install --legacy-peer-deps
 COPY frontend/ ./
 # Build with standalone output
@@ -18,8 +18,8 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     ffmpeg \
     ca-certificates \
-    nodejs \
-    npm \
+    && curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+    && apt-get install -y nodejs \
     && update-ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
@@ -32,6 +32,9 @@ RUN pip install --no-cache-dir -r backend/requirements.txt
 # Frontend Setup (Copy from Builder)
 # Copy the standalone server
 COPY --from=builder /app/frontend/.next/standalone /app/frontend
+# Explicitly install sharp in the standalone folder to ensure compatibility
+RUN cd /app/frontend && npm install sharp
+
 # Copy static files (required for standalone)
 COPY --from=builder /app/frontend/.next/static /app/frontend/.next/static
 COPY --from=builder /app/frontend/public /app/frontend/public
