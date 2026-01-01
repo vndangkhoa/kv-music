@@ -626,7 +626,7 @@ async def stream_audio(id: str):
     try:
         # Check Cache for stream URL
         # Check Cache for stream URL
-        cache_key = f"v8:stream:{id}" # v8 cache key - deep debug mode
+        cache_key = f"v9:stream:{id}" # v9 cache key - tv_embedded auth bypass
         cached_data = cache.get(cache_key)
         
         stream_url = None
@@ -644,7 +644,7 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                # Try standard bestaudio but prefer m4a. Removed protocol constraint to see what we actually get.
+                # Use tv_embedded client which often bypasses sign-in requirements
                 'format': 'bestaudio[ext=m4a]/bestaudio/best',
                 'quiet': True,
                 'noplaylist': True,
@@ -653,7 +653,8 @@ async def stream_audio(id: str):
                 'socket_timeout': 30,
                 'retries': 3,
                 'force_ipv4': True,
-                'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}},
+                # tv_embedded is an embedded player client that usually doesn't require auth
+                'extractor_args': {'youtube': {'player_client': ['tv_embedded', 'mediaconnect']}},
             }
             
             try:
