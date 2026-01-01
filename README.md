@@ -129,6 +129,9 @@ You don't need to do anything manually to keep it updated! 🚀
 - **Local-First**: Works offline (PWA) and syncs local playlists.
 - **Smart Search**: Unified search across YouTube Music.
 - **Responsive**: Full mobile support with a dedicated full-screen player.
+- **Smooth Loading**: Skeleton animations for seamless data fetching.
+- **Infinite Experience**: "Show all" pages with infinite scrolling support.
+- **Enhanced Mobile**: Optimized 3-column layouts and smart player visibility.
 
 ## 📝 License
 MIT License

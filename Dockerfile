@@ -30,8 +30,9 @@ COPY frontend/ .
 # ENV NEXT_PUBLIC_API_URL="http://localhost:8000" Removed to use relative path proxying
 # Build Next.js
 ENV NEXTAUTH_URL=http://localhost:3000
-# Generate a static secret for now to prevent 500 error, or use a build arg
-ENV NEXTAUTH_SECRET=changeme_in_production_but_this_fixes_500_error
+# Secret should be provided at runtime via docker run -e or docker-compose
+ARG NEXTAUTH_SECRET_ARG=default_dev_secret_change_in_production
+ENV NEXTAUTH_SECRET=${NEXTAUTH_SECRET_ARG}
 RUN npm run build
 
 # --- Final Setup ---

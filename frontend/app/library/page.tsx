@@ -6,6 +6,7 @@ import { useLibrary } from "@/context/LibraryContext";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import CreatePlaylistModal from "@/components/CreatePlaylistModal";
+import CoverImage from "@/components/CoverImage";
 
 export default function LibraryPage() {
     const { userPlaylists: playlists, libraryItems, refreshLibrary: refresh, activeFilter: activeTab, setActiveFilter: setActiveTab } = useLibrary();
@@ -61,7 +62,7 @@ export default function LibraryPage() {
                 </button>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 md:gap-4">
                 {/* Playlists & Liked Songs */}
                 {showPlaylists && (
                     <>
@@ -74,36 +75,34 @@ export default function LibraryPage() {
 
                         {playlists.map((playlist) => (
                             <Link href={`/playlist?id=${playlist.id}`} key={playlist.id}>
-                                <div className="bg-[#181818] p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col">
-                                    <div className="aspect-square w-full mb-3 overflow-hidden rounded-md bg-[#282828] shadow-lg">
-                                        {playlist.cover_url && !playlist.cover_url.includes("placehold") ? (
-                                            <img src={playlist.cover_url} alt={playlist.title} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-[#333]">
-                                                <span className="text-2xl">🎵</span>
-                                            </div>
-                                        )}
+                                <div className="bg-[#181818] p-2 md:p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col">
+                                    <div className="aspect-square w-full mb-2 md:mb-3 overflow-hidden rounded-md shadow-lg">
+                                        <CoverImage
+                                            src={playlist.cover_url}
+                                            alt={playlist.title}
+                                            className="w-full h-full object-cover"
+                                            fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
+                                        />
                                     </div>
-                                    <h3 className="text-white font-bold text-sm truncate">{playlist.title}</h3>
-                                    <p className="text-[#a7a7a7] text-xs">Playlist • You</p>
+                                    <h3 className="text-white font-bold text-xs md:text-sm truncate">{playlist.title}</h3>
+                                    <p className="text-[#a7a7a7] text-[10px] md:text-xs">Playlist • You</p>
                                 </div>
                             </Link>
                         ))}
 
                         {browsePlaylists.map((playlist) => (
                             <Link href={`/playlist?id=${playlist.id}`} key={playlist.id}>
-                                <div className="bg-[#181818] p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col">
-                                    <div className="aspect-square w-full mb-3 overflow-hidden rounded-md bg-[#282828] shadow-lg">
-                                        {playlist.cover_url && !playlist.cover_url.includes("placehold") ? (
-                                            <img src={playlist.cover_url} alt={playlist.title} className="w-full h-full object-cover" />
-                                        ) : (
-                                            <div className="w-full h-full flex items-center justify-center bg-[#333]">
-                                                <span className="text-2xl">🎵</span>
-                                            </div>
-                                        )}
+                                <div className="bg-[#181818] p-2 md:p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col">
+                                    <div className="aspect-square w-full mb-2 md:mb-3 overflow-hidden rounded-md shadow-lg">
+                                        <CoverImage
+                                            src={playlist.cover_url}
+                                            alt={playlist.title}
+                                            className="w-full h-full object-cover"
+                                            fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
+                                        />
                                     </div>
-                                    <h3 className="text-white font-bold text-sm truncate">{playlist.title}</h3>
-                                    <p className="text-[#a7a7a7] text-xs">Playlist • Made for you</p>
+                                    <h3 className="text-white font-bold text-xs md:text-sm truncate">{playlist.title}</h3>
+                                    <p className="text-[#a7a7a7] text-[10px] md:text-xs">Playlist • Made for you</p>
                                 </div>
                             </Link>
                         ))}
@@ -112,27 +111,18 @@ export default function LibraryPage() {
 
                 {/* Artists Content (Circular Images) */}
                 {showArtists && artists.map((artist) => (
-                    <Link href={`/playlist?id=${artist.id}`} key={artist.id}>
-                        <div className="bg-[#181818] p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col items-center text-center">
-                            <div className="aspect-square w-full mb-3 overflow-hidden rounded-full bg-[#282828] shadow-lg relative">
-                                {artist.cover_url ? (
-                                    <img
-                                        src={artist.cover_url}
-                                        alt={artist.title}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                            e.currentTarget.onerror = null; // Prevent infinite loop
-                                            e.currentTarget.style.display = 'none';
-                                            e.currentTarget.parentElement?.classList.add('bg-[#333]');
-                                        }}
-                                    />
-                                ) : null}
-                                <div className="absolute inset-0 flex items-center justify-center bg-[#333] -z-10">
-                                    <span className="text-2xl">🎤</span>
-                                </div>
+                    <Link href={`/artist?name=${encodeURIComponent(artist.title)}`} key={artist.id}>
+                        <div className="bg-[#181818] p-2 md:p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col items-center text-center">
+                            <div className="aspect-square w-full mb-2 md:mb-3 overflow-hidden rounded-full shadow-lg">
+                                <CoverImage
+                                    src={artist.cover_url}
+                                    alt={artist.title}
+                                    className="w-full h-full object-cover rounded-full"
+                                    fallbackText={artist.title?.substring(0, 2).toUpperCase()}
+                                />
                             </div>
-                            <h3 className="text-white font-bold text-sm truncate w-full">{artist.title}</h3>
-                            <p className="text-[#a7a7a7] text-xs">Artist</p>
+                            <h3 className="text-white font-bold text-xs md:text-sm truncate w-full">{artist.title}</h3>
+                            <p className="text-[#a7a7a7] text-[10px] md:text-xs">Artist</p>
                         </div>
                     </Link>
                 ))}
@@ -140,28 +130,17 @@ export default function LibraryPage() {
                 {/* Albums Content */}
                 {showAlbums && albums.map((album) => (
                     <Link href={`/playlist?id=${album.id}`} key={album.id}>
-                        <div className="bg-[#181818] p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col">
-                            <div className="aspect-square w-full mb-3 overflow-hidden rounded-md bg-[#282828] shadow-lg relative">
-                                {album.cover_url ? (
-                                    <img
-                                        src={album.cover_url}
-                                        alt={album.title}
-                                        className="w-full h-full object-cover"
-                                        onError={(e) => {
-                                            e.currentTarget.onerror = null; // Prevent infinite loop
-                                            e.currentTarget.style.display = 'none'; // Hide broken image
-                                            e.currentTarget.parentElement?.classList.add('bg-[#333]'); // add background
-                                            // Show fallback icon sibling if possible, distinct from React state
-                                        }}
-                                    />
-                                ) : null}
-                                {/* Fallback overlay (shown if image missing or hidden via CSS logic would need state, but simpler: just render icon behind it or use state) */}
-                                <div className="absolute inset-0 flex items-center justify-center bg-[#333] -z-10">
-                                    <span className="text-2xl">💿</span>
-                                </div>
+                        <div className="bg-[#181818] p-2 md:p-3 rounded-md hover:bg-[#282828] transition aspect-[3/4] flex flex-col">
+                            <div className="aspect-square w-full mb-2 md:mb-3 overflow-hidden rounded-md shadow-lg">
+                                <CoverImage
+                                    src={album.cover_url}
+                                    alt={album.title}
+                                    className="w-full h-full object-cover"
+                                    fallbackText={album.title?.substring(0, 2).toUpperCase()}
+                                />
                             </div>
-                            <h3 className="text-white font-bold text-sm truncate">{album.title}</h3>
-                            <p className="text-[#a7a7a7] text-xs">Album • {album.creator || 'Spotify'}</p>
+                            <h3 className="text-white font-bold text-xs md:text-sm truncate">{album.title}</h3>
+                            <p className="text-[#a7a7a7] text-[10px] md:text-xs">Album • {album.creator || 'Spotify'}</p>
                         </div>
                     </Link>
                 ))}

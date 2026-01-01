@@ -4,6 +4,7 @@ import "./globals.css";
 import Sidebar from "@/components/Sidebar";
 import PlayerBar from "@/components/PlayerBar";
 import MobileNav from "@/components/MobileNav";
+import RightSidebar from "@/components/RightSidebar";
 import { PlayerProvider } from "@/context/PlayerContext";
 import { LibraryProvider } from "@/context/LibraryContext";
 
@@ -46,6 +47,7 @@ export default function RootLayout({
               <main className="flex-1 bg-[#121212] rounded-lg overflow-y-auto relative no-scrollbar">
                 {children}
               </main>
+              <RightSidebar />
             </div>
             <PlayerBar />
             <MobileNav />

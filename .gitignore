@@ -53,3 +53,10 @@ backend/data/*.json
 !backend/data/data.json
 backend/cache/
 backend/data_seed/
+
+# Build Logs
+*.log
+build_log*.txt
+
+# Backup Files
+*_backup.*

@@ -14,6 +14,58 @@ router = APIRouter()
 cache = CacheManager()
 playlist_manager = PlaylistManager()
 
+def get_high_res_thumbnail(thumbnails: list) -> str:
+    """
+    Selects the best thumbnail and attempts to upgrade resolution 
+    if it's a Google/YouTube URL.
+    """
+    if not thumbnails:
+        return "https://placehold.co/300x300"
+    
+    # 1. Start with the largest available in the list
+    best_url = thumbnails[-1]['url']
+    
+    # 2. Upgrade resolution for Google User Content (lh3.googleusercontent.com, yt3.ggpht.com)
+    # Common patterns: 
+    # =w120-h120-l90-rj (Small)
+    # =w544-h544-l90-rj (High Res)
+    # s120-c-k-c0x00ffffff-no-rj (Profile/Avatar)
+    
+    if "googleusercontent.com" in best_url or "ggpht.com" in best_url:
+        import re
+        # Replace width/height params with 544 (standard YTM high res)
+        # We look for patterns like =w<num>-h<num>...
+        if "w" in best_url and "h" in best_url:
+            best_url = re.sub(r'=w\d+-h\d+', '=w544-h544', best_url)
+        elif best_url.startswith("https://lh3.googleusercontent.com") and "=" in best_url:
+             # Sometimes it's just URL=...
+             # We can try to force it
+             pass
+             
+    return best_url
+
+def extract_artist_names(track: dict) -> str:
+    """Safely extracts artist names from track data (dict or str items)."""
+    artists = track.get('artists') or []
+    if isinstance(artists, list):
+        names = []
+        for a in artists:
+            if isinstance(a, dict):
+                names.append(a.get('name', 'Unknown'))
+            elif isinstance(a, str):
+                names.append(a)
+        return ", ".join(names) if names else "Unknown Artist"
+    return "Unknown Artist"
+
+def extract_album_name(track: dict, default="Single") -> str:
+    """Safely extracts album name from track data."""
+    album = track.get('album')
+    if isinstance(album, dict): 
+        return album.get('name', default)
+    if isinstance(album, str): 
+        return album
+    return default
+
 def clean_text(text: str) -> str:
     if not text:
         return ""
@@ -92,6 +144,90 @@ async def get_browse_content():
         print(f"Browse Error: {e}")
         return []
 
+CATEGORIES_MAP = {
+    "Trending Vietnam": {"query": "Top 50 Vietnam", "type": "playlists"},
+    "Just released Songs": {"query": "New Released Songs", "type": "playlists"},
+    "Albums": {"query": "New Albums 2024", "type": "albums"},
+    "Vietnamese DJs": {"query": "Vinahouse Remix", "type": "playlists"},
+    "Global Hits": {"query": "Global Top 50", "type": "playlists"},
+    "Chill Vibes": {"query": "Chill Lofi", "type": "playlists"},
+    "Party Time": {"query": "Party EDM Hits", "type": "playlists"},
+    "Best of Ballad": {"query": "Vietnamese Ballad", "type": "playlists"},
+    "Hip Hop & Rap": {"query": "Vietnamese Rap", "type": "playlists"},
+}
+
+@router.get("/browse/category")
+async def get_browse_category(name: str):
+    """
+    Fetch live data for a specific category (infinite scroll support).
+    Fetches up to 50-100 items.
+    """
+    if name not in CATEGORIES_MAP:
+        raise HTTPException(status_code=404, detail="Category not found")
+        
+    info = CATEGORIES_MAP[name]
+    query = info["query"]
+    search_type = info["type"]
+    
+    # Check Cache
+    cache_key = f"browse_category:{name}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+        
+        # Search for more items (e.g. 50)
+        results = yt.search(query, filter=search_type, limit=50)
+        
+        category_items = []
+        
+        for result in results: 
+            item_id = result.get('browseId')
+            if not item_id: continue
+            
+            title = result.get('title', 'Unknown')
+            
+            # Simple item structure for list view (we don't need full track list for every item immediately)
+            # But frontend expects some structure.
+            
+            # Extract basic thumbnails
+            thumbnails = result.get('thumbnails', [])
+            cover_url = get_high_res_thumbnail(thumbnails)
+            
+            # description logic
+            description = ""
+            if search_type == "albums":
+                artists_text = ", ".join([a.get('name') for a in result.get('artists', [])])
+                year = result.get('year', '')
+                description = f"Album by {artists_text} • {year}"
+                is_album = True
+            else:
+                is_album = False
+                # For playlists result, description might be missing in search result
+                description = f"Playlist • {result.get('itemCount', '')} tracks"
+
+            category_items.append({
+                "id": item_id,
+                "title": title,
+                "description": description,
+                "cover_url": cover_url,
+                "type": "album" if is_album else "playlist",
+                # Note: We are NOT fetching full tracks for each item here to save speed/quota.
+                # The frontend only needs cover, title, description, id.
+                # Tracks are fetched when user clicks the item (via get_playlist).
+                "tracks": [] 
+            })
+            
+        cache.set(cache_key, category_items, ttl_seconds=3600) # Cache for 1 hour
+        return category_items
+        
+    except Exception as e:
+        print(f"Category Fetch Error: {e}")
+        return []
+
 @router.get("/playlists")
 async def get_user_playlists():
     return playlist_manager.get_all()
@@ -134,12 +270,12 @@ async def get_playlist(id: str):
         playlist_data = None
         is_album = False
         
-        # Try as Album first if ID looks like an album (MPREb...) or just try block
         if id.startswith("MPREb"):
              try:
                 playlist_data = yt.get_album(id)
                 is_album = True
-             except:
+             except Exception as e:
+                print(f"DEBUG: get_album(1) failed: {e}")
                 pass
         
         if not playlist_data:
@@ -147,24 +283,28 @@ async def get_playlist(id: str):
                 # ytmusicapi returns a dict with 'tracks' list
                 playlist_data = yt.get_playlist(id, limit=100)
             except Exception as e:
+                print(f"DEBUG: get_playlist failed: {e}")
+                import traceback, sys
+                traceback.print_exc(file=sys.stdout)
                 # Fallback: Try as album if not tried yet
                 if not is_album:
                     try:
                         playlist_data = yt.get_album(id)
                         is_album = True
-                    except:
+                    except Exception as e2:
+                        print(f"DEBUG: get_album(2) failed: {e2}")
+                        traceback.print_exc(file=sys.stdout)
                         raise e # Re-raise if both fail
+
+        if not isinstance(playlist_data, dict):
+             print(f"DEBUG: Validation Failed! playlist_data type: {type(playlist_data)}", flush=True)
+             raise ValueError(f"Invalid playlist_data: {playlist_data}")
 
         # Format to match our app's Protocol
         formatted_tracks = []
         if 'tracks' in playlist_data:
             for track in playlist_data['tracks']:
-                # Safely extract artists
-                artists_list = track.get('artists') or []
-                if isinstance(artists_list, list):
-                    artist_names = ", ".join([a.get('name', 'Unknown') for a in artists_list])
-                else:
-                    artist_names = "Unknown Artist"
+                artist_names = extract_artist_names(track)
 
                 # Safely extract thumbnails
                 thumbnails = track.get('thumbnails', [])
@@ -172,12 +312,10 @@ async def get_playlist(id: str):
                      # Albums sometimes have thumbnails at root level, not per track
                      thumbnails = playlist_data.get('thumbnails', [])
                      
-                cover_url = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
+                cover_url = get_high_res_thumbnail(thumbnails)
                 
                 # Safely extract album
-                album_info = track.get('album')
-                # If it's an album fetch, the album name is the playlist title
-                album_name = album_info.get('name', playlist_data.get('title')) if album_info else playlist_data.get('title', 'Single')
+                album_name = extract_album_name(track, playlist_data.get('title', 'Single'))
 
                 formatted_tracks.append({
                     "title": track.get('title', 'Unknown Title'),
@@ -191,13 +329,29 @@ async def get_playlist(id: str):
 
         # Get Playlist Cover (usually highest res)
         thumbnails = playlist_data.get('thumbnails', [])
-        p_cover = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
+        p_cover = get_high_res_thumbnail(thumbnails)
+
+        # Safely extract author/artists
+        author = "YouTube Music"
+        if is_album:
+            artists = playlist_data.get('artists', [])
+            names = []
+            for a in artists:
+                if isinstance(a, dict): names.append(a.get('name', 'Unknown'))
+                elif isinstance(a, str): names.append(a)
+            author = ", ".join(names)
+        else:
+            author_data = playlist_data.get('author', {})
+            if isinstance(author_data, dict):
+                author = author_data.get('name', 'YouTube Music')
+            else:
+                author = str(author_data)
 
         formatted_playlist = {
             "id": playlist_data.get('browseId', playlist_data.get('id')),
             "title": clean_title(playlist_data.get('title', 'Unknown')),
             "description": clean_description(playlist_data.get('description', '')),
-            "author": playlist_data.get('author', {}).get('name', 'YouTube Music') if not is_album else ", ".join([a.get('name','') for a in playlist_data.get('artists', [])]),
+            "author": author,
             "cover_url": p_cover,
             "tracks": formatted_tracks
         }
@@ -207,7 +361,15 @@ async def get_playlist(id: str):
         return formatted_playlist
 
     except Exception as e:
-        print(f"Playlist Fetch Error: {e}")
+        import traceback
+        print(f"Playlist Fetch Error (NEW CODE): {e}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        try:
+             print(f"Playlist Data Type: {type(playlist_data)}")
+             if 'tracks' in playlist_data and playlist_data['tracks']:
+                 print(f"First Track Type: {type(playlist_data['tracks'][0])}")
+        except:
+             pass
         raise HTTPException(status_code=404, detail="Playlist not found")
 
 class UpdatePlaylistRequest(BaseModel):
@@ -261,20 +423,13 @@ async def search_tracks(query: str):
         
         tracks = []
         for track in results:
-            # Safely extract artists
-            artists_list = track.get('artists') or []
-            if isinstance(artists_list, list):
-                artist_names = ", ".join([a.get('name', 'Unknown') for a in artists_list])
-            else:
-                artist_names = "Unknown Artist"
-
+            artist_names = extract_artist_names(track)
+            
             # Safely extract thumbnails
             thumbnails = track.get('thumbnails', [])
-            cover_url = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
+            cover_url = get_high_res_thumbnail(thumbnails)
             
-            # Safely extract album
-            album_info = track.get('album')
-            album_name = album_info.get('name', 'Single') if album_info else "Single"
+            album_name = extract_album_name(track, "Single")
 
             tracks.append({
                 "title": track.get('title', 'Unknown Title'),
@@ -319,23 +474,21 @@ async def get_recommendations(seed_id: str = None):
         
         tracks = []
         if 'tracks' in watch_playlist:
+            seen_ids = set()
+            seen_ids.add(seed_id)
             for track in watch_playlist['tracks']:
-                # Skip the seed track itself if play history already has it
-                if track.get('videoId') == seed_id:
+                # Skip if seen or seed
+                t_id = track.get('videoId')
+                if not t_id or t_id in seen_ids:
                     continue
+                seen_ids.add(t_id)
                     
-                artists_list = track.get('artists') or []
-                if isinstance(artists_list, list):
-                    artist_names = ", ".join([a.get('name', 'Unknown') for a in artists_list])
-                else:
-                    artist_names = "Unknown Artist"
+                artist_names = extract_artist_names(track)
 
-                thumbnails = track.get('thumbnails', [])
-                cover_url = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
+                thumbnails = track.get('thumbnails') or track.get('thumbnail') or []
+                cover_url = get_high_res_thumbnail(thumbnails)
                 
-                # album is often missing in watch playlist, fallback
-                album_info = track.get('album')
-                album_name = album_info.get('name', 'Single') if album_info else "Single"
+                album_name = extract_album_name(track, "Single")
 
                 tracks.append({
                     "title": track.get('title', 'Unknown Title'),
@@ -343,8 +496,8 @@ async def get_recommendations(seed_id: str = None):
                     "album": album_name,
                     "duration": track.get('length_seconds', track.get('duration_seconds', 0)), 
                     "cover_url": cover_url,
-                    "id": track.get('videoId'),
-                    "url": f"https://music.youtube.com/watch?v={track.get('videoId')}"
+                    "id": t_id,
+                    "url": f"https://music.youtube.com/watch?v={t_id}"
                 })
 
         response_data = {"tracks": tracks}
@@ -379,7 +532,7 @@ async def get_recommended_albums(seed_artist: str = None):
         albums = []
         for album in results:
             thumbnails = album.get('thumbnails', [])
-            cover_url = thumbnails[-1]['url'] if thumbnails else "https://placehold.co/300x300"
+            cover_url = get_high_res_thumbnail(thumbnails)
             
             albums.append({
                 "title": album.get('title', 'Unknown Album'),
@@ -395,6 +548,38 @@ async def get_recommended_albums(seed_artist: str = None):
     except Exception as e:
         print(f"Album Rec Error: {e}")
         return []
+
+@router.get("/artist/info")
+async def get_artist_info(name: str):
+    """
+    Get artist metadata (photo) by name.
+    """
+    if not name:
+        return {"photo": None}
+
+    cache_key = f"artist_info:{name.lower().strip()}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+
+    try:
+        from ytmusicapi import YTMusic
+        yt = YTMusic()
+        
+        results = yt.search(name, filter="artists", limit=1)
+        if results:
+            artist = results[0]
+            thumbnails = artist.get('thumbnails', [])
+            photo_url = get_high_res_thumbnail(thumbnails)
+            result = {"photo": photo_url}
+            
+            cache.set(cache_key, result, ttl_seconds=86400 * 7) # Cache for 1 week
+            return result
+            
+        return {"photo": None}
+    except Exception as e:
+        print(f"Artist Info Error: {e}")
+        return {"photo": None}
 
 @router.get("/trending")
 async def get_trending():

@@ -7,6 +7,8 @@ import { useState } from "react";
 import CreatePlaylistModal from "./CreatePlaylistModal";
 import { dbService } from "@/services/db";
 import { useLibrary } from "@/context/LibraryContext";
+import Logo from "./Logo";
+import CoverImage from "./CoverImage";
 
 export default function Sidebar() {
     const { likedTracks } = usePlayer();
@@ -39,9 +41,9 @@ export default function Sidebar() {
     return (
         <aside className="hidden md:flex flex-col w-[280px] bg-black h-full gap-2 p-2">
             <div className="bg-[#121212] rounded-lg p-4 flex flex-col gap-4">
+                {/* Logo replaces Home link */}
                 <Link href="/" className="flex items-center gap-4 text-spotify-text-muted hover:text-white transition cursor-pointer">
-                    <Home className="w-6 h-6" />
-                    <span className="font-bold">Home</span>
+                    <Logo />
                 </Link>
                 <Link href="/search" className="flex items-center gap-4 text-spotify-text-muted hover:text-white transition cursor-pointer">
                     <Search className="w-6 h-6" />
@@ -100,13 +102,11 @@ export default function Sidebar() {
                     {showPlaylists && userPlaylists.map((playlist) => (
                         <div key={playlist.id} className="group relative flex items-center gap-3 p-2 rounded-md hover:bg-[#1a1a1a] cursor-pointer">
                             <Link href={`/playlist?id=${playlist.id}`} className="flex-1 flex items-center gap-3">
-                                <div className="w-12 h-12 bg-[#282828] rounded flex items-center justify-center overflow-hidden">
-                                    {playlist.cover_url && !playlist.cover_url.includes("placehold") ? (
-                                        <img src={playlist.cover_url} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <span className="text-xl">🎵</span>
-                                    )}
-                                </div>
+                                <CoverImage
+                                    src={playlist.cover_url}
+                                    alt={playlist.title || ''}
+                                    className="w-12 h-12 rounded object-cover"
+                                />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-white font-medium truncate">{playlist.title}</h3>
                                     <p className="text-sm text-spotify-text-muted truncate">Playlist • You</p>
@@ -128,13 +128,11 @@ export default function Sidebar() {
                     {showPlaylists && browsePlaylists.map((playlist) => (
                         <div key={playlist.id} className="group relative flex items-center gap-3 p-2 rounded-md hover:bg-[#1a1a1a] cursor-pointer">
                             <Link href={`/playlist?id=${playlist.id}`} className="flex-1 flex items-center gap-3">
-                                <div className="w-12 h-12 bg-[#282828] rounded flex items-center justify-center overflow-hidden">
-                                    {playlist.cover_url && !playlist.cover_url.includes("placehold") ? (
-                                        <img src={playlist.cover_url} alt="" className="w-full h-full object-cover" />
-                                    ) : (
-                                        <span className="text-xl">🎵</span>
-                                    )}
-                                </div>
+                                <CoverImage
+                                    src={playlist.cover_url}
+                                    alt={playlist.title || ''}
+                                    className="w-12 h-12 rounded object-cover"
+                                />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-white font-medium truncate">{playlist.title}</h3>
                                     <p className="text-sm text-spotify-text-muted truncate">Playlist • Made for you</p>
@@ -145,13 +143,14 @@ export default function Sidebar() {
 
                     {/* Artists */}
                     {showArtists && artists.map((artist) => (
-                        <Link href={`/search?q=${encodeURIComponent(artist.title)}`} key={artist.id}>
+                        <Link href={`/artist?name=${encodeURIComponent(artist.title)}`} key={artist.id}>
                             <div className="flex items-center gap-3 p-2 rounded-md hover:bg-[#1a1a1a] cursor-pointer">
-                                <div className="w-12 h-12 bg-[#282828] rounded-full flex items-center justify-center overflow-hidden relative">
-                                    {artist.cover_url ? (
-                                        <img src={artist.cover_url} alt="" className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'} />
-                                    ) : null}
-                                </div>
+                                <CoverImage
+                                    src={artist.cover_url}
+                                    alt={artist.title}
+                                    className="w-12 h-12 rounded-full object-cover"
+                                    fallbackText={artist.title?.substring(0, 2).toUpperCase()}
+                                />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-white font-medium truncate">{artist.title}</h3>
                                     <p className="text-sm text-spotify-text-muted truncate">Artist</p>

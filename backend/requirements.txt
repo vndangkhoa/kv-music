@@ -1,9 +1,9 @@
-fastapi
-uvicorn
+fastapi==0.115.6
+uvicorn==0.34.0
 spotdl
-pydantic
-python-multipart
-requests
-yt-dlp
-ytmusicapi
+pydantic==2.10.4
+python-multipart==0.0.20
+requests==2.32.3
+yt-dlp==2024.12.23
+ytmusicapi==1.9.1
 syncedlyrics

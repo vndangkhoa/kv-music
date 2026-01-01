@@ -1,22 +1,7 @@
 import { openDB, DBSchema } from 'idb';
+import { Track, Playlist } from '@/types';
 
-export interface Track {
-    id: string;
-    title: string;
-    artist: string;
-    album: string;
-    cover_url: string;
-    url?: string;
-    duration?: number;
-}
-
-export interface Playlist {
-    id: string;
-    title: string;
-    tracks: Track[];
-    createdAt: number;
-    cover_url?: string;
-}
+export type { Track, Playlist };
 
 interface MyDB extends DBSchema {
     playlists: {

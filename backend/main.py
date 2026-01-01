@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api import routes
+from backend.api.routes import router as api_router
 import os
 
 app = FastAPI(title="Spotify Clone Backend")
@@ -19,14 +19,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(routes.router, prefix="/api")
+app.include_router(api_router, prefix="/api")
 
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
-
-# ... existing code ...
-
-app.include_router(routes.router, prefix="/api")
 
 # Serve Static Frontend (Production Mode)
 STATIC_DIR = "static"

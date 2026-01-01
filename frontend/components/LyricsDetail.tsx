@@ -10,9 +10,10 @@ interface LyricsDetailProps {
     currentTime: number;
     onClose: () => void;
     onSeek?: (time: number) => void;
+    isInSidebar?: boolean;
 }
 
-const LyricsDetail: React.FC<LyricsDetailProps> = ({ track, currentTime, onClose, onSeek }) => {
+const LyricsDetail: React.FC<LyricsDetailProps> = ({ track, currentTime, onClose, onSeek, isInSidebar = false }) => {
     const [lyrics, setLyrics] = useState<Metric[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -78,24 +79,26 @@ const LyricsDetail: React.FC<LyricsDetailProps> = ({ track, currentTime, onClose
     if (!track) return null;
 
     return (
-        <div className={`absolute inset-0 flex flex-col bg-transparent text-white`}>
-            {/* Header */}
-            <div className="flex items-center justify-between p-6 bg-gradient-to-b from-black/80 to-transparent z-10">
-                <div className="flex-1 min-w-0">
-                    <h2 className="text-xl font-bold truncate">Lyrics</h2>
-                    <p className="text-white/60 text-xs truncate uppercase tracking-widest">
-                        {track.artist}
-                    </p>
+        <div className={`${isInSidebar ? 'relative h-full' : 'absolute inset-0'} flex flex-col bg-transparent text-white`}>
+            {/* Header - only show when NOT in sidebar */}
+            {!isInSidebar && (
+                <div className="flex items-center justify-between p-6 bg-gradient-to-b from-black/80 to-transparent z-10">
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-xl font-bold truncate">Lyrics</h2>
+                        <p className="text-white/60 text-xs truncate uppercase tracking-widest">
+                            {track.artist}
+                        </p>
+                    </div>
+                    <button
+                        onClick={onClose}
+                        className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition backdrop-blur-md"
+                    >
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                            <path d="M18 6L6 18M6 6l12 12" />
+                        </svg>
+                    </button>
                 </div>
-                <button
-                    onClick={onClose}
-                    className="p-2 bg-white/10 rounded-full hover:bg-white/20 transition backdrop-blur-md"
-                >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <path d="M18 6L6 18M6 6l12 12" />
-                    </svg>
-                </button>
-            </div>
+            )}
 
             {/* Lyrics Container */}
             <div

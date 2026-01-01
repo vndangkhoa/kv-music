@@ -9,8 +9,10 @@ yt = YTMusic()
 # Define diverse categories to fetch
 CATEGORIES = {
     "Trending Vietnam": {"query": "Top 50 Vietnam", "type": "playlists"},
+    "Just released Songs": {"query": "New Released Songs", "type": "playlists"},
+    "Albums": {"query": "New Albums 2024", "type": "albums"},
+    "Vietnamese DJs": {"query": "Vinahouse Remix", "type": "playlists"},
     "Global Hits": {"query": "Global Top 50", "type": "playlists"},
-    "New Albums 2024": {"query": "New Albums 2024 Vietnam", "type": "albums"},
     "Chill Vibes": {"query": "Chill Lofi", "type": "playlists"},
     "Party Time": {"query": "Party EDM Hits", "type": "playlists"},
     "Best of Ballad": {"query": "Vietnamese Ballad", "type": "playlists"},
@@ -32,11 +34,11 @@ for category_name, info in CATEGORIES.items():
     print(f"\n--- Fetching Category: {category_name} (Query: '{query}', Type: {search_type}) ---")
     
     try:
-        results = yt.search(query, filter=search_type, limit=5)
+        results = yt.search(query, filter=search_type, limit=25)
         
         category_items = []
         
-        for result in results[:4]: # Limit to 4 items per category
+        for result in results[:20]: # Limit to 20 items per category
             item_id = result['browseId']
             title = result['title']
             print(f"  > Processing: {title}")

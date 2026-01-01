@@ -2,26 +2,8 @@
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { dbService } from "@/services/db";
-
-interface Track {
-    title: string;
-    artist: string;
-    album: string;
-    cover_url: string;
-    id: string;
-    url?: string;
-}
-
+import { Track, AudioQuality } from "@/types";
 import * as mm from 'music-metadata-browser';
-
-interface AudioQuality {
-    format: string;
-    sampleRate: number;
-    bitDepth?: number;
-    bitrate: number;
-    channels: number;
-    codec?: string;
-}
 
 interface PlayerContextType {
     currentTrack: Track | null;
@@ -41,6 +23,9 @@ interface PlayerContextType {
     toggleLike: (track: Track) => void;
     playHistory: Track[];
     audioQuality: AudioQuality | null;
+    // Lyrics panel state
+    isLyricsOpen: boolean;
+    toggleLyrics: () => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -64,6 +49,10 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     // History State
     const [playHistory, setPlayHistory] = useState<Track[]>([]);
+
+    // Lyrics Panel State
+    const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+    const toggleLyrics = () => setIsLyricsOpen(prev => !prev);
 
     // Load Likes from DB
     useEffect(() => {
@@ -272,7 +261,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             setBuffering,
             toggleLike,
             playHistory,
-            audioQuality
+            audioQuality,
+            isLyricsOpen,
+            toggleLyrics
         }}>
             {children}
         </PlayerContext.Provider>

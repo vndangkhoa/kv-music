@@ -9,7 +9,7 @@ import AddToPlaylistModal from "@/components/AddToPlaylistModal";
 import LyricsDetail from './LyricsDetail';
 
 export default function PlayerBar() {
-    const { currentTrack, isPlaying, isBuffering, togglePlay, setBuffering, likedTracks, toggleLike, nextTrack, prevTrack, shuffle, toggleShuffle, repeatMode, toggleRepeat, audioQuality } = usePlayer();
+    const { currentTrack, isPlaying, isBuffering, togglePlay, setBuffering, likedTracks, toggleLike, nextTrack, prevTrack, shuffle, toggleShuffle, repeatMode, toggleRepeat, audioQuality, isLyricsOpen, toggleLyrics } = usePlayer();
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
@@ -17,7 +17,7 @@ export default function PlayerBar() {
 
     // Modal State
     const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
-    const [isLyricsOpen, setIsLyricsOpen] = useState(false);
+    // isLyricsOpen is now in context
     const [isTechSpecsOpen, setIsTechSpecsOpen] = useState(false);
     const [isFullScreenPlayerOpen, setIsFullScreenPlayerOpen] = useState(false);
     const [isCoverModalOpen, setIsCoverModalOpen] = useState(false);
@@ -145,6 +145,8 @@ export default function PlayerBar() {
         return `${minutes}:${seconds.toString().padStart(2, '0')}`;
     };
 
+    if (!currentTrack) return null;
+
     return (
         <footer
             className="fixed bottom-[64px] left-2 right-2 md:left-0 md:right-0 md:bottom-0 h-14 md:h-[90px] bg-[#2E2E2E] md:bg-black border-t-0 md:border-t border-[#282828] flex items-center justify-between z-[60] rounded-lg md:rounded-none shadow-xl md:shadow-none transition-all duration-300"
@@ -252,7 +254,7 @@ export default function PlayerBar() {
                     {/* Mobile Lyrics Button */}
                     <button
                         className={`transition ${isLyricsOpen ? 'text-green-500' : 'text-neutral-300'}`}
-                        onClick={(e) => { e.stopPropagation(); setIsLyricsOpen(!isLyricsOpen); }}
+                        onClick={(e) => { e.stopPropagation(); toggleLyrics(); }}
                     >
                         <Mic2 size={22} />
                     </button>
@@ -316,7 +318,7 @@ export default function PlayerBar() {
                 <div className="flex items-center justify-end space-x-2 md:space-x-4">
                     <button
                         className={`text-zinc-400 hover:text-white transition ${isLyricsOpen ? 'text-green-500' : ''}`}
-                        onClick={() => setIsLyricsOpen(!isLyricsOpen)}
+                        onClick={() => toggleLyrics()}
                         title="Lyrics"
                     >
                         <Mic2 size={20} />
@@ -431,7 +433,7 @@ export default function PlayerBar() {
                             </button>
                             <button
                                 className={`transition ${isLyricsOpen ? 'text-green-500' : 'text-zinc-400'} hover:text-white`}
-                                onClick={(e) => { e.stopPropagation(); setIsLyricsOpen(!isLyricsOpen); }}
+                                onClick={(e) => { e.stopPropagation(); toggleLyrics(); }}
                             >
                                 <Mic2 size={24} />
                             </button>
@@ -467,19 +469,13 @@ export default function PlayerBar() {
                 />
             )}
 
-            {/* Lyrics Sheet (Responsive) */}
+            {/* Lyrics Sheet (Mobile Only - Desktop uses Right Sidebar) */}
             {isLyricsOpen && currentTrack && (
-                <div className="fixed inset-0 md:inset-auto md:bottom-[100px] md:left-1/2 md:-translate-x-1/2 h-[100dvh] md:h-[500px] md:w-[600px] z-[70] bg-[#121212] md:bg-black/80 backdrop-blur-xl border-t md:border border-white/10 md:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-full duration-500 overflow-hidden flex flex-col">
-                    {/* Mobile Drag Handle Visual - Removed for full screen immersion */}
-                    {/* <div
-                        className="w-12 h-1 bg-white/20 rounded-full mx-auto mt-3 mb-1 md:hidden cursor-pointer"
-                        onClick={() => setIsLyricsOpen(false)}
-                    /> */}
-
+                <div className="fixed inset-0 z-[70] bg-[#121212] flex flex-col md:hidden animate-in slide-in-from-bottom-full duration-300">
                     <LyricsDetail
                         track={currentTrack}
                         currentTime={audioRef.current ? audioRef.current.currentTime : 0}
-                        onClose={() => setIsLyricsOpen(false)}
+                        onClose={() => toggleLyrics()}
                         onSeek={(time) => {
                             if (audioRef.current) {
                                 audioRef.current.currentTime = time;
