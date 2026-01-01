@@ -683,21 +683,28 @@ async def stream_audio(id: str):
 
         # Pre-open the connection to verify it works and get headers
         try:
-            # Use headers from yt-dlp (User-Agent, etc.)
-            req_headers = cached_data.get('headers', {}) if 'cached_data' in locals() else http_headers
+            # Sanitize headers: prevent Host/Cookie conflicts, but keep User-Agent
+            base_headers = cached_data.get('headers', {}) if 'cached_data' in locals() else http_headers
+            req_headers = {
+                'User-Agent': base_headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'),
+                'Referer': 'https://www.youtube.com/',
+                'Accept': '*/*',
+            }
             
-            external_req = requests.get(stream_url, stream=True, timeout=30, headers=req_headers)
-            external_req.raise_for_status() # Check for 403/404 immediately
+            # Disable SSL verify to match yt-dlp 'nocheckcertificate' (fixes NAS CA issues)
+            external_req = requests.get(stream_url, stream=True, timeout=30, headers=req_headers, verify=False)
+            external_req.raise_for_status() 
         except requests.exceptions.HTTPError as http_err:
             print(f"DEBUG: Stream Pre-flight HTTP Error: {http_err}")
-            if http_err.response.status_code == 403:
+            # If 403/404/410, invalidate cache
+            if http_err.response.status_code in [403, 404, 410]:
                 cache.delete(cache_key)
-            raise HTTPException(status_code=500, detail="Upstream stream error")
+            raise HTTPException(status_code=500, detail=f"Upstream stream error: {http_err.response.status_code}")
         except Exception as e:
             print(f"DEBUG: Stream Connection Error: {e}")
-            raise HTTPException(status_code=500, detail="Stream connection failed")
+            raise HTTPException(status_code=500, detail=f"Stream connection failed: {str(e)}")
 
-        # Forward Content-Length if available for progress bars
+        # Forward Content-Length if available
         headers = {}
         if "Content-Length" in external_req.headers:
             headers["Content-Length"] = external_req.headers["Content-Length"]
