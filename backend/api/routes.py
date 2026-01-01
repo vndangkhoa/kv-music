@@ -679,23 +679,39 @@ async def stream_audio(id: str):
             if 'Cookie' in base_headers:
                 req_headers['Cookie'] = base_headers['Cookie']
             
+            print(f"DEBUG_STREAM [{id}]: Opening connection to {stream_url[:50]}...")
+            print(f"DEBUG_STREAM [{id}]: Headers: User-Agent={req_headers.get('User-Agent')[:30]}..., Cookie Present={'Cookie' in req_headers}")
+            
             # Disable SSL verify to match yt-dlp 'nocheckcertificate' (fixes NAS CA issues)
             external_req = requests.get(stream_url, stream=True, timeout=30, headers=req_headers, verify=False)
+            print(f"DEBUG_STREAM [{id}]: Upstream Status: {external_req.status_code}")
+            
             external_req.raise_for_status() 
         except requests.exceptions.HTTPError as http_err:
-            print(f"DEBUG: Stream Pre-flight HTTP Error: {http_err}")
+            error_details = f"Upstream error: {http_err.response.status_code}"
+            print(f"DEBUG_STREAM [{id}]: FAILED {error_details}")
+            try:
+                print(f"DEBUG_STREAM [{id}]: Response Headers: {http_err.response.headers}")
+                print(f"DEBUG_STREAM [{id}]: Response Body keys: {http_err.response.text[:200]}")
+            except:
+                pass
+                
             # If 403/404/410, invalidate cache
             if http_err.response.status_code in [403, 404, 410]:
+                print(f"DEBUG_STREAM [{id}]: Invalidating cache key {cache_key}")
                 cache.delete(cache_key)
-            raise HTTPException(status_code=500, detail=f"Upstream stream error: {http_err.response.status_code}")
+            raise HTTPException(status_code=500, detail=error_details)
         except Exception as e:
-            print(f"DEBUG: Stream Connection Error: {e}")
+            print(f"DEBUG_STREAM [{id}]: Connection Failed: {e}")
+            import traceback
+            traceback.print_exc()
             raise HTTPException(status_code=500, detail=f"Stream connection failed: {str(e)}")
 
         # Forward Content-Length if available
         headers = {}
         if "Content-Length" in external_req.headers:
             headers["Content-Length"] = external_req.headers["Content-Length"]
+            print(f"DEBUG_STREAM [{id}]: Content-Length: {headers['Content-Length']}")
 
         def iterfile():
             try:
@@ -703,8 +719,9 @@ async def stream_audio(id: str):
                 for chunk in external_req.iter_content(chunk_size=64*1024): 
                     yield chunk
                 external_req.close()
+                print(f"DEBUG_STREAM [{id}]: Stream finished successfully")
             except Exception as e:
-                print(f"DEBUG: Stream Iterator Error: {e}")
+                print(f"DEBUG_STREAM [{id}]: Stream Iterator Error: {e}")
                 pass
 
         return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
