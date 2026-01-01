@@ -626,7 +626,7 @@ async def stream_audio(id: str):
     try:
         # Check Cache for stream URL
         # Check Cache for stream URL
-        cache_key = f"v9:stream:{id}" # v9 cache key - tv_embedded auth bypass
+        cache_key = f"v10:stream:{id}" # v10 - web_creator client bypass
         cached_data = cache.get(cache_key)
         
         stream_url = None
@@ -644,17 +644,23 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                # Use tv_embedded client which often bypasses sign-in requirements
-                'format': 'bestaudio[ext=m4a]/bestaudio/best',
-                'quiet': True,
+                # Try multiple formats, prefer webm which often works better
+                'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+                'quiet': False,  # Enable output for debugging
                 'noplaylist': True,
                 'nocheckcertificate': True,
                 'geo_bypass': True,
+                'geo_bypass_country': 'US',
                 'socket_timeout': 30,
-                'retries': 3,
+                'retries': 5,
                 'force_ipv4': True,
-                # tv_embedded is an embedded player client that usually doesn't require auth
-                'extractor_args': {'youtube': {'player_client': ['tv_embedded', 'mediaconnect']}},
+                # Try web_creator client which sometimes bypasses auth, fallback to ios/android
+                'extractor_args': {'youtube': {'player_client': ['web_creator', 'ios', 'android', 'web']}},
+                # Additional options to avoid bot detection
+                'http_headers': {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
             }
             
             try:
