@@ -608,7 +608,7 @@ async def stream_audio(id: str):
     """
     try:
         # Check Cache for stream URL
-        cache_key = f"v3:stream:{id}" # v3 cache key for cookie/header fix
+        cache_key = f"v4:stream:{id}" # v4 cache key for clean slate
         cached_data = cache.get(cache_key)
         
         stream_url = None
