@@ -6,7 +6,7 @@ COPY frontend/package*.json ./
 RUN npm install --legacy-peer-deps
 COPY frontend/ ./
 # Build with standalone output
-ENV NEXT_PUBLIC_API_URL="http://localhost:8000"
+ENV NEXT_PUBLIC_API_URL=""
 RUN npm run build
 
 # --- Stage 2: Final Runtime Image ---
