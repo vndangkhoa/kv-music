@@ -1,6 +1,6 @@
 "use client";
 
-import { Home, Search, Library, Plus, Heart } from "lucide-react";
+import { Home, Search, Library, Plus, Heart, RefreshCcw } from "lucide-react";
 import Link from "next/link";
 import { usePlayer } from "@/context/PlayerContext";
 import { useState } from "react";
@@ -14,6 +14,8 @@ export default function Sidebar() {
     const { likedTracks } = usePlayer();
     const { userPlaylists, libraryItems, refreshLibrary: refresh, activeFilter, setActiveFilter } = useLibrary();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isUpdating, setIsUpdating] = useState(false);
+    const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
 
     const handleCreatePlaylist = async (name: string) => {
         await dbService.createPlaylist(name);
@@ -26,6 +28,26 @@ export default function Sidebar() {
         if (confirm("Delete this playlist?")) {
             await dbService.deletePlaylist(id);
             refresh();
+        }
+    };
+
+    const handleUpdateYtdlp = async () => {
+        if (isUpdating) return;
+        setIsUpdating(true);
+        setUpdateStatus('loading');
+        try {
+            const response = await fetch('/api/system/update-ytdlp', { method: 'POST' });
+            if (response.ok) {
+                setUpdateStatus('success');
+                setTimeout(() => setUpdateStatus('idle'), 5000);
+            } else {
+                setUpdateStatus('error');
+            }
+        } catch (error) {
+            console.error("Failed to update yt-dlp:", error);
+            setUpdateStatus('error');
+        } finally {
+            setIsUpdating(false);
         }
     };
 
@@ -177,6 +199,26 @@ export default function Sidebar() {
                         </Link>
                     ))}
                 </div>
+            </div>
+
+            {/* System Section */}
+            <div className="bg-[#121212] rounded-lg p-2 mt-auto">
+                <button
+                    onClick={handleUpdateYtdlp}
+                    disabled={isUpdating}
+                    className={`w-full flex items-center gap-3 p-3 rounded-md transition-all duration-300 ${updateStatus === 'success' ? 'bg-green-600/20 text-green-400' :
+                            updateStatus === 'error' ? 'bg-red-600/20 text-red-400' :
+                                'text-spotify-text-muted hover:text-white hover:bg-[#1a1a1a]'
+                        }`}
+                    title="Update Core (yt-dlp) to fix playback errors"
+                >
+                    <RefreshCcw className={`w-5 h-5 ${isUpdating ? 'animate-spin' : ''}`} />
+                    <span className="text-sm font-bold">
+                        {updateStatus === 'loading' ? 'Updating...' :
+                            updateStatus === 'success' ? 'Core Updated!' :
+                                updateStatus === 'error' ? 'Update Failed' : 'Update Core'}
+                    </span>
+                </button>
             </div>
 
             <CreatePlaylistModal
