@@ -637,6 +637,21 @@ async def stream_audio(id: str):
                 'extractor_args': {'youtube': {'player_client': ['ios', 'android']}},
             }
             
+        if not stream_url:
+            print(f"DEBUG: Fetching new stream URL for '{id}'")
+            url = f"https://www.youtube.com/watch?v={id}" 
+            ydl_opts = {
+                'format': 'bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/best[protocol^=http]', # Strictly exclude m3u8/HLS
+                'quiet': True,
+                'noplaylist': True,
+                'nocheckcertificate': True,
+                'geo_bypass': True,
+                'socket_timeout': 30,
+                'retries': 3,
+                'force_ipv4': True,
+                'extractor_args': {'youtube': {'player_client': ['android', 'web', 'ios']}}, # Android often gives good progressive streams
+            }
+            
             try:
                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                     info = ydl.extract_info(url, download=False)
@@ -649,7 +664,7 @@ async def stream_audio(id: str):
                     elif ext == 'webm':
                         mime_type = "audio/webm"
                     else:
-                        mime_type = "audio/mpeg" # Fallback
+                        mime_type = "audio/mpeg"
                         
                     print(f"DEBUG: Got stream URL format: {info.get('format')}, ext: {ext}, mime: {mime_type}")
             except Exception as ydl_error:
@@ -665,22 +680,35 @@ async def stream_audio(id: str):
             
         print(f"Streaming {id} with Content-Type: {mime_type}")
 
+        # Pre-open the connection to verify it works and get headers
+        try:
+            external_req = requests.get(stream_url, stream=True, timeout=30)
+            external_req.raise_for_status() # Check for 403/404 immediately
+        except requests.exceptions.HTTPError as http_err:
+            print(f"DEBUG: Stream Pre-flight HTTP Error: {http_err}")
+            if http_err.response.status_code == 403:
+                cache.delete(cache_key)
+            raise HTTPException(status_code=500, detail="Upstream stream error")
+        except Exception as e:
+            print(f"DEBUG: Stream Connection Error: {e}")
+            raise HTTPException(status_code=500, detail="Stream connection failed")
+
+        # Forward Content-Length if available for progress bars
+        headers = {}
+        if "Content-Length" in external_req.headers:
+            headers["Content-Length"] = external_req.headers["Content-Length"]
+
         def iterfile():
             try:
-                with requests.get(stream_url, stream=True, timeout=30) as r:
-                    r.raise_for_status()
-                    for chunk in r.iter_content(chunk_size=64*1024): 
-                        yield chunk
-            except requests.exceptions.HTTPError as http_err:
-                print(f"DEBUG: Stream HTTP Error: {http_err}")
-                if http_err.response.status_code == 403:
-                    cache.delete(cache_key)
-                raise
+                # Use the already open request
+                for chunk in external_req.iter_content(chunk_size=64*1024): 
+                    yield chunk
+                external_req.close()
             except Exception as e:
                 print(f"DEBUG: Stream Iterator Error: {e}")
-                raise
+                pass
 
-        return StreamingResponse(iterfile(), media_type=mime_type)
+        return StreamingResponse(iterfile(), media_type=mime_type, headers=headers)
         
     except HTTPException:
         raise
