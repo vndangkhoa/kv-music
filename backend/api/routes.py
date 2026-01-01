@@ -659,8 +659,8 @@ async def stream_audio(id: str):
                 raise ydl_error
             
             if stream_url:
-                cache_data = {"url": stream_url, "mime": mime_type, "headers": http_headers}
-                cache.set(cache_key, cache_data, ttl_seconds=3600)
+                cached_data = {"url": stream_url, "mime": mime_type, "headers": http_headers}
+                cache.set(cache_key, cached_data, ttl_seconds=3600)
 
         if not stream_url:
             raise HTTPException(status_code=404, detail="Audio stream not found")
