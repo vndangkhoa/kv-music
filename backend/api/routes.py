@@ -615,15 +615,24 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/best[ext=mp4]/best', # Prefer m4a/aac for iOS
+                'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
                 'quiet': True,
                 'noplaylist': True,
+                'nocheckcertificate': True,  # Bypass SSL issues in Docker
+                'geo_bypass': True,  # Bypass geo restrictions
+                'socket_timeout': 30,  # Timeout for sockets
+                'retries': 3,  # Retry on transient errors
             }
             
             # Extract direct URL
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                stream_url = info.get('url')
+            try:
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=False)
+                    stream_url = info.get('url')
+                    print(f"DEBUG: Got stream URL format: {info.get('format')}, ext: {info.get('ext')}")
+            except Exception as ydl_error:
+                print(f"DEBUG: yt-dlp extraction error: {type(ydl_error).__name__}: {str(ydl_error)}")
+                raise ydl_error
             
             if stream_url:
                 # Cache for 1 hour (3600 seconds) - URLs expire
@@ -634,24 +643,27 @@ async def stream_audio(id: str):
             
         # Stream the content
         def iterfile():
-            # Verify if URL is still valid by making a HEAD request or handling stream error
-            # For simplicity, we just try to stream. If 403, we might need to invalidate, 
-            # but that logic is complex for this method.
-            with requests.get(stream_url, stream=True) as r:
-                r.raise_for_status() # Check for 403
-                # Use smaller chunks (64KB) for better TTFB (Time To First Byte)
-                for chunk in r.iter_content(chunk_size=64*1024): 
-                    yield chunk
+            try:
+                with requests.get(stream_url, stream=True, timeout=30) as r:
+                    r.raise_for_status()
+                    for chunk in r.iter_content(chunk_size=64*1024): 
+                        yield chunk
+            except requests.exceptions.HTTPError as http_err:
+                print(f"DEBUG: Stream HTTP Error: {http_err}")
+                # Invalidate cache on 403
+                if http_err.response.status_code == 403:
+                    cache.delete(cache_key)
+                raise
 
-        # Note: We return audio/mpeg, but it might be opus/webm.
-        # Browsers are usually smart enough to sniff.
         return StreamingResponse(iterfile(), media_type="audio/mpeg")
         
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"Stream Error: {e}")
-        # If cached URL failed (likely 403), we could try to invalidate here, 
-        # but for now we just return error.
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"Stream Error for ID '{id}': {type(e).__name__}: {str(e)}")
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Stream error: {type(e).__name__}: {str(e)}")
 
 @router.get("/download")
 async def download_audio(id: str, title: str = "audio"):
