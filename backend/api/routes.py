@@ -609,7 +609,7 @@ async def stream_audio(id: str):
     try:
         # Check Cache for stream URL
         # Check Cache for stream URL
-        cache_key = f"v5:stream:{id}" # v5 cache key for ios client priority
+        cache_key = f"v6:stream:{id}" # v6 cache key for ios client / relaxed format
         cached_data = cache.get(cache_key)
         
         stream_url = None
@@ -627,7 +627,7 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a][protocol^=http]/bestaudio[protocol^=http]/best[protocol^=http]', # Strictly exclude m3u8/HLS
+                'format': 'bestaudio[ext=m4a]/bestaudio/best', # Relaxed format to prevent "Requested format not available"
                 'quiet': True,
                 'noplaylist': True,
                 'nocheckcertificate': True,
@@ -635,7 +635,7 @@ async def stream_audio(id: str):
                 'socket_timeout': 30,
                 'retries': 3,
                 'force_ipv4': True,
-                'extractor_args': {'youtube': {'player_client': ['ios', 'web', 'android']}}, # Prioritize iOS for server-like environments
+                'extractor_args': {'youtube': {'player_client': ['ios']}}, # iOS is currently most stable without PO Token
             }
             
             try:
