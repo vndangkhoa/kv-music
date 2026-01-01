@@ -180,25 +180,25 @@ export default function Home() {
               </Link>
             </div>
 
-            <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-6">
               {sortPlaylists(playlists).slice(0, 5).map((playlist: any) => (
                 <Link href={`/playlist?id=${playlist.id}`} key={playlist.id}>
-                  <div className="bg-[#181818] p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer relative h-full flex flex-col">
-                    <div className="relative mb-4">
+                  <div className="bg-[#181818] p-2 md:p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer relative h-full flex flex-col">
+                    <div className="relative mb-2 md:mb-4">
                       <CoverImage
                         src={playlist.cover_url}
                         alt={playlist.title}
                         className="w-full aspect-square object-cover rounded-md shadow-lg"
                         fallbackText={playlist.title.substring(0, 2).toUpperCase()}
                       />
-                      <div className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                        <div className="w-12 h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                          <Play className="fill-black text-black ml-1" />
+                      <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                        <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
+                          <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
                         </div>
                       </div>
                     </div>
-                    <h3 className="font-bold mb-1 truncate">{playlist.title}</h3>
-                    <p className="text-sm text-[#a7a7a7] line-clamp-2">{playlist.description}</p>
+                    <h3 className="font-bold mb-0.5 md:mb-1 truncate text-xs md:text-base">{playlist.title}</h3>
+                    <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{playlist.description}</p>
                   </div>
                 </Link>
               ))}
@@ -314,24 +314,24 @@ function MadeForYouSection() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
+        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-6">
           {recommendations.slice(0, 5).map((track, i) => (
-            <div key={i} onClick={() => playTrack(track, recommendations)} className="bg-[#181818] p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer relative h-full flex flex-col">
-              <div className="relative mb-4">
+            <div key={i} onClick={() => playTrack(track, recommendations)} className="bg-[#181818] p-2 md:p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer relative h-full flex flex-col">
+              <div className="relative mb-2 md:mb-4">
                 <CoverImage
                   src={track.cover_url}
                   alt={track.title}
                   className="w-full aspect-square object-cover rounded-md shadow-lg"
                   fallbackText={track.title?.substring(0, 2).toUpperCase()}
                 />
-                <div className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                  <div className="w-12 h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                    <Play className="fill-black text-black ml-1" />
+                <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                  <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
+                    <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
                   </div>
                 </div>
               </div>
-              <h3 className="font-bold mb-1 truncate">{track.title}</h3>
-              <p className="text-sm text-[#a7a7a7] line-clamp-2">{track.artist}</p>
+              <h3 className="font-bold mb-0.5 md:mb-1 truncate text-xs md:text-base">{track.title}</h3>
+              <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{track.artist}</p>
             </div>
           ))}
         </div>
@@ -388,24 +388,24 @@ function RecommendedAlbumsSection() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
+        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 md:gap-6">
           {albums.slice(0, 5).map((album, i) => (
             <Link href={`/playlist?id=${album.id}`} key={i}>
-              <div className="bg-[#181818] p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer relative h-full flex flex-col">
-                <div className="relative mb-4">
+              <div className="bg-[#181818] p-2 md:p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer relative h-full flex flex-col">
+                <div className="relative mb-2 md:mb-4">
                   <CoverImage
                     src={album.cover_url}
                     alt={album.title}
                     className="w-full aspect-square object-cover rounded-md shadow-lg"
                   />
-                  <div className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                    <div className="w-12 h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                      <Play className="fill-black text-black ml-1" />
+                  <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                    <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
+                      <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
                     </div>
                   </div>
                 </div>
-                <h3 className="font-bold mb-1 truncate">{album.title}</h3>
-                <p className="text-sm text-[#a7a7a7] line-clamp-2">{album.description}</p>
+                <h3 className="font-bold mb-0.5 md:mb-1 truncate text-xs md:text-base">{album.title}</h3>
+                <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{album.description}</p>
               </div>
             </Link>
           ))}

@@ -30,7 +30,14 @@ export function LibraryProvider({ children }: { children: React.ReactNode }) {
 
             // 2. Local/Backend Content
             const browse = await libraryService.getBrowseContent();
-            const browsePlaylists = Object.values(browse).flat();
+            // Deduplicate by ID to avoid React duplicate key warnings
+            const browsePlaylistsRaw = Object.values(browse).flat();
+            const seenIds = new Map();
+            const browsePlaylists = browsePlaylistsRaw.filter((p: any) => {
+                if (seenIds.has(p.id)) return false;
+                seenIds.set(p.id, true);
+                return true;
+            });
 
             const artistsMap = new Map();
             const albumsMap = new Map();

@@ -24,6 +24,9 @@ export const metadata: Metadata = {
     statusBarStyle: "black-translucent",
     title: "Audiophile Web Player",
   },
+  other: {
+    "mobile-web-app-capable": "yes",
+  },
   icons: {
     icon: "/icons/icon-192x192.png",
     apple: "/icons/icon-512x512.png",
