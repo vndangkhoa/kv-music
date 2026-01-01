@@ -619,15 +619,15 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best',
+                'format': 'bestaudio[ext=m4a]/bestaudio/best', # Prefer m4a for direct streaming
                 'quiet': True,
                 'noplaylist': True,
-                'nocheckcertificate': True,  # Bypass SSL issues in Docker
-                'geo_bypass': True,  # Bypass geo restrictions
-                'socket_timeout': 30,  # Timeout for sockets
-                'retries': 3,  # Retry on transient errors
-                'force_ipv4': True,  # Force IPv4 (Fixes NAS/Docker IPv6 issues)
-                'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}}, # Use stable clients
+                'nocheckcertificate': True,
+                'geo_bypass': True,
+                'socket_timeout': 30,
+                'retries': 3,
+                'force_ipv4': True,
+                'extractor_args': {'youtube': {'player_client': ['ios', 'android']}}, # Remove 'web' to avoid blocking
             }
             
             # Extract direct URL
@@ -660,8 +660,11 @@ async def stream_audio(id: str):
                 if http_err.response.status_code == 403:
                     cache.delete(cache_key)
                 raise
+            except Exception as e:
+                print(f"DEBUG: Stream Iterator Error: {e}")
+                raise
 
-        return StreamingResponse(iterfile(), media_type="audio/mpeg")
+        return StreamingResponse(iterfile(), media_type="audio/mp4")
         
     except HTTPException:
         raise
