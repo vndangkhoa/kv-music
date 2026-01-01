@@ -609,7 +609,7 @@ async def stream_audio(id: str):
     try:
         # Check Cache for stream URL
         # Check Cache for stream URL
-        cache_key = f"v6:stream:{id}" # v6 cache key for ios client / relaxed format
+        cache_key = f"v7:stream:{id}" # v7 cache key - force purge for HLS fix
         cached_data = cache.get(cache_key)
         
         stream_url = None
@@ -627,7 +627,9 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio/best', # Relaxed format to prevent "Requested format not available"
+                # CRITICAL: protocol=https forces progressive HTTP streams, NOT HLS manifests
+                # HLS (.m3u8) streams cannot be played by browser <audio> elements
+                'format': 'bestaudio[ext=m4a][protocol=https]/bestaudio[protocol=https]/bestaudio[ext=m4a]/bestaudio/best',
                 'quiet': True,
                 'noplaylist': True,
                 'nocheckcertificate': True,
@@ -635,7 +637,8 @@ async def stream_audio(id: str):
                 'socket_timeout': 30,
                 'retries': 3,
                 'force_ipv4': True,
-                'extractor_args': {'youtube': {'player_client': ['ios']}}, # iOS is currently most stable without PO Token
+                # Use web_creator client which provides progressive streams
+                'extractor_args': {'youtube': {'player_client': ['web_creator', 'mweb', 'web']}},
             }
             
             try:
