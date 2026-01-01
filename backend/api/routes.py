@@ -608,7 +608,7 @@ async def stream_audio(id: str):
     """
     try:
         # Check Cache for stream URL
-        cache_key = f"v2:stream:{id}" # v2 cache key for new format
+        cache_key = f"v3:stream:{id}" # v3 cache key for cookie/header fix
         cached_data = cache.get(cache_key)
         
         stream_url = None
@@ -622,21 +622,6 @@ async def stream_audio(id: str):
             else:
                 stream_url = cached_data # Legacy fallback
 
-        if not stream_url:
-            print(f"DEBUG: Fetching new stream URL for '{id}'")
-            url = f"https://www.youtube.com/watch?v={id}" 
-            ydl_opts = {
-                'format': 'bestaudio[ext=m4a]/bestaudio/best',
-                'quiet': True,
-                'noplaylist': True,
-                'nocheckcertificate': True,
-                'geo_bypass': True,
-                'socket_timeout': 30,
-                'retries': 3,
-                'force_ipv4': True,
-                'extractor_args': {'youtube': {'player_client': ['ios', 'android']}},
-            }
-            
         if not stream_url:
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
@@ -683,13 +668,16 @@ async def stream_audio(id: str):
 
         # Pre-open the connection to verify it works and get headers
         try:
-            # Sanitize headers: prevent Host/Cookie conflicts, but keep User-Agent
+            # Sanitize headers: prevent Host/Cookie conflicts, but keep User-Agent and Cookies
             base_headers = cached_data.get('headers', {}) if 'cached_data' in locals() else http_headers
             req_headers = {
                 'User-Agent': base_headers.get('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'),
                 'Referer': 'https://www.youtube.com/',
                 'Accept': '*/*',
+                'Accept-Language': base_headers.get('Accept-Language', 'en-US,en;q=0.9'),
             }
+            if 'Cookie' in base_headers:
+                req_headers['Cookie'] = base_headers['Cookie']
             
             # Disable SSL verify to match yt-dlp 'nocheckcertificate' (fixes NAS CA issues)
             external_req = requests.get(stream_url, stream=True, timeout=30, headers=req_headers, verify=False)
