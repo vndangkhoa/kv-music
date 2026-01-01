@@ -1,18 +1,35 @@
-from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, BackgroundTasks, Response
+from fastapi.responses import StreamingResponse, JSONResponse
 from pydantic import BaseModel
 import json
 from pathlib import Path
 import yt_dlp
 import requests
-from backend.cache_manager import CacheManager
+from backend.services.spotify import SpotifyService
+from backend.services.cache import CacheManager
 from backend.playlist_manager import PlaylistManager
+from backend.scheduler import update_ytdlp # Import update function
 
 import re
 
 router = APIRouter()
-cache = CacheManager()
+# Services (Assumed to be initialized elsewhere if not here, adhering to existing patterns)
+# spotify = SpotifyService() # Commented out as duplicates if already imported
+if 'CacheManager' in globals():
+    cache = CacheManager()
+else:
+    from backend.cache_manager import CacheManager
+    cache = CacheManager()
+    
 playlist_manager = PlaylistManager()
+
+@router.post("/system/update-ytdlp")
+async def manual_ytdlp_update(background_tasks: BackgroundTasks):
+    """
+    Trigger a manual update of yt-dlp in the background.
+    """
+    background_tasks.add_task(update_ytdlp)
+    return {"status": "success", "message": "yt-dlp update started in background"}
 
 def get_high_res_thumbnail(thumbnails: list) -> str:
     """
@@ -609,7 +626,7 @@ async def stream_audio(id: str):
     try:
         # Check Cache for stream URL
         # Check Cache for stream URL
-        cache_key = f"v7:stream:{id}" # v7 cache key - force purge for HLS fix
+        cache_key = f"v8:stream:{id}" # v8 cache key - deep debug mode
         cached_data = cache.get(cache_key)
         
         stream_url = None
@@ -627,9 +644,8 @@ async def stream_audio(id: str):
             print(f"DEBUG: Fetching new stream URL for '{id}'")
             url = f"https://www.youtube.com/watch?v={id}" 
             ydl_opts = {
-                # CRITICAL: protocol=https forces progressive HTTP streams, NOT HLS manifests
-                # HLS (.m3u8) streams cannot be played by browser <audio> elements
-                'format': 'bestaudio[ext=m4a][protocol=https]/bestaudio[protocol=https]/bestaudio[ext=m4a]/bestaudio/best',
+                # Try standard bestaudio but prefer m4a. Removed protocol constraint to see what we actually get.
+                'format': 'bestaudio[ext=m4a]/bestaudio/best',
                 'quiet': True,
                 'noplaylist': True,
                 'nocheckcertificate': True,
@@ -637,8 +653,7 @@ async def stream_audio(id: str):
                 'socket_timeout': 30,
                 'retries': 3,
                 'force_ipv4': True,
-                # Use web_creator client which provides progressive streams
-                'extractor_args': {'youtube': {'player_client': ['web_creator', 'mweb', 'web']}},
+                'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}},
             }
             
             try:

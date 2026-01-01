@@ -1,9 +1,20 @@
+```python
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.api.routes import router as api_router
+from contextlib import asynccontextmanager
+from backend.api import routes
+from backend.scheduler import start_scheduler
 import os
 
-app = FastAPI(title="Spotify Clone Backend")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup: Start scheduler
+    scheduler = start_scheduler()
+    yield
+    # Shutdown: Scheduler shuts down automatically with process, or we can explicit shutdown if needed
+    scheduler.shutdown()
+
+app = FastAPI(title="Spotify Clone Backend", lifespan=lifespan)
 
 # CORS setup
 origins = [
