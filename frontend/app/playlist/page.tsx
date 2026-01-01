@@ -1,5 +1,7 @@
 "use client";
 
+import Link from 'next/link';
+import Image from 'next/image';
 import { usePlayer } from "@/context/PlayerContext";
 import { Play, Pause, Clock, Heart, MoreHorizontal, Plus } from "lucide-react";
 import { useEffect, useState, Suspense } from "react";
@@ -127,7 +129,16 @@ function PlaylistContent() {
         <div className="h-full overflow-y-auto no-scrollbar bg-gradient-to-b from-gray-900 via-[#121212] to-[#121212]">
             {/* Header */}
             <div className="flex flex-col md:flex-row items-center md:items-end gap-6 p-8 bg-gradient-to-b from-transparent to-black/20 pt-20 text-center md:text-left">
-                <img src={playlist.cover_url} alt={playlist.title} className="w-52 h-52 md:w-60 md:h-60 shadow-2xl rounded-md object-cover" />
+                <div className="relative w-52 h-52 md:w-60 md:h-60 shadow-2xl rounded-md overflow-hidden shrink-0">
+                    <Image
+                        src={playlist.cover_url}
+                        alt={playlist.title}
+                        fill
+                        className="object-cover"
+                        sizes="(max-width: 768px) 208px, 240px"
+                        priority
+                    />
+                </div>
                 <div className="flex flex-col gap-2 w-full md:w-auto">
                     <span className="text-sm font-bold uppercase hidden md:block">Playlist</span>
                     <h1 className="text-2xl md:text-6xl font-black tracking-tight text-white mb-2 md:mb-4 line-clamp-2 leading-tight">{playlist.title}</h1>
@@ -179,7 +190,7 @@ function PlaylistContent() {
                 </div>
 
                 <div className="flex flex-col">
-                    {playlist.tracks.map((track, i) => {
+                    {playlist.tracks.filter(t => t.id).map((track, i) => {
                         const isCurrent = currentTrack?.id === track.id;
                         const isLiked = likedTracks.has(track.id);
                         return (
@@ -198,7 +209,15 @@ function PlaylistContent() {
                                 </span>
 
                                 <div className="flex items-center gap-3 min-w-0 overflow-hidden">
-                                    <img src={track.cover_url} className="w-10 h-10 rounded shadow-sm object-cover shrink-0" alt="" />
+                                    <div className="relative w-10 h-10 rounded shadow-sm overflow-hidden shrink-0">
+                                        <Image
+                                            src={track.cover_url}
+                                            alt={track.title}
+                                            fill
+                                            className="object-cover"
+                                            sizes="40px"
+                                        />
+                                    </div>
                                     <div className="flex flex-col min-w-0 pr-2">
                                         {/* Changed from truncate to line-clamp-2 for readability */}
                                         <span className={`font-semibold text-base leading-tight line-clamp-2 break-words ${isCurrent ? 'text-green-500' : 'text-white'}`}>{track.title}</span>

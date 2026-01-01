@@ -161,15 +161,14 @@ export default function Sidebar() {
 
                     {/* Albums */}
                     {showAlbums && albums.map((album) => (
-                        <Link href={`/ search ? q = ${encodeURIComponent(album.title)} `} key={album.id}>
+                        <Link href={`/search?q=${encodeURIComponent(album.title)}`} key={album.id}>
                             <div className="flex items-center gap-3 p-2 rounded-md hover:bg-[#1a1a1a] cursor-pointer">
-                                <div className="w-12 h-12 bg-[#282828] rounded flex items-center justify-center overflow-hidden relative">
-                                    {album.cover_url ? (
-                                        <img src={album.cover_url} alt="" className="w-full h-full object-cover" onError={(e) => e.currentTarget.style.display = 'none'} />
-                                    ) : (
-                                        <span className="text-xl">💿</span>
-                                    )}
-                                </div>
+                                <CoverImage
+                                    src={album.cover_url}
+                                    alt={album.title}
+                                    className="w-12 h-12 rounded object-cover"
+                                    fallbackText="💿"
+                                />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-white font-medium truncate">{album.title}</h3>
                                     <p className="text-sm text-spotify-text-muted truncate">Album • {album.creator || 'Spotify'}</p>

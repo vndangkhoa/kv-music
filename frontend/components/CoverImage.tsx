@@ -32,6 +32,8 @@ function getGradient(text: string): string {
     return gradients[Math.abs(hash) % gradients.length];
 }
 
+import Image from "next/image";
+
 export default function CoverImage({ src, alt, className = "", fallbackText }: CoverImageProps) {
     const [hasError, setHasError] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
@@ -53,24 +55,26 @@ export default function CoverImage({ src, alt, className = "", fallbackText }: C
     }
 
     return (
-        <>
+        <div className={`relative overflow-hidden ${className} bg-[#282828]`}>
             {isLoading && (
                 <div
-                    className={`bg-gradient-to-br ${gradient} flex items-center justify-center text-white animate-pulse ${className}`}
+                    className={`absolute inset-0 bg-gradient-to-br ${gradient} flex items-center justify-center text-white animate-pulse z-10`}
                 >
                     <span className="opacity-50">♪</span>
                 </div>
             )}
-            <img
+            <Image
                 src={src}
                 alt={alt}
-                className={`${className} ${isLoading ? 'hidden' : ''}`}
+                fill
+                sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                className={`object-cover ${isLoading ? 'opacity-0' : 'opacity-100'} transition-opacity duration-300`}
                 onLoad={() => setIsLoading(false)}
                 onError={() => {
                     setHasError(true);
                     setIsLoading(false);
                 }}
             />
-        </>
+        </div>
     );
 }

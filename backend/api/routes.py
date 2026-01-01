@@ -317,14 +317,18 @@ async def get_playlist(id: str):
                 # Safely extract album
                 album_name = extract_album_name(track, playlist_data.get('title', 'Single'))
 
+                video_id = track.get('videoId')
+                if not video_id:
+                     continue
+
                 formatted_tracks.append({
                     "title": track.get('title', 'Unknown Title'),
                     "artist": artist_names,
                     "album": album_name,
                     "duration": track.get('duration_seconds', track.get('length_seconds', 0)), 
                     "cover_url": cover_url,
-                    "id": track.get('videoId'),
-                    "url": f"https://music.youtube.com/watch?v={track.get('videoId')}"
+                    "id": video_id,
+                    "url": f"https://music.youtube.com/watch?v={video_id}"
                 })
 
         # Get Playlist Cover (usually highest res)
