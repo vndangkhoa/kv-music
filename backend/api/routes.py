@@ -626,6 +626,8 @@ async def stream_audio(id: str):
                 'geo_bypass': True,  # Bypass geo restrictions
                 'socket_timeout': 30,  # Timeout for sockets
                 'retries': 3,  # Retry on transient errors
+                'force_ipv4': True,  # Force IPv4 (Fixes NAS/Docker IPv6 issues)
+                'extractor_args': {'youtube': {'player_client': ['ios', 'android', 'web']}}, # Use stable clients
             }
             
             # Extract direct URL
