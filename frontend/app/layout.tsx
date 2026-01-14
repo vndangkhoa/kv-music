@@ -7,6 +7,7 @@ import MobileNav from "@/components/MobileNav";
 import RightSidebar from "@/components/RightSidebar";
 import { PlayerProvider } from "@/context/PlayerContext";
 import { LibraryProvider } from "@/context/LibraryContext";
+import ServiceWorkerRegistration from "@/components/ServiceWorkerRegistration";
 
 const outfit = Outfit({
   subsets: ["latin"],
@@ -43,6 +44,7 @@ export default function RootLayout({
       <body
         className={`${outfit.variable} antialiased bg-black h-screen flex flex-col overflow-hidden text-white font-sans`}
       >
+        <ServiceWorkerRegistration />
         <PlayerProvider>
           <LibraryProvider>
             <div className="flex-1 flex overflow-hidden p-2 gap-2 mb-[64px] md:mb-0">

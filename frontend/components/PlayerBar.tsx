@@ -11,6 +11,7 @@ import LyricsDetail from './LyricsDetail';
 export default function PlayerBar() {
     const { currentTrack, isPlaying, isBuffering, togglePlay, setBuffering, likedTracks, toggleLike, nextTrack, prevTrack, shuffle, toggleShuffle, repeatMode, toggleRepeat, audioQuality, isLyricsOpen, toggleLyrics } = usePlayer();
     const audioRef = useRef<HTMLAudioElement | null>(null);
+    const wakeLockRef = useRef<WakeLockSentinel | null>(null);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
     const [volume, setVolume] = useState(1);
@@ -21,6 +22,70 @@ export default function PlayerBar() {
     const [isTechSpecsOpen, setIsTechSpecsOpen] = useState(false);
     const [isFullScreenPlayerOpen, setIsFullScreenPlayerOpen] = useState(false);
     const [isCoverModalOpen, setIsCoverModalOpen] = useState(false);
+
+    // Wake Lock API - Keeps device awake during playback (for FiiO/Android)
+    useEffect(() => {
+        const requestWakeLock = async () => {
+            if ('wakeLock' in navigator && isPlaying) {
+                try {
+                    wakeLockRef.current = await navigator.wakeLock.request('screen');
+                    console.log('Wake Lock acquired for background playback');
+
+                    wakeLockRef.current.addEventListener('release', () => {
+                        console.log('Wake Lock released');
+                    });
+                } catch (err) {
+                    console.log('Wake Lock not available:', err);
+                }
+            }
+        };
+
+        const releaseWakeLock = async () => {
+            if (wakeLockRef.current) {
+                await wakeLockRef.current.release();
+                wakeLockRef.current = null;
+            }
+        };
+
+        if (isPlaying) {
+            requestWakeLock();
+        } else {
+            releaseWakeLock();
+        }
+
+        // Re-acquire wake lock when page becomes visible again
+        const handleVisibilityChange = async () => {
+            if (document.visibilityState === 'visible' && isPlaying) {
+                await requestWakeLock();
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            releaseWakeLock();
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
+    }, [isPlaying]);
+
+    // Prevent audio pause on visibility change (screen off) - Critical for FiiO
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            // When screen turns off, Android might pause audio
+            // We explicitly resume if we should be playing
+            if (document.visibilityState === 'hidden' && isPlaying && audioRef.current) {
+                // Use setTimeout to ensure audio continues after visibility change
+                setTimeout(() => {
+                    if (audioRef.current && audioRef.current.paused && isPlaying) {
+                        audioRef.current.play().catch(e => console.log('Resume on hidden:', e));
+                    }
+                }, 100);
+            }
+        };
+
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+    }, [isPlaying]);
 
     useEffect(() => {
         if (currentTrack && audioRef.current && currentTrack.url) {
