@@ -1,29 +1,10 @@
-# Git
-.git
-.gitignore
 
-# Node
 node_modules
-npm-debug.log
-
-# Python
-venv
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-
-# Next.js
-.next
-out
-
-# Docker
-Dockerfile
-.dockerignore
-
-# OS
+dist
+.git
+.env
 .DS_Store
-Thumbs.db
-
-# Misc
-*.log
+backend.log
+ngrok.log
+backend-go/server.exe
+backend-go/server

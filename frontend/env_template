@@ -1,4 +1,0 @@
-SPOTIFY_CLIENT_ID=your_client_id_here
-SPOTIFY_CLIENT_SECRET=your_client_secret_here
-NEXTAUTH_URL=http://localhost:3000
-NEXTAUTH_SECRET=changeme_to_a_random_string_openssl_rand_base64_32

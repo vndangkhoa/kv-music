@@ -1,0 +1,52 @@
+
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1db954;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1ed760;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background: Deep Black Squircle -->
+  <rect x="0" y="0" width="512" height="512" rx="100" fill="#121212"/>
+  
+  <!-- Content Group: Equalizer Bars -->
+  <g transform="translate(106, 126)" filter="url(#glow)">
+      <!-- Bar 1 -->
+      <rect x="0" y="100" width="40" height="160" rx="20" fill="url(#barGrad)" opacity="0.8">
+        <animate attributeName="height" values="160;100;160" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="y" values="100;130;100" dur="2s" repeatCount="indefinite" />
+      </rect>
+      
+      <!-- Bar 2 -->
+      <rect x="65" y="40" width="40" height="220" rx="20" fill="url(#barGrad)">
+        <animate attributeName="height" values="220;250;220" dur="1.5s" repeatCount="indefinite" />
+        <animate attributeName="y" values="40;25;40" dur="1.5s" repeatCount="indefinite" />
+      </rect>
+      
+      <!-- Bar 3 (Center - Tallest) -->
+      <rect x="130" y="0" width="40" height="260" rx="20" fill="url(#barGrad)">
+        <animate attributeName="height" values="260;180;260" dur="1.8s" repeatCount="indefinite" />
+        <animate attributeName="y" values="0;40;0" dur="1.8s" repeatCount="indefinite" />
+      </rect>
+      
+      <!-- Bar 4 -->
+      <rect x="195" y="60" width="40" height="200" rx="20" fill="url(#barGrad)">
+        <animate attributeName="height" values="200;240;200" dur="2.2s" repeatCount="indefinite" />
+        <animate attributeName="y" values="60;40;60" dur="2.2s" repeatCount="indefinite" />
+      </rect>
+      
+      <!-- Bar 5 -->
+      <rect x="260" y="120" width="40" height="140" rx="20" fill="url(#barGrad)" opacity="0.8">
+        <animate attributeName="height" values="140;90;140" dur="1.7s" repeatCount="indefinite" />
+        <animate attributeName="y" values="120;145;120" dur="1.7s" repeatCount="indefinite" />
+      </rect>
+  </g>
+</svg>
