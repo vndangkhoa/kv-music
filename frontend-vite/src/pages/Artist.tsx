@@ -17,7 +17,7 @@ interface ArtistData {
 export default function Artist() {
     const { id } = useParams(); // Start with name or id
     const navigate = useNavigate();
-    const { playTrack, toggleLike, likedTracks } = usePlayer();
+    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen } = usePlayer();
 
     const [artist, setArtist] = useState<ArtistData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -104,7 +104,11 @@ export default function Artist() {
 
                     <div className="flex items-center gap-4">
                         <button
-                            onClick={() => artist.topSongs.length > 0 && playTrack(artist.topSongs[0])}
+                            onClick={() => {
+                                if (artist.topSongs.length > 0) {
+                                    playTrack(artist.topSongs[0], artist.topSongs);
+                                }
+                            }}
                             className="bg-white text-black px-8 py-3 rounded-full font-bold text-lg hover:scale-105 transition flex items-center gap-2"
                         >
                             <Play fill="currentColor" size={20} />
@@ -183,7 +187,9 @@ export default function Artist() {
                             <div
                                 key={track.id}
                                 className="group cursor-pointer"
-                                onClick={() => playTrack(track, [track])}
+                                onClick={() => {
+                                    playTrack(track, [track]);
+                                }}
                             >
                                 <div className="aspect-square bg-neutral-900 rounded-lg overflow-hidden mb-3 relative">
                                     <img src={track.cover_url} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
@@ -211,7 +217,9 @@ export default function Artist() {
                             <div
                                 key={track.id}
                                 className="group cursor-pointer"
-                                onClick={() => playTrack(track, [track])}
+                                onClick={() => {
+                                    playTrack(track, [track]);
+                                }}
                             >
                                 <div className="aspect-square bg-neutral-900 rounded-xl overflow-hidden mb-3 relative border-2 border-neutral-800">
                                     <img src={track.cover_url} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />

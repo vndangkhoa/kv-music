@@ -47,6 +47,10 @@ wheels/
 .idea/
 .vscode/
 
+# Rust
+backend-rust/target/
+backend-go/target/
+
 # Project Specific
 backend/data/*.json
 !backend/data/browse_playlists.json

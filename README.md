@@ -1,6 +1,6 @@
 # Spotify Clone 🎵
 
-A fully functional clone of the Spotify web player, built with a modern stack featuring **Next.js**, **FastAPI**, and **TailwindCSS**. This application replicates the premium authentic feel of the original web player with added features like synchronized lyrics, custom playlist management, and "Audiophile" technical specs.
+A fully functional clone of the Spotify web player, built with **React**, **Rust (Axum)**, and **TailwindCSS**. This application replicates the premium authentic feel of the original web player with added features like synchronized lyrics, custom playlist management, and "Audiophile" technical specs.
 
 ![Preview](https://opengraph.githubassets.com/1/vndangkhoa/spotify-clone)
 
@@ -8,130 +8,158 @@ A fully functional clone of the Spotify web player, built with a modern stack fe
 
 ## 🚀 Quick Start (Docker)
 
-The easiest way to run the application is using Docker.
-
-### Option 1: Run from Docker Hub (Pre-built)
+### Option 1: Pull from Registry
 ```bash
-docker run -p 3000:3000 -p 8000:8000 vndangkhoa/spotify-clone:latest
+docker pull git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+docker run -d -p 3000:8080 --name spotify-clone \
+  -v ./data:/app/data \
+  -v ./cache:/tmp/spotify-clone-cache \
+  --restart unless-stopped \
+  git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
 ```
-Open **[http://localhost:3000](http://localhost:3000)**.
 
 ### Option 2: Build Locally
 ```bash
-docker build -t spotify-clone .
-docker run -p 3000:3000 -p 8000:8000 spotify-clone
+docker build -t spotify-clone:v3 .
+docker run -d -p 3000:8080 --name spotify-clone \
+  -v ./data:/app/data \
+  -v ./cache:/tmp/spotify-clone-cache \
+  --restart unless-stopped \
+  spotify-clone:v3
 ```
+
+Open **[http://localhost:3000](http://localhost:3000)**.
+
+---
+
+## 🐳 Docker Deployment
+
+### Building the Image
+```bash
+# Build for linux/amd64 (Synology NAS)
+docker build -t git.khoavo.myds.me/vndangkhoa/spotify-clone:v3 .
+
+# Push to registry
+docker push git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+```
+
+### Docker Compose (Recommended)
+```yaml
+services:
+  spotify-clone:
+    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+    container_name: spotify-clone
+    restart: unless-stopped
+    ports:
+      - "3000:8080"
+    environment:
+      - PORT=8080
+      - RUST_ENV=production
+    volumes:
+      - ./data:/app/data
+      - ./cache:/tmp/spotify-clone-cache
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+```
+
+---
+
+## 📦 Synology NAS Deployment
+
+### Method A: Container Manager UI (GUI)
+
+1. **Open Container Manager** on your Synology NAS.
+2. Go to **Registry** and click **Add**:
+   - Registry URL: `https://git.khoavo.myds.me`
+   - Enter credentials if prompted.
+3. Search for `vndangkhoa/spotify-clone` and download the `v3` tag.
+4. Go to **Image**, select the downloaded image, and click **Run**.
+5. Configure:
+   - **Container Name**: `spotify-clone`
+   - **Port Settings**: 
+     - Local Port: `3000` (or any available port)
+     - Container Port: `8080`
+   - **Volume Settings**:
+     - Add folder: `docker/spotify-clone/data` → `/app/data`
+     - Add folder: `docker/spotify-clone/cache` → `/tmp/spotify-clone-cache`
+   - **Restart Policy**: `unless-stopped`
+6. Click **Done** and access at `http://YOUR_NAS_IP:3000`.
+
+### Method B: Docker Compose (CLI)
+
+1. SSH into your Synology NAS or use the built-in terminal.
+2. Create a folder:
+   ```bash
+   mkdir -p /volume1/docker/spotify-clone
+   cd /volume1/docker/spotify-clone
+   ```
+3. Create `docker-compose.yml`:
+   ```yaml
+   services:
+     spotify-clone:
+       image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+       container_name: spotify-clone
+       restart: unless-stopped
+       ports:
+         - "3000:8080"
+       environment:
+         - PORT=8080
+         - RUST_ENV=production
+       volumes:
+         - ./data:/app/data
+         - ./cache:/tmp/spotify-clone-cache
+   ```
+4. Run:
+   ```bash
+   docker compose up -d
+   ```
+
+### Synology-Specific Notes
+
+- **Architecture**: This image is built for `linux/amd64` (compatible with most Intel-based Synology NAS).
+- **DSM 7+**: Use Container Manager (Docker GUI replacement).
+- **Data Persistence**: The `./data` volume stores playlists and application data. Backup this folder to preserve your data.
+- **Updating**: Pull the latest image and recreate the container, or use Watchtower for auto-updates.
 
 ---
 
 ## 🛠️ Local Development
 
-If you want to contribute or modify the code:
-
 ### Prerequisites
-- Node.js 18+
+- Node.js 20+
+- Rust 1.75+
 - Python 3.11+
-- ffmpeg (optional, for some audio features)
+- ffmpeg
 
-### 1. Backend Setup
+### 1. Backend Setup (Rust)
 ```bash
-cd backend
-python -m venv venv
-source venv/bin/activate  # Windows: venv\Scripts\activate
-pip install -r requirements.txt
-python main.py
+cd backend-rust
+cargo run
 ```
-Backend runs on `http://localhost:8000`.
+Backend runs on `http://localhost:8080`.
 
 ### 2. Frontend Setup
 ```bash
-cd frontend
+cd frontend-vite
 npm install
 npm run dev
 ```
-Frontend runs on `http://localhost:3000`.
-
----
-
-## 📦 Deployment Guide
-
-### 1. Deploy to GitHub
-Initialize the repository (if not done) and push:
-```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/spotify-clone.git
-git push -u origin main
-```
-
-### 2. Deploy to Docker Hub
-To share your image with the world (or your NAS):
-```bash
-# 1. Login to Docker Hub
-docker login
-
-# 2. Build the image (replace 'vndangkhoa' with your Docker Hub username)
-docker build -t vndangkhoa/spotify-clone:latest .
-
-# 3. Push the image
-docker push vndangkhoa/spotify-clone:latest
-```
-
-### 3. Deploy to Synology NAS (Container Manager)
-This app runs perfectly on Synology NAS using **Container Manager** (formerly Docker).
-
-#### Method A: Using Container Manager UI (Easy)
-1.  Open **Container Manager**.
-2.  Go to **Registry** -> Search for `vndangkhoa/spotify-clone` (or your image).
-3.  Download the image.
-4.  Go to **Image** -> Select image -> **Run**.
-    -   **Network**: Bridge (default).
-    -   **Port Settings**: Map Local Port `3110` (or any) to Container Port `3000`.
-    -   **Volume Settings** (Optional): Map a folder `/docker/spotify/data` to `/app/backend/data` to save playlists.
-5.  Done! Access at `http://YOUR_NAS_IP:3110`.
-
-#### Method B: Using Docker Compose (Recommended)
-1.  Create a folder on your NAS (e.g., `/volume1/docker/spotify`).
-2.  Create a file named `docker-compose.yml` inside it:
-    ```yaml
-    services:
-      spotify-clone:
-        image: vndangkhoa/spotify-clone:latest
-        container_name: spotify-clone
-        restart: always
-        network_mode: bridge
-        ports:
-          - "3110:3000" # Web UI Access Port
-        volumes:
-          - ./data:/app/backend/data
-    ```
-3.  In Container Manager, go to **Project** -> **Create**.
-4. Select the folder path, give it a name, and it will detect the compose file.
-5. Click **Build** / **Run**.
-
-#### ✨ Auto-Update Enabled
-When using the `docker-compose.yml` above, a **Watchtower** container is included. It will automatically:
-- Check for updates to `vndangkhoa/spotify-clone:latest` every hour.
-- Download the new image if available.
-- Restart the application with the new version.
-- Remove old image versions to save space.
-
-You don't need to do anything manually to keep it updated! 🚀
+Frontend runs on `http://localhost:5173`.
 
 ---
 
 ## ✨ Features
 
-- **Real-Time Lyrics**: Fetch and sync lyrics from multiple sources (YouTube, LRCLIB).
+- **Real-Time Lyrics**: Fetch and sync lyrics from multiple sources.
 - **Audiophile Engine**: "Tech Specs" view showing live bitrate, LUFS, and Dynamic Range.
 - **Local-First**: Works offline (PWA) and syncs local playlists.
 - **Smart Search**: Unified search across YouTube Music.
-- **Responsive**: Full mobile support with a dedicated full-screen player.
+- **Responsive**: Full mobile support with dedicated full-screen player.
 - **Smooth Loading**: Skeleton animations for seamless data fetching.
-- **Infinite Experience**: "Show all" pages with infinite scrolling support.
-- **Enhanced Mobile**: Optimized 3-column layouts and smart player visibility.
 
 ## 📝 License
+
 MIT License

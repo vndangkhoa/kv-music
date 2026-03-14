@@ -68,14 +68,14 @@ export const dbService = {
             // ALWAYS use fallback if API returned 0 tracks
             if (allTracks.length === 0) {
                 console.log("Using Mock Data for DB Seeding");
-                const highResTracks = [
+                allTracks = [
                     {
                         id: "fb-1",
                         title: "Shape of You (Demo)",
                         artist: "Ed Sheeran",
                         album: "Divide",
                         duration: 233,
-                        cover_url: "https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?w=800&q=80", // High Res Green/Abstract
+                        cover_url: "https://placehold.co/800x800/1DB954/191414?text=Shape+of+You",
                         url: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=twilight-120000.mp3"
                     },
                     {
@@ -84,7 +84,7 @@ export const dbService = {
                         artist: "The Weeknd",
                         album: "After Hours",
                         duration: 200,
-                        cover_url: "https://images.unsplash.com/photo-1493225255756-d9584f8606e9?w=800&q=80", // High Res City/Red
+                        cover_url: "https://placehold.co/800x800/ff0000/ffffff?text=Blinding+Lights",
                         url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_1669466e3b.mp3?filename=relaxed-vlog-131746.mp3"
                     },
                     {
@@ -93,7 +93,7 @@ export const dbService = {
                         artist: "Dua Lipa",
                         album: "Future Nostalgia",
                         duration: 203,
-                        cover_url: "https://images.unsplash.com/photo-1494232410401-ad00d5433cfa?w=800&q=80", // High Res Music/Vibe
+                        cover_url: "https://placehold.co/800x800/ff00ff/ffffff?text=Levitating",
                         url: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=sexy-fashion-beats-11176.mp3"
                     },
                     {
@@ -102,7 +102,7 @@ export const dbService = {
                         artist: 'The Kid LAROI',
                         album: 'F*CK LOVE 3',
                         duration: 141,
-                        cover_url: "https://images.unsplash.com/photo-1514525253440-b393452e8d26?w=800&q=80", // High Res Neon
+                        cover_url: "https://placehold.co/800x800/800080/ffffff?text=Stay",
                         url: 'https://cdn.pixabay.com/download/audio/2022/10/25/audio_5145a278d6.mp3?filename=summer-party-12461.mp3'
                     },
                     {
@@ -111,7 +111,7 @@ export const dbService = {
                         artist: 'Lil Nas X',
                         album: 'Montero',
                         duration: 137,
-                        cover_url: "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=800&q=80", // High Res Party
+                        cover_url: "https://placehold.co/800x800/ffa500/ffffff?text=Montero",
                         url: 'https://cdn.pixabay.com/download/audio/2023/04/12/audio_496677f54c.mp3?filename=hip-hop-trap-145638.mp3'
                     }
                 ];
