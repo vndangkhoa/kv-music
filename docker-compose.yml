@@ -1,6 +1,6 @@
 services:
   spotify-clone:
-    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v4
     container_name: spotify-clone
     restart: unless-stopped
     ports:
