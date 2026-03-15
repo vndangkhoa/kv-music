@@ -461,7 +461,7 @@ export default function PlayerBar() {
                             className="w-full h-1 bg-[#4d4d4d] rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-green-500"
                         />
                     </div>
-                    <button onClick={() => setIsCoverModalOpen(true)} title="Full Screen" className="text-zinc-400 hover:text-white">
+                    <button onClick={() => setIsFullScreenOpen(true)} title="Full Screen" className="text-zinc-400 hover:text-white">
                         <Maximize2 className="w-4 h-4" />
                     </button>
                 </div>
