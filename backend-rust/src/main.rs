@@ -12,12 +12,16 @@ use tower_http::{
     cors::{Any, CorsLayer},
     services::ServeDir,
 };
+use std::io::Write;
 
 use crate::api::AppState;
 use crate::spotdl::SpotdlService;
 
 #[tokio::main]
 async fn main() {
+    println!("SERVER STARTING UP...");
+    std::io::stdout().flush().unwrap();
+    
     let spotdl = SpotdlService::new();
     spotdl.start_background_preload();
     
@@ -41,6 +45,17 @@ async fn main() {
     let addr = SocketAddr::from(([0, 0, 0, 0], 8080));
     println!("Backend running on http://{}", addr);
 
-    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
+    let listener = match tokio::net::TcpListener::bind(&addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("CRITICAL ERROR: Failed to bind to {}: {}", addr, e);
+            std::io::stderr().flush().unwrap();
+            std::process::exit(1);
+        }
+    };
+    
+    println!("Server listener established. Serving app...");
+    std::io::stdout().flush().unwrap();
+    
     axum::serve(listener, app).await.unwrap();
 }
