@@ -1,24 +1,14 @@
 services:
   spotify-clone:
-<<<<<<< HEAD
     image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
-=======
-    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v5
->>>>>>> 35c9bf24f7d451c1b2717bbb9c221b29980dbc83
     container_name: spotify-clone
     restart: unless-stopped
     ports:
       - "3110:8080"
     environment:
       - PORT=8080
-<<<<<<< HEAD
     volumes:
       - ./data:/tmp/spotify-clone-downloads
-=======
-      - RUST_ENV=production
-    volumes:
-      - ./data:/app/data
->>>>>>> 35c9bf24f7d451c1b2717bbb9c221b29980dbc83
       - ./cache:/tmp/spotify-clone-cache
     logging:
       driver: "json-file"
