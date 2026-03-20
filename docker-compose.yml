@@ -2,10 +2,6 @@ services:
   spotify-clone:
     image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
     container_name: spotify-clone
-    build:
-      context: .
-      dockerfile: Dockerfile
-      platform: linux/amd64
     restart: unless-stopped
     ports:
       - "3110:8080"
