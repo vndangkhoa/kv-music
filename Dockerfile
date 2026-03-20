@@ -1,28 +1,29 @@
+# Layer 1: Frontend
 FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend-vite/package*.json ./
 RUN npm ci
 COPY frontend-vite/ .
-ENV NODE_ENV=production
 RUN npm run build
 
-FROM rust:1.85-slim AS backend-builder
+# Layer 2: Backend
+FROM rust:1.85-slim-bookworm AS backend-builder
 WORKDIR /app/backend
-RUN apt-get update && apt-get install -y \
-    pkg-config \
-    libssl-dev \
-    libc6-dev \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y pkg-config libssl-dev libc6-dev
 COPY backend-rust/Cargo.toml backend-rust/Cargo.lock ./
 RUN cargo fetch
 COPY backend-rust/ ./
 RUN cargo build --release --bin backend-rust
 
-FROM python:3.11-slim-bookworm
+# Layer 3: Final Runtime (Unified Debian Bookworm)
+FROM debian:bookworm-slim
 WORKDIR /app
 
-# Install runtime dependencies including Node.js and libssl
+# Install all runtimes for maximum compatibility
 RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    python3-venv \
     ffmpeg \
     ca-certificates \
     curl \
@@ -33,20 +34,25 @@ RUN apt-get update && apt-get install -y \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
+# Fix for PEP 668 (externally managed environment)
+RUN python3 -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -U "yt-dlp[default]"
 
+# Copy artifacts
 COPY --from=backend-builder /app/backend/target/release/backend-rust /app/server
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
+# Permissions and Directories
 RUN mkdir -p /tmp/spotify-clone-cache /tmp/spotify-clone-downloads && chmod 777 /tmp/spotify-clone-cache /tmp/spotify-clone-downloads
+RUN chmod +x /app/server
 
 ENV PORT=8080
 ENV RUST_LOG=info
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
 
-RUN chmod +x /app/server
 USER 0
 
-# Use a shell wrapper to ensure we see SOMETHING in the logs
-CMD ["sh", "-c", "echo 'CONTAINER STARTUP INITIATED...' && ls -l /app/server && /app/server 2>&1"]
+# Final startup sequence with GUARANTEED logs
+CMD ["sh", "-c", "echo 'CRITICAL: STARTING SPOTIFY CLONE...' && /app/server 2>&1"]
