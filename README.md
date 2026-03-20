@@ -8,14 +8,14 @@ A fully functional Spotify-like web player built with **React (Vite)**, **Rust (
 
 ### Option 1: Pull from Forgejo Registry
 ```bash
-docker run -p 3110:8080 git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+docker run -p 3110:8080 git.khoavo.myds.me/vndangkhoa/spotify-clone:v4
 ```
 Open **[http://localhost:3110](http://localhost:3110)**.
 
 ### Option 2: Build Locally
 ```bash
-docker build -t spotify-clone:v3 .
-docker run -p 3110:8080 spotify-clone:v3
+docker build -t spotify-clone:v4 .
+docker run -p 3110:8080 spotify-clone:v4
 ```
 
 ---
@@ -24,7 +24,7 @@ docker run -p 3110:8080 spotify-clone:v3
 
 ### Image Details
 - **Registry**: `git.khoavo.myds.me/vndangkhoa/spotify-clone`
-- **Tag**: `v3`
+- **Tag**: `v4`
 - **Architecture**: `linux/amd64`
 - **Ports**: 
   - `8080` (Backend API)
@@ -33,7 +33,7 @@ docker run -p 3110:8080 spotify-clone:v3
 ```yaml
 services:
   spotify-clone:
-    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
+    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v4
     container_name: spotify-clone
     restart: unless-stopped
     ports:
@@ -54,12 +54,27 @@ services:
 
 ## 🖥️ Synology NAS Deployment (Container Manager)
 
-### Method A: Using Container Manager UI
+### Step-by-Step for Synology Container Manager
 
-1. Open **Container Manager** (or Docker on older DSM).
-2. Go to **Registry** → **Add** → Enter:
-   - Registry: `git.khoavo.myds.me`
-3. Search for `spotify-clone` and download the `v3` tag.
+1. **Create Shared Folders**: 
+   - Open **File Station**.
+   - Navigate to your `docker` share.
+   - Create a folder named `spotify-clone`.
+   - Inside `spotify-clone`, create two subfolders: `data` and `cache`.
+
+2. **Project Setup (Docker Compose)**:
+   - Open **Container Manager**.
+   - Go to **Project** → **Create**.
+   - **Project Name**: `spotify-clone`.
+   - **Path**: Select the `/docker/spotify-clone` folder you just created.
+   - **Source**: Choose **Create docker-compose.yml** and paste the content from below (ensure image tag is `v4`).
+   - Click **Next** until finished.
+
+3. **Registry (Alternative Method)**:
+   - Go to **Registry** → **Settings** → **Add**.
+   - Name: `Forgejo`
+   - URL: `https://git.khoavo.myds.me`
+   - Search for `spotify-clone` and download `v4`.
 4. Go to **Image** → Select the image → **Run**.
 5. Configure:
    - **Container Name**: `spotify-clone`
