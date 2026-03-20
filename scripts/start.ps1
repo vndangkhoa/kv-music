@@ -2,10 +2,12 @@ $ErrorActionPreference = "Stop"
 $ScriptDir = $PSScriptRoot
 $ProjectRoot = Split-Path $ScriptDir -Parent
 
-# 1. Locate Go
-$GoExe = "C:\Program Files\Go\bin\go.exe"
-if (-not (Test-Path $GoExe)) {
-    Write-Host "Go binaries not found at expected location: $GoExe" -ForegroundColor Red
+# 1. Locate Cargo (Rust)
+$CargoExe = "cargo"
+try {
+    cargo --version | Out-Null
+} catch {
+    Write-Host "Cargo not found in PATH. Please install Rust." -ForegroundColor Red
     Exit 1
 }
 
@@ -24,12 +26,12 @@ $env:PATH = "$NodeDir;$env:PATH"
 Write-Host "Environment configured." -ForegroundColor Gray
 
 # 4. Start Backend (in new window)
-Write-Host "Starting Backend..." -ForegroundColor Green
-$BackendDir = Join-Path $ProjectRoot "backend-go"
-Start-Process -FilePath "cmd.exe" -ArgumentList "/k `"$GoExe`" run cmd\server\main.go" -WorkingDirectory $BackendDir
+Write-Host "Starting Backend (Rust)..." -ForegroundColor Green
+$BackendDir = Join-Path $ProjectRoot "backend-rust"
+Start-Process -FilePath "cmd.exe" -ArgumentList "/k cargo run" -WorkingDirectory $BackendDir
 
 # 5. Start Frontend (in new window)
-Write-Host "Starting Frontend..." -ForegroundColor Green
+Write-Host "Starting Frontend (Vite)..." -ForegroundColor Green
 $FrontendDir = Join-Path $ProjectRoot "frontend-vite"
 
 # Check if node_modules exists, otherwise install
