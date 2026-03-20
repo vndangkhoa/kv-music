@@ -34,7 +34,7 @@ async fn main() {
         .route("/api/artist/info", get(api::artist_info_handler))
         .route("/api/browse", get(api::browse_handler))
         .route("/api/recommendations", get(api::recommendations_handler))
-        .nest_service("/", ServeDir::new("static"))
+        .fallback_service(ServeDir::new("static"))
         .layer(cors)
         .with_state(app_state);
 
