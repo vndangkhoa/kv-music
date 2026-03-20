@@ -1,5 +1,4 @@
-# Build stage with explicit platform for Synology NAS compatibility
-FROM --platform=linux/amd64 node:20-alpine AS frontend-builder
+FROM node:20-alpine AS frontend-builder
 WORKDIR /app/frontend
 
 COPY frontend-vite/package*.json ./
@@ -9,8 +8,7 @@ COPY frontend-vite/ .
 ENV NODE_ENV=production
 RUN npm run build
 
-# Build Backend (Rust)
-FROM --platform=linux/amd64 rust:1.85-alpine AS backend-builder
+FROM rust:1.85-alpine AS backend-builder
 WORKDIR /app/backend
 
 RUN apk add --no-cache musl-dev openssl-dev perl
@@ -21,8 +19,7 @@ RUN cargo fetch
 COPY backend-rust/ ./
 RUN cargo build --release --bin backend-rust
 
-# Final Runtime - using debian base for better amd64 compatibility on Synology
-FROM --platform=linux/amd64 python:3.11-slim-bookworm
+FROM python:3.11-slim-bookworm
 
 WORKDIR /app
 
