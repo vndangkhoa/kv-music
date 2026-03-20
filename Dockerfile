@@ -45,7 +45,7 @@ COPY --from=frontend-builder /app/frontend/dist /app/static
 RUN mkdir -p /tmp/spotify-clone-cache /tmp/spotify-clone-downloads && chmod 777 /tmp/spotify-clone-cache /tmp/spotify-clone-downloads
 
 ENV PORT=8080
-ENV RUST_LOG=release
+ENV RUST_LOG=info
 
 EXPOSE 8080
 
