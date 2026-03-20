@@ -1,4 +1,4 @@
-FROM node:20-alpine AS frontend-builder
+FROM node:20-slim AS frontend-builder
 WORKDIR /app/frontend
 
 COPY frontend-vite/package*.json ./
@@ -8,10 +8,15 @@ COPY frontend-vite/ .
 ENV NODE_ENV=production
 RUN npm run build
 
-FROM rust:1.85-alpine AS backend-builder
+FROM rust:1.85-slim AS backend-builder
 WORKDIR /app/backend
 
-RUN apk add --no-cache musl-dev openssl-dev perl
+# Install build dependencies for Debian
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    libc6-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 COPY backend-rust/Cargo.toml backend-rust/Cargo.lock ./
 RUN cargo fetch
@@ -41,6 +46,9 @@ ENV RUST_LOG=info
 
 EXPOSE 8080
 
-USER 1000
+RUN chmod +x /app/server
+
+# Using root for compatibility with Synology permissions, change to USER 1000 if needed for security
+USER 0
 
 CMD ["/app/server"]
