@@ -4,6 +4,7 @@ import { libraryService } from '../services/library';
 import { usePlayer } from '../context/PlayerContext';
 import { Play, Shuffle, Heart, Disc, Music } from 'lucide-react';
 import { Track } from '../types';
+import Recommendations from '../components/Recommendations';
 import { GENERATED_CONTENT } from '../data/seed_data';
 
 interface ArtistData {
@@ -17,10 +18,11 @@ interface ArtistData {
 export default function Artist() {
     const { id } = useParams(); // Start with name or id
     const navigate = useNavigate();
-    const { playTrack, toggleLike, likedTracks } = usePlayer();
+    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen } = usePlayer();
 
     const [artist, setArtist] = useState<ArtistData | null>(null);
     const [loading, setLoading] = useState(true);
+    const [songsLoading, setSongsLoading] = useState(true);
 
     // YouTube Music uses name-based IDs or channel IDs. 
     // Our 'id' might be a name if clicked from Home.
@@ -52,6 +54,7 @@ export default function Artist() {
         }
 
         const fetchData = async () => {
+            setSongsLoading(true);
             // Fetch info (Background)
             // If we already have photo from seed, maybe skip or update?
             // libraryService.getArtistInfo might find a better photo or same.
@@ -62,14 +65,19 @@ export default function Artist() {
                 libraryService.search(artistName)
             ]);
 
+            setSongsLoading(false);
+
             const finalPhoto = (info.status === 'fulfilled' && info.value?.photo) ? info.value.photo : seedArtist?.cover_url;
+            
+            // Ensure we always have a photo - if somehow still empty, use UI-Avatars
+            const safePhoto = finalPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=random&color=fff&size=200&rounded=true&bold=true&font-size=0.33`;
             let topSongs = (songs.status === 'fulfilled') ? songs.value : [];
 
-            if (topSongs.length > 5) topSongs = topSongs.slice(0, 5);
+            if (topSongs.length > 20) topSongs = topSongs.slice(0, 20);
 
             setArtist({
                 name: artistName,
-                photo: finalPhoto,
+                photo: safePhoto,
                 topSongs,
                 albums: [],
                 singles: []
@@ -104,7 +112,11 @@ export default function Artist() {
 
                     <div className="flex items-center gap-4">
                         <button
-                            onClick={() => artist.topSongs.length > 0 && playTrack(artist.topSongs[0])}
+                            onClick={() => {
+                                if (artist.topSongs.length > 0) {
+                                    playTrack(artist.topSongs[0], artist.topSongs);
+                                }
+                            }}
                             className="bg-white text-black px-8 py-3 rounded-full font-bold text-lg hover:scale-105 transition flex items-center gap-2"
                         >
                             <Play fill="currentColor" size={20} />
@@ -127,7 +139,7 @@ export default function Artist() {
                 <section>
                     <h2 className="text-2xl font-bold mb-6">Top Songs</h2>
                     <div className="flex flex-col gap-2">
-                        {artist.topSongs.length === 0 ? (
+                        {songsLoading ? (
                             // Skeleton Loading for Songs
                             [...Array(5)].map((_, i) => (
                                 <div key={i} className="flex items-center p-3 gap-4 animate-pulse">
@@ -149,7 +161,7 @@ export default function Artist() {
                                     <span className="w-8 text-center text-neutral-500 font-medium group-hover:hidden">{i + 1}</span>
                                     <Play size={16} className="w-8 hidden group-hover:block fill-white" />
 
-                                    <img src={track.cover_url} alt="Cover" className="w-12 h-12 rounded mx-4 object-cover" />
+                                    <img src={track.cover_url} alt="Cover" className="w-12 h-12 rounded-lg mx-4 object-cover" />
 
                                     <div className="flex-1 min-w-0">
                                         <div className="font-medium text-white truncate">{track.title}</div>
@@ -183,9 +195,11 @@ export default function Artist() {
                             <div
                                 key={track.id}
                                 className="group cursor-pointer"
-                                onClick={() => playTrack(track, [track])}
+                                onClick={() => {
+                                    playTrack(track, [track]);
+                                }}
                             >
-                                <div className="aspect-square bg-neutral-900 rounded-lg overflow-hidden mb-3 relative">
+                                <div className="aspect-square bg-neutral-900 rounded-2xl overflow-hidden mb-3 relative">
                                     <img src={track.cover_url} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                         <div className="bg-white text-black p-3 rounded-full hover:scale-110 transition">
@@ -211,9 +225,11 @@ export default function Artist() {
                             <div
                                 key={track.id}
                                 className="group cursor-pointer"
-                                onClick={() => playTrack(track, [track])}
+                                onClick={() => {
+                                    playTrack(track, [track]);
+                                }}
                             >
-                                <div className="aspect-square bg-neutral-900 rounded-xl overflow-hidden mb-3 relative border-2 border-neutral-800">
+                                <div className="aspect-square bg-neutral-900 rounded-2xl overflow-hidden mb-3 relative border-2 border-neutral-800">
                                     <img src={track.cover_url} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
                                         <div className="bg-white text-black p-3 rounded-full hover:scale-110 transition">
@@ -230,6 +246,18 @@ export default function Artist() {
                         ))}
                     </div>
                 </section>
+
+                {/* Related Artists & Content */}
+                <Recommendations
+                    seed={artist.name}
+                    seedType="artist"
+                    limit={20}
+                    title="Fans also like"
+                    showTracks={true}
+                    showAlbums={true}
+                    showPlaylists={true}
+                    showArtists={true}
+                />
             </div>
         </div>
     );

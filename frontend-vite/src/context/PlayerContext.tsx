@@ -20,10 +20,14 @@ interface PlayerContextType {
     toggleLike: (track: Track) => void;
     playHistory: Track[];
     audioQuality: AudioQuality | null;
+    qualityPreference: 'auto' | 'high' | 'normal' | 'low';
+    setQualityPreference: (quality: 'auto' | 'high' | 'normal' | 'low') => void;
     isLyricsOpen: boolean;
     toggleLyrics: () => void;
     closeLyrics: () => void;
     openLyrics: () => void;
+    isFullScreenOpen: boolean;
+    setIsFullScreenOpen: (open: boolean) => void;
     queue: Track[];
 }
 
@@ -38,6 +42,13 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     // Audio Engine State
     const [audioQuality, setAudioQuality] = useState<AudioQuality | null>(null);
+    const [qualityPreference, setQualityPreference] = useState<'auto' | 'high' | 'normal' | 'low'>(() => {
+        return (localStorage.getItem('audio_quality_pref') as any) || 'auto';
+    });
+
+    useEffect(() => {
+        localStorage.setItem('audio_quality_pref', qualityPreference);
+    }, [qualityPreference]);
 
     // Queue State
     const [queue, setQueue] = useState<Track[]>([]);
@@ -53,6 +64,9 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     const toggleLyrics = () => setIsLyricsOpen(prev => !prev);
     const closeLyrics = () => setIsLyricsOpen(false);
     const openLyrics = () => setIsLyricsOpen(true);
+
+    // Full Screen Player State
+    const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
 
     // Load Likes from DB
     useEffect(() => {
@@ -200,10 +214,14 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             toggleLike,
             playHistory,
             audioQuality,
+            qualityPreference,
+            setQualityPreference,
             isLyricsOpen,
             toggleLyrics,
             closeLyrics,
             openLyrics,
+            isFullScreenOpen,
+            setIsFullScreenOpen,
             queue
         }}>
             {children}

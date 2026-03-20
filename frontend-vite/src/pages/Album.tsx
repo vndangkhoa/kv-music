@@ -1,37 +1,68 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { libraryService } from '../services/library';
 import { usePlayer } from '../context/PlayerContext';
 import { Play, Shuffle, Heart, Clock, ListPlus, Download } from 'lucide-react';
 import { Track } from '../types';
+import Recommendations from '../components/Recommendations';
 
 export default function Album() {
     const { id } = useParams();
-    const { playTrack, toggleLike, likedTracks } = usePlayer();
+    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, currentTrack } = usePlayer();
     const [tracks, setTracks] = useState<Track[]>([]);
     const [albumInfo, setAlbumInfo] = useState<{ title: string, artist: string, cover?: string, year?: string } | null>(null);
+    const [moreByArtist, setMoreByArtist] = useState<Track[]>([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         if (!id) return;
         setLoading(true);
-        // If ID is from YTM, ideally we fetch album.
-        // If logic is "Search Album", we do that.
 
         const fetchAlbum = async () => {
-            // For now, assume ID is search query or we query "Album"
-            // In this reskin, we usually pass Name as ID due to router setup in Home.
-
-            const query = decodeURIComponent(id);
+            const queryId = decodeURIComponent(id);
             try {
-                const results = await libraryService.search(query);
-                if (results.length > 0) {
+                const album = await libraryService.getAlbum(queryId);
+
+                if (album) {
+                    // Normalize track IDs - extract YouTube video ID from discovery-* IDs
+                    const normalizedTracks = album.tracks.map((track) => {
+                        let videoId = track.id;
+                        if (track.id.includes('discovery-') || track.id.includes('artist-')) {
+                            const parts = track.id.split('-');
+                            for (const part of parts) {
+                                if (part.length === 11 && /^[a-zA-Z0-9_-]+$/.test(part)) {
+                                    videoId = part;
+                                    break;
+                                }
+                            }
+                        }
+                        return { ...track, id: videoId, url: `/api/stream/${videoId}` };
+                    });
+                    setTracks(normalizedTracks);
+                    setAlbumInfo({
+                        title: album.title,
+                        artist: album.creator || "Unknown Artist",
+                        cover: album.cover_url,
+                        year: '2024'
+                    });
+
+                    // Fetch suggestions
+                    try {
+                        const artistQuery = album.creator || "Unknown Artist";
+                        const suggestions = await libraryService.search(artistQuery);
+                        const currentIds = new Set(normalizedTracks.map(t => t.id));
+                        setMoreByArtist(suggestions.filter(t => !currentIds.has(t.id)).slice(0, 10));
+                    } catch (e) { }
+                } else {
+                    // Fallback to searching the query if ID not found anywhere
+                    const cleanTitle = queryId.replace(/^search-|^album-/, '');
+                    const results = await libraryService.search(queryId);
                     setTracks(results);
                     setAlbumInfo({
-                        title: query.replace(/^search-|^album-/, '').replace(/-/g, ' '), // Clean up slug
-                        artist: results[0].artist,
-                        cover: results[0].cover_url,
-                        year: '2024' // Mock or fetch
+                        title: cleanTitle,
+                        artist: results.length > 0 ? results[0].artist : "Unknown Artist",
+                        cover: results.length > 0 ? results[0].cover_url : undefined,
+                        year: '2024'
                     });
                 }
             } catch (e) {
@@ -49,17 +80,42 @@ export default function Album() {
     const formattedDuration = `${Math.floor(totalDuration / 60)} minutes`;
 
     return (
-        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#2e2e2e] to-black pb-32">
-            <div className="flex flex-col md:flex-row gap-4 md:gap-8 p-4 md:p-12 items-center md:items-end bg-gradient-to-b from-black/20 to-black/60 pt-16 md:pt-12">
+        <div className="flex-1 overflow-y-auto bg-[#121212] no-scrollbar pb-32 relative">
+            {/* Banner Background */}
+            {albumInfo.cover && (
+                <div
+                    className="absolute top-0 left-0 w-full h-[50vh] min-h-[400px] opacity-30 pointer-events-none"
+                    style={{
+                        backgroundImage: `url(${albumInfo.cover})`,
+                        backgroundSize: 'cover',
+                        backgroundPosition: 'center',
+                        maskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)',
+                        WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 100%)'
+                    }}
+                />
+            )}
+
+            <div className="relative z-10 flex flex-col md:flex-row gap-4 md:gap-8 p-4 md:p-12 items-center md:items-end pt-16 md:pt-16">
                 {/* Cover */}
-                <div className="w-40 h-40 md:w-64 md:h-64 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-lg overflow-hidden shrink-0">
-                    <img src={albumInfo.cover} alt={albumInfo.title} className="w-full h-full object-cover" />
+                <div
+                    className="w-48 h-48 md:w-64 md:h-64 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden shrink-0 mt-8 md:mt-0 cursor-pointer group/cover relative"
+                    onClick={() => {
+                        if (tracks.length > 0) {
+                            playTrack(tracks[0], tracks);
+                            setIsFullScreenOpen(true);
+                        }
+                    }}
+                >
+                    <img src={albumInfo.cover} alt={albumInfo.title} className="w-full h-full object-cover transition-transform duration-700 group-hover/cover:scale-110" />
+                    <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/cover:opacity-100 transition flex items-center justify-center">
+                        <Play fill="white" size={48} className="text-white drop-shadow-2xl" />
+                    </div>
                 </div>
 
                 {/* Info */}
                 <div className="flex flex-col items-center md:items-start text-center md:text-left gap-2 md:gap-4 flex-1">
                     <span className="text-xs md:text-sm font-bold tracking-widest uppercase text-white/70">Album</span>
-                    <h1 className="text-2xl md:text-6xl font-black text-white leading-tight">{albumInfo.title}</h1>
+                    <h1 className="text-2xl md:text-6xl font-black text-white leading-tight line-clamp-3 text-ellipsis overflow-hidden">{albumInfo.title}</h1>
                     <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 text-white/80 font-medium text-sm md:text-base">
                         <img src={albumInfo.cover} className="w-6 h-6 rounded-full" />
                         <span className="hover:underline cursor-pointer">{albumInfo.artist}</span>
@@ -131,6 +187,53 @@ export default function Album() {
                     ))}
                 </div>
             </div>
+
+            {/* Suggestions / More By Artist */}
+            {moreByArtist.length > 0 && (
+                <div className="p-4 md:p-8 mt-4">
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-2xl font-bold hover:underline cursor-pointer">More by {albumInfo.artist}</h2>
+                        <Link to={`/artist/${encodeURIComponent(albumInfo.artist)}`}>
+                            <span className="text-xs font-bold text-[#b3b3b3] uppercase tracking-wider hover:text-white cursor-pointer">Show discography</span>
+                        </Link>
+                    </div>
+                    <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                        {moreByArtist.map((track) => (
+                            <div
+                                className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col"
+                                key={track.id}
+                                onClick={() => {
+                                    playTrack(track, moreByArtist);
+                                }}
+                            >
+                                <div className="relative mb-3 md:mb-4">
+                                    <img src={track.cover_url} className="w-full aspect-square rounded-2xl shadow-lg object-cover" />
+                                    <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
+                                            <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                        </div>
+                                    </div>
+                                </div>
+                                <h3 className="font-bold text-sm md:text-base mb-1 truncate">{track.title}</h3>
+                                <p className="text-xs md:text-sm text-[#a7a7a7] truncate">{track.artist}</p>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Related Content Recommendations */}
+            {albumInfo && (
+                <Recommendations
+                    seed={albumInfo.artist}
+                    seedType="album"
+                    limit={10}
+                    title="You might also like"
+                    showTracks={true}
+                    showAlbums={true}
+                    showPlaylists={true}
+                />
+            )}
         </div>
     );
 }

@@ -27,23 +27,43 @@ export const libraryService = {
     async search(query: string): Promise<Track[]> {
         const data = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
         if (data?.tracks && data.tracks.length > 0) {
-            return data.tracks;
+            // Normalize track IDs - extract YouTube video ID from discovery-* IDs
+            return data.tracks.map((track: Track) => {
+                let videoId = track.id;
+                if (track.id.includes('discovery-') || track.id.includes('artist-') || track.id.includes('album-')) {
+                    const parts = track.id.split('-');
+                    for (const part of parts) {
+                        if (part.length === 11 && /^[a-zA-Z0-9_-]+$/.test(part)) {
+                            videoId = part;
+                            break;
+                        }
+                    }
+                }
+                return { ...track, id: videoId, url: `/api/stream/${videoId}` };
+            });
         }
         return [];
     },
 
     async getBrowseContent(): Promise<Record<string, StaticPlaylist[]>> {
-        // Return structured content from Seed Data
-        // We simulate a "fetch" but it's instant
+        // Fetch dynamic preloaded content from backend
+        try {
+            const data = await apiFetch('/browse');
+            if (data && Object.keys(data).length > 0) {
+                return data;
+            }
+        } catch (e) {
+            console.error("Failed to load dynamic browse content", e);
+        }
 
+        // Fallback to mock data if discover returns empty (e.g. backend offline or still loading)
         const playlists = Object.values(GENERATED_CONTENT).filter(p => p.type === 'Playlist');
         const albums = Object.values(GENERATED_CONTENT).filter(p => p.type === 'Album');
         const artists = Object.values(GENERATED_CONTENT).filter(p => p.type === 'Artist');
-
         return {
-            'Top Playlists': playlists.slice(0, 100),
-            'Top Albums': albums.slice(0, 100),
-            'Popular Artists': artists.slice(0, 100)
+            'Top Playlists': playlists.slice(0, 50),
+            'Top Albums': albums.slice(0, 50),
+            'Popular Artists': artists.slice(0, 50)
         };
     },
 
@@ -71,46 +91,86 @@ export const libraryService = {
         return tracks.slice(0, 20);
     },
 
+    async getRelatedContent(seed: string, seedType: string = 'track', limit: number = 10): Promise<{
+        tracks: Track[],
+        albums: Array<{ id: string, title: string, artist: string, cover_url: string }>,
+        playlists: Array<{ id: string, title: string, cover_url: string, track_count: number }>,
+        artists: Array<{ id: string, name: string, photo_url: string }>
+    }> {
+        try {
+            const data = await apiFetch(`/recommendations?seed=${encodeURIComponent(seed)}&seed_type=${seedType}&limit=${limit}`);
+            if (data) {
+                return {
+                    tracks: data.tracks || [],
+                    albums: data.albums || [],
+                    playlists: data.playlists || [],
+                    artists: data.artists || []
+                };
+            }
+        } catch (e) {
+            console.error('Failed to get related content:', e);
+        }
+
+        // Fallback to search-based recommendations
+        const fallbackTracks = await this.search(seed);
+        return {
+            tracks: fallbackTracks.slice(0, limit),
+            albums: [],
+            playlists: [],
+            artists: []
+        };
+    },
+
     async getPlaylist(id: string): Promise<StaticPlaylist | null> {
         // 1. Try to find in GENERATED_CONTENT first (Fast/Instant)
-        // Extract base ID if needed or check directly?
-        // Our seed data keys are "Name" but values have IDs "playlist-Name" or "album-Name".
-        // We need to find by ID.
         const found = Object.values(GENERATED_CONTENT).find(p => p.id === id);
 
         if (found) {
-            // Found metadata! Return it immediately.
-            // If tracks are empty, we might want to lazy-load them via search?
-            // Yes, let's fire off a search to fill tracks if empty.
             if (found.tracks.length === 0) {
-                // Try to fetch tracks in background.
-                // We use multiple fallbacks to ensure we get results.
                 const queries = [
-                    found.title, // Exact title
-                    `${found.title} songs`, // Explicit songs
-                    `${found.title} playlist`, // Might find mixes
-                    "Vietnam Top Hits" // Ultimate fallback
+                    found.title,
+                    `${found.title} songs`,
+                    `${found.title} playlist`,
+                    "Vietnam Top Hits"
                 ];
 
                 for (const q of queries) {
                     try {
-                        console.log(`[Hydration] Searching: ${q}`);
                         const tracks = await this.search(q);
                         if (tracks.length > 0) {
-                            console.log(`[Hydration] Found ${tracks.length} tracks for ${found.title}`);
                             found.tracks = tracks;
                             return { ...found, tracks };
                         }
                     } catch (e) {
-                        console.error("Hydration search failed for", q, e);
                     }
                 }
             }
             return found;
         }
 
-        // 2. Fallback: Search by ID string parsing (Slow/Legacy)
-        const query = id.replace('playlist-', '').replace(/-/g, ' ');
+        // 2. Try to find in dynamic backend browse cache
+        try {
+            const browseData = await apiFetch('/browse');
+            for (const category in browseData) {
+                const plist = browseData[category].find((p: any) => p.id === id);
+                if (plist) {
+                    if (!plist.tracks || plist.tracks.length === 0) {
+                        try {
+                            const tracks = await this.search(`${plist.title} playlist`);
+                            plist.tracks = tracks.length > 0 ? tracks : await this.search(plist.title);
+                            return { ...plist, tracks: plist.tracks };
+                        } catch (e) { }
+                    }
+                    return plist;
+                }
+            }
+        } catch (e) {
+            console.error("Browse cache lookup failed", e);
+        }
+
+        // 3. Fallback: Search by ID string parsing (Slow/Legacy)
+        const cleanId = id.replace(/^discovery-(playlist|album|artist)-/, '');
+        const query = cleanId.replace(/-/g, ' ');
         const tracks = await this.search(query);
         if (tracks.length > 0) {
             return {
@@ -142,7 +202,25 @@ export const libraryService = {
             return found;
         }
 
-        const query = id.replace('album-', '').replace(/-/g, ' ');
+        try {
+            const browseData = await apiFetch('/browse');
+            for (const category in browseData) {
+                const plist = browseData[category].find((p: any) => p.id === id);
+                if (plist) {
+                    if (!plist.tracks || plist.tracks.length === 0) {
+                        try {
+                            const tracks = await this.search(`${plist.title} album`);
+                            plist.tracks = tracks.length > 0 ? tracks : await this.search(plist.title);
+                            return { ...plist, tracks: plist.tracks };
+                        } catch (e) { }
+                    }
+                    return plist;
+                }
+            }
+        } catch (e) { }
+
+        const cleanId = id.replace(/^discovery-(playlist|album|artist)-/, '');
+        const query = cleanId.replace(/-/g, ' ');
         const tracks = await this.search(query);
         if (tracks.length > 0) {
             return {
@@ -158,25 +236,33 @@ export const libraryService = {
     },
 
     async getArtistInfo(artistName: string): Promise<{ bio?: string; photo?: string }> {
-        // Try specific API for image
+        // Method 1: Try backend API for real YouTube channel photo
         try {
-            const res = await apiFetch(`/artist-image?q=${encodeURIComponent(artistName)}`);
-            if (res && res.url) {
-                return { photo: res.url };
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+            
+            const res = await fetch(`/api/artist/info?q=${encodeURIComponent(artistName)}`, {
+                signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            
+            if (res.ok) {
+                const data = await res.json();
+                console.log(`[ArtistInfo] ${artistName}:`, data);
+                if (data.image) {
+                    return { photo: data.image };
+                }
             }
         } catch (e) {
-            // fall through
+            console.error(`[ArtistInfo] Error for ${artistName}:`, e);
+            // Fall through to next method
         }
 
-        // Fallback to track cover
-        try {
-            const tracks = await this.search(artistName);
-            if (tracks.length > 0 && tracks[0]?.cover_url) {
-                return { photo: tracks[0].cover_url };
-            }
-        } catch (e) { }
-
-        return { photo: getUnsplashImage(artistName) };
+        // Method 2: Use UI-Avatars API (instant, always works)
+        // Using smaller size (128) for faster loading
+        const encodedName = encodeURIComponent(artistName);
+        const avatarUrl = `https://ui-avatars.com/api/?name=${encodedName}&background=random&color=fff&size=128&rounded=true&bold=true&font-size=0.33`;
+        return { photo: avatarUrl };
     },
 
     async getLyrics(track: string, artist: string): Promise<{ plainLyrics?: string; syncedLyrics?: string; } | null> {
@@ -209,7 +295,7 @@ export const libraryService = {
                     if (t.album && !seen.has(`album-${t.album}`)) {
                         seen.add(`album-${t.album}`);
                         results.push({
-                            id: `discovery-album-${Math.random().toString(36).substr(2, 9)}`,
+                            id: `discovery-album-${t.album.replace(/\s+/g, '-')}`,
                             title: t.album,
                             creator: t.artist,
                             cover_url: t.cover_url,
@@ -224,10 +310,10 @@ export const libraryService = {
                     if (t.artist && !seen.has(`artist-${t.artist}`)) {
                         seen.add(`artist-${t.artist}`);
                         results.push({
-                            id: `discovery-artist-${Math.random().toString(36).substr(2, 9)}`,
+                            id: `discovery-artist-${t.artist.replace(/\s+/g, '-')}`,
                             title: t.artist,
                             creator: 'Artist',
-                            cover_url: t.cover_url, // Ideally fetch artist image, but track cover is okay fallback
+                            cover_url: t.cover_url,
                             type: 'Artist'
                         });
                     }
@@ -235,10 +321,9 @@ export const libraryService = {
             }
 
             if (type === 'playlists' || type === 'all') {
-                // Generate some "Mix" playlists from the tracks
                 if (tracks.length > 5) {
                     results.push({
-                        id: `discovery-playlist-${Math.random().toString(36).substr(2, 9)}`,
+                        id: `discovery-playlist-${randomQuery.replace(/\s+/g, '-')}-Mix`,
                         title: `${randomQuery} Mix`,
                         creator: 'Spotify Clone',
                         cover_url: tracks[0].cover_url,
@@ -257,25 +342,16 @@ export const libraryService = {
     }
 };
 
-// Pool of high-quality artist/music abstract images
-const ARTIST_IMAGES = [
-    "photo-1511671782779-c97d3d27a1d4", // Microphone
-    "photo-1493225255756-d9584f8606e9", // Vinyl
-    "photo-1514525253440-b393452e8d26", // Neon
-    "photo-1470225620780-dba8ba36b745", // DJ
-    "photo-1511379938547-c1f69419868d", // Piano
-    "photo-1501612780327-45045538702b", // Guitar
-    "photo-1459749411177-287ce327a395", // Concert
-    "photo-1510915362694-bdddb0292f2d", // Stage
-    "photo-1544785135-3ef2b2b1fb28", // Singer
-    "photo-1460723237483-7a6dc9d0b212", // Band
-];
-
+// Dynamic Placeholders for artists/covers without an image
 function getUnsplashImage(seed: string): string {
+    const initials = seed.substring(0, 2).toUpperCase();
+    const colors = ["1DB954", "FF6B6B", "4ECDC4", "45B7D1", "6C5CE7", "FDCB6E"];
+
     let hash = 0;
     for (let i = 0; i < seed.length; i++) {
         hash = seed.charCodeAt(i) + ((hash << 5) - hash);
     }
-    const index = Math.abs(hash) % ARTIST_IMAGES.length;
-    return `https://images.unsplash.com/${ARTIST_IMAGES[index]}?w=400&h=400&fit=crop&q=80`;
+    const color = colors[Math.abs(hash) % colors.length];
+
+    return `https://placehold.co/400x400/${color}/FFFFFF?text=${encodeURIComponent(initials)}`;
 }

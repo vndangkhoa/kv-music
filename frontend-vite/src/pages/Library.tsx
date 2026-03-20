@@ -144,7 +144,7 @@ export default function Library() {
                                         <CoverImage
                                             src={playlist.cover_url}
                                             alt={playlist.title}
-                                            className="w-full aspect-square rounded-xl shadow-lg"
+                                            className="w-full aspect-square rounded-2xl shadow-lg"
                                             fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
                                         />
                                         <div className="absolute bottom-2 right-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition">
@@ -187,7 +187,7 @@ export default function Library() {
                                         <CoverImage
                                             src={item.cover_url}
                                             alt={item.title}
-                                            className={`w-full aspect-square shadow-lg rounded-xl`}
+                                            className={`w-full aspect-square shadow-lg rounded-2xl`}
                                             fallbackText={item.title?.substring(0, 2).toUpperCase()}
                                         />
                                         <div className="absolute bottom-2 right-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition">

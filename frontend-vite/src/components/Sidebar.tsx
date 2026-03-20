@@ -1,4 +1,4 @@
-import { Home, Search, Library, Plus, Heart, Settings } from "lucide-react";
+import { Home, Search, Library, Plus, Heart } from "lucide-react";
 import { Link, useLocation } from "react-router-dom";
 import { usePlayer } from "../context/PlayerContext";
 import { useLibrary } from "../context/LibraryContext";
@@ -7,14 +7,11 @@ import CreatePlaylistModal from "./CreatePlaylistModal";
 import { dbService } from "../services/db";
 import Logo from "./Logo";
 import CoverImage from "./CoverImage";
-import SettingsModal from "./SettingsModal";
 
 export default function Sidebar() {
     const { likedTracks } = usePlayer();
     const { userPlaylists, libraryItems, refreshLibrary, activeFilter, setActiveFilter } = useLibrary();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const location = useLocation();
 
     const isActive = (path: string) => location.pathname === path;
@@ -121,7 +118,7 @@ export default function Sidebar() {
                                 <CoverImage
                                     src={playlist.cover_url}
                                     alt={playlist.title || ''}
-                                    className="w-12 h-12 rounded"
+                                    className="w-12 h-12 rounded-xl"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-white font-medium truncate">{playlist.title}</h3>
@@ -147,7 +144,7 @@ export default function Sidebar() {
                                 <CoverImage
                                     src={playlist.cover_url}
                                     alt={playlist.title || ''}
-                                    className="w-12 h-12 rounded"
+                                    className="w-12 h-12 rounded-xl"
                                 />
                                 <div className="flex-1 min-w-0">
                                     <h3 className="text-white font-medium truncate">{playlist.title}</h3>
@@ -164,7 +161,7 @@ export default function Sidebar() {
                                 <CoverImage
                                     src={artist.cover_url}
                                     alt={artist.title}
-                                    className="w-12 h-12 rounded-md"
+                                    className="w-12 h-12 rounded-full object-cover"
                                     fallbackText={artist.title?.substring(0, 2).toUpperCase()}
                                 />
                                 <div className="flex-1 min-w-0">
@@ -182,7 +179,7 @@ export default function Sidebar() {
                                 <CoverImage
                                     src={album.cover_url}
                                     alt={album.title}
-                                    className="w-12 h-12 rounded"
+                                    className="w-12 h-12 rounded-xl"
                                     fallbackText="💿"
                                 />
                                 <div className="flex-1 min-w-0">
@@ -195,27 +192,10 @@ export default function Sidebar() {
                 </div>
             </div>
 
-            {/* Settings Section */}
-            <div className="bg-spotify-card rounded-lg p-2 mt-auto">
-                <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="w-full flex items-center gap-3 p-3 rounded-md transition-all duration-300 text-neutral-400 hover:text-white hover:bg-spotify-card-hover"
-                    title="Settings"
-                >
-                    <Settings className="w-5 h-5" />
-                    <span className="text-sm font-bold">Settings</span>
-                </button>
-            </div>
-
             <CreatePlaylistModal
                 isOpen={isCreateModalOpen}
                 onClose={() => setIsCreateModalOpen(false)}
                 onCreate={handleCreatePlaylist}
-            />
-
-            <SettingsModal
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
             />
         </aside>
     );

@@ -183,7 +183,7 @@ export default function Search() {
                                 {relatedAlbums.map(album => (
                                     <Link to={`/album/search-${encodeURIComponent(album.name)}`} key={album.id} className="flex-shrink-0 w-32 md:w-40 group">
                                         <div className="relative mb-2">
-                                            <CoverImage src={album.image} alt={album.name} className="w-32 h-32 md:w-40 md:h-40 rounded-md shadow-lg object-cover group-hover:shadow-xl transition" fallbackText={album.name[0]} />
+                                             <CoverImage src={album.image} alt={album.name} className="w-32 h-32 md:w-40 md:h-40 rounded-2xl shadow-lg object-cover group-hover:shadow-xl transition" fallbackText={album.name[0]} />
                                         </div>
                                         <p className="font-bold truncate text-[11px] md:text-base">{album.name}</p>
                                         <p className="text-[10px] md:text-sm text-[#a7a7a7]">Album</p>
@@ -207,7 +207,7 @@ export default function Search() {
                                     <div className="w-8 hidden group-hover:flex items-center justify-center text-white">
                                         <Play className="w-4 h-4 fill-current" />
                                     </div>
-                                    <CoverImage src={track.cover_url} alt={track.title} className="w-10 h-10 rounded" fallbackText="♪" />
+                                     <CoverImage src={track.cover_url} alt={track.title} className="w-10 h-10 rounded-lg" fallbackText="♪" />
                                     <div className="flex-1 min-w-0">
                                         <p className="font-medium truncate">{track.title}</p>
                                         <p className="text-sm text-neutral-400 truncate">{track.artist}</p>

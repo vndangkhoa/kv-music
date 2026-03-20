@@ -1,11 +1,12 @@
 import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Download, PlusCircle, Mic2, Heart, Loader2, ListMusic, MonitorSpeaker, Maximize2, MoreHorizontal, Info, ChevronUp } from 'lucide-react';
 import { usePlayer } from "../context/PlayerContext";
 import { useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import TechSpecs from './TechSpecs';
 import AddToPlaylistModal from "./AddToPlaylistModal";
 import Lyrics from './Lyrics';
 import QueueModal from './QueueModal';
+import Recommendations from './Recommendations';
 import { useDominantColor } from '../hooks/useDominantColor';
 import { useLyrics } from '../hooks/useLyrics';
 
@@ -13,7 +14,8 @@ export default function PlayerBar() {
     const {
         currentTrack, isPlaying, isBuffering, togglePlay, setBuffering,
         likedTracks, toggleLike, nextTrack, prevTrack, shuffle, toggleShuffle,
-        repeatMode, toggleRepeat, audioQuality, isLyricsOpen, toggleLyrics, closeLyrics, openLyrics
+        repeatMode, toggleRepeat, audioQuality, isLyricsOpen, toggleLyrics, closeLyrics, openLyrics,
+        isFullScreenOpen, setIsFullScreenOpen
     } = usePlayer();
 
     const dominantColor = useDominantColor(currentTrack?.cover_url);
@@ -54,37 +56,100 @@ export default function PlayerBar() {
 
     const [volume, setVolume] = useState(1);
     const navigate = useNavigate();
+    const location = useLocation();
 
     // Modal State
     const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
     const [isTechSpecsOpen, setIsTechSpecsOpen] = useState(false);
-    const [isFullScreenPlayerOpen, setIsFullScreenPlayerOpen] = useState(false);
-    const [isCoverModalOpen, setIsCoverModalOpen] = useState(false);
+
     const [isQueueOpen, setIsQueueOpen] = useState(false);
     const [isInfoOpen, setIsInfoOpen] = useState(false);
     const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
+    const [isIdle, setIsIdle] = useState(false);
+    const [isVideoReady, setIsVideoReady] = useState(false);
+    const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+    const resetIdleTimer = () => {
+        setIsIdle(false);
+        if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        if (playerMode === 'video' && isPlaying) {
+            idleTimerRef.current = setTimeout(() => {
+                setIsIdle(true);
+            }, 3000);
+        }
+    };
 
     // Force close lyrics on mount (Defensive fix for "Open on first play")
     useEffect(() => {
         closeLyrics();
     }, []);
 
+    // Auto-close fullscreen player on navigation
+    useEffect(() => {
+        setPlayerMode('audio');
+        setIsFullScreenOpen(false);
+    }, [location.pathname]);
+
     // Reset to audio mode when track changes
     useEffect(() => {
         setPlayerMode('audio');
+        setIsIdle(false);
+        setIsVideoReady(false);
     }, [currentTrack?.id]);
+
+    // Handle idle timer when playing video
+    useEffect(() => {
+        resetIdleTimer();
+        return () => {
+            if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+        };
+    }, [isPlaying, playerMode]);
 
     // Handle audio/video mode switching
     const handleModeSwitch = (mode: 'audio' | 'video') => {
         if (mode === 'video') {
+            // Pause audio ref but DON'T toggle isPlaying state to false
+            // The iframe useEffect will pick up isPlaying=true and start the video
             audioRef.current?.pause();
-            if (isPlaying) togglePlay(); // Update state to paused
+            setIsVideoReady(false);
+            
+            // If currently playing, start video playback after iframe loads
+            if (isPlaying && iframeRef.current && iframeRef.current.contentWindow) {
+                setTimeout(() => {
+                    if (iframeRef.current?.contentWindow) {
+                        iframeRef.current.contentWindow.postMessage(JSON.stringify({
+                            event: 'command',
+                            func: 'playVideo'
+                        }), '*');
+                    }
+                }, 1000);
+            }
         } else {
             // Switching back to audio
-            // Optionally sync time if we could get it from video, but for now just resume
-            if (!isPlaying) togglePlay();
+            if (isPlaying) {
+                audioRef.current?.play().catch(() => { });
+            }
         }
         setPlayerMode(mode);
+    };
+
+    // Handle play/pause for video mode - send command to YouTube iframe only
+    const handleVideoPlayPause = () => {
+        if (playerMode !== 'video' || !iframeRef.current || !iframeRef.current.contentWindow) return;
+        
+        // Send play/pause command directly to YouTube
+        const action = isPlaying ? 'pauseVideo' : 'playVideo';
+        try {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({
+                event: 'command',
+                func: action
+            }), '*');
+        } catch (e) {
+            // Ignore cross-origin errors
+        }
+        
+        // Toggle local state for UI sync only (audio won't play since it's paused)
+        togglePlay();
     };
 
     // ... (rest of useEffects)
@@ -112,8 +177,10 @@ export default function PlayerBar() {
         }
     }, [currentTrack?.url]);
 
-    // Play/Pause effect
+    // Play/Pause effect - skip when in video mode (YouTube controls playback)
     useEffect(() => {
+        if (playerMode === 'video') return; // Skip audio control in video mode
+        
         if (audioRef.current) {
             if (isPlaying) {
                 audioRef.current.play().catch(e => {
@@ -125,7 +192,7 @@ export default function PlayerBar() {
                 if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
             }
         }
-    }, [isPlaying]);
+    }, [isPlaying, playerMode]);
 
     // Volume Effect
     useEffect(() => {
@@ -134,16 +201,8 @@ export default function PlayerBar() {
         }
     }, [volume]);
 
-    // Sync Play/Pause with YouTube Iframe
-    useEffect(() => {
-        if (playerMode === 'video' && iframeRef.current && iframeRef.current.contentWindow) {
-            const action = isPlaying ? 'playVideo' : 'pauseVideo';
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({
-                event: 'command',
-                func: action
-            }), '*');
-        }
-    }, [isPlaying, playerMode]);
+    // Note: YouTube iframe play/pause sync is handled via URL autoplay parameter
+    // Cross-origin restrictions prevent reliable postMessage control
 
     const handleTimeUpdate = () => {
         if (audioRef.current) {
@@ -211,7 +270,7 @@ export default function PlayerBar() {
                 className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-2 right-2 fold:left-0 fold:right-0 fold:bottom-0 h-16 fold:h-[90px] bg-spotify-player border-t-0 fold:border-t border-white/5 flex items-center justify-between z-[60] rounded-lg fold:rounded-none shadow-xl fold:shadow-none transition-all duration-300 backdrop-blur-xl"
                 onClick={() => {
                     if (window.innerWidth < 1024) {
-                        setIsFullScreenPlayerOpen(true);
+                        setIsFullScreenOpen(true);
                     }
                 }}
             >
@@ -254,8 +313,7 @@ export default function PlayerBar() {
                         className="h-14 w-14 fold:h-14 fold:w-14 rounded-xl object-cover ml-1 fold:ml-0 cursor-pointer"
                         onClick={(e) => {
                             e.stopPropagation();
-                            if (window.innerWidth >= 700) setIsCoverModalOpen(true);
-                            else setIsFullScreenPlayerOpen(true);
+                            setIsFullScreenOpen(true);
                         }}
                     />
 
@@ -404,7 +462,7 @@ export default function PlayerBar() {
                             className="w-full h-1 bg-[#4d4d4d] rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-green-500"
                         />
                     </div>
-                    <button onClick={() => setIsCoverModalOpen(true)} title="Full Screen" className="text-zinc-400 hover:text-white">
+                    <button onClick={() => setIsFullScreenOpen(true)} title="Full Screen" className="text-zinc-400 hover:text-white">
                         <Maximize2 className="w-4 h-4" />
                     </button>
                 </div>
@@ -413,143 +471,144 @@ export default function PlayerBar() {
 
             {/* Mobile Full Screen Player Overlay */}
             <div
-                className={`fixed inset-0 z-[70] flex flex-col transition-transform duration-300 ${isFullScreenPlayerOpen ? 'translate-y-0' : 'translate-y-full'}`}
+                className={`fixed inset-0 z-[70] flex flex-col transition-transform duration-300 ${isFullScreenOpen ? 'translate-y-0' : 'translate-y-full'}`}
                 style={{ background: `linear-gradient(to bottom, ${dominantColor}, #121212)` }}
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
                 {/* Header / Close */}
-                <div className="flex items-center justify-between p-4 pt-8">
-                    <div onClick={() => setIsFullScreenPlayerOpen(false)} className="text-white">
+                <div className={`relative z-[80] flex items-center justify-between p-4 pt-8 shrink-0 transition-opacity duration-700 ${isIdle && playerMode === 'video' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
+                    <div onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); }} className="text-white p-2 hover:bg-white/10 rounded-full transition cursor-pointer">
                         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                             <path d="M19 12H5M12 19l-7-7 7-7" />
                         </svg>
                     </div>
 
                     {/* Song / Video Toggle */}
-                    <div className="flex bg-[#1a1a1a] rounded-full p-1">
+                    <div className="flex bg-black/40 backdrop-blur-md rounded-full p-1 border border-white/10 shadow-xl">
                         <button
-                            onClick={() => handleModeSwitch('audio')}
-                            className={`px-6 py-1 rounded-full text-xs font-bold transition ${playerMode === 'audio' ? 'bg-[#333] text-white' : 'text-neutral-500'}`}
+                            onClick={(e) => { e.stopPropagation(); handleModeSwitch('audio'); }}
+                            className={`px-8 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${playerMode === 'audio' ? 'bg-white text-black shadow-lg scale-105' : 'text-neutral-400 hover:text-white'}`}
                         >
                             Song
                         </button>
                         <button
-                            onClick={() => handleModeSwitch('video')}
-                            className={`px-6 py-1 rounded-full text-xs font-bold transition ${playerMode === 'video' ? 'bg-[#333] text-white' : 'text-neutral-500'}`}
+                            onClick={(e) => { e.stopPropagation(); handleModeSwitch('video'); }}
+                            className={`px-8 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${playerMode === 'video' ? 'bg-white text-black shadow-lg scale-105' : 'text-neutral-400 hover:text-white'}`}
                         >
                             Video
                         </button>
                     </div>
 
-                    <div className="w-6" />
+                    <div className="w-10" />
                 </div>
 
-                {/* Responsive Split View Container */}
-                <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden">
-                    {/* Left/Top: Art or Video */}
-                    <div className="flex-1 flex items-center justify-center p-8 md:p-12">
-                        {playerMode === 'audio' ? (
-                            <img
-                                src={currentTrack.cover_url}
-                                alt={currentTrack.title}
-                                className="w-full aspect-square object-cover rounded-3xl shadow-2xl max-h-[50vh] md:max-h-none"
-                            />
-                        ) : (
-                            <div className="w-full aspect-video rounded-3xl overflow-hidden shadow-2xl bg-black">
+                {/* Content Area */}
+                <div
+                    className="flex-1 relative overflow-hidden group"
+                    onMouseMove={resetIdleTimer}
+                    onTouchStart={resetIdleTimer}
+                >
+                    {playerMode === 'video' ? (
+                        /* CINEMATIC VIDEO MODE: Full Background Video */
+                        <div className="absolute inset-0 z-0 bg-black">
+                            <div className="w-full h-full transform scale-[1.01]"> {/* Slight scale to hide any possible edges */}
+                                {!isVideoReady && (
+                                    <div className="absolute inset-0 flex items-center justify-center">
+                                        <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
+                                    </div>
+                                )}
                                 <iframe
+                                    key={`${currentTrack.id}-${playerMode}`}
                                     ref={iframeRef}
                                     width="100%"
                                     height="100%"
-                                    src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&start=${Math.floor(progress)}&playsinline=1&modestbranding=1&rel=0&controls=1&enablejsapi=1`}
+                                    src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&playsinline=1&modestbranding=1&rel=0&controls=1&enablejsapi=1&fs=1&vq=hd1080`}
                                     title="YouTube video player"
                                     frameBorder="0"
                                     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                                     allowFullScreen
+                                    className={`pointer-events-auto transition-opacity duration-500 ${isVideoReady ? 'opacity-100' : 'opacity-0'}`}
+                                    onLoad={() => setIsVideoReady(true)}
                                 ></iframe>
                             </div>
-                        )}
-                    </div>
+                            {/* Overlay Gradient for cinematic feel */}
+                            <div className={`absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/40 pointer-events-none transition-opacity duration-1000 ${isIdle ? 'opacity-20' : 'opacity-60'}`} />
+                        </div>
+                    ) : (
+                        /* SONG MODE: Centered Case */
+                        <div className="h-full flex items-center justify-center p-8 md:p-12 animate-in zoom-in-95 duration-500">
+                            <img
+                                src={currentTrack.cover_url}
+                                alt={currentTrack.title}
+                                className="w-full aspect-square object-cover rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.5)] max-h-[50vh] md:max-h-[60vh] transition-transform duration-700 group-hover:scale-[1.02]"
+                            />
+                        </div>
+                    )}
 
-                    {/* Right/Bottom: Controls */}
-                    <div className="flex-1 flex flex-col justify-center px-8 pb-12 md:pb-0 md:pr-12 overflow-y-auto no-scrollbar">
-                        {/* Track Info */}
-                        <div className="flex items-center justify-between mb-6">
-                            <div className="flex-1 mr-4">
-                                <h2 className="text-2xl md:text-4xl font-bold text-white line-clamp-2 md:mb-2">{currentTrack.title}</h2>
+                    {/* Controls Overlay (Bottom) */}
+                    <div className={`absolute bottom-0 left-0 right-0 z-20 px-8 pb-12 transition-all duration-700 ${playerMode === 'video' ? 'bg-gradient-to-t from-black via-black/40 to-transparent' : ''} ${isIdle && playerMode === 'video' ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
+                        <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row md:items-end gap-8">
+                            {/* Metadata */}
+                            <div className="flex-1">
+                                <h2 className={`font-black text-white mb-2 drop-shadow-lg tracking-tight transition-all duration-500 ${playerMode === 'video' ? 'text-xl md:text-3xl' : 'text-3xl md:text-5xl'}`}>{currentTrack.title}</h2>
                                 <p
-                                    onClick={() => { setIsFullScreenPlayerOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
-                                    className="text-lg md:text-xl text-neutral-400 line-clamp-1 cursor-pointer hover:text-white hover:underline transition"
+                                    onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
+                                    className={`text-white/70 font-medium cursor-pointer hover:text-white hover:underline transition drop-shadow-md ${playerMode === 'video' ? 'text-base md:text-xl' : 'text-lg md:text-2xl'}`}
                                 >
                                     {currentTrack.artist}
                                 </p>
                             </div>
-                            <div className="flex flex-col gap-4">
-                                <button onClick={() => toggleLike(currentTrack)} className={likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-neutral-400'}>
-                                    <Heart size={28} fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
+
+                            {/* Secondary Actions */}
+                            <div className="flex items-center gap-4 text-white">
+                                <button onClick={() => toggleLike(currentTrack)} className={`p-3 rounded-full hover:bg-white/10 transition ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-white/60'}`}>
+                                    <Heart size={32} fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
                                 </button>
-                                <button onClick={() => setIsInfoOpen(true)} className="text-neutral-400 hover:text-white">
-                                    <Info size={24} />
+                                <button onClick={() => setIsInfoOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition text-white/60 hover:text-white">
+                                    <Info size={28} />
                                 </button>
                             </div>
                         </div>
 
-                        {/* Progress */}
-                        <div className="mb-8">
-                            <input
-                                type="range"
-                                min={0}
-                                max={duration || 100}
-                                value={progress}
-                                onChange={handleSeek}
-                                onMouseUp={handleSeekCommit}
-                                onTouchEnd={handleSeekCommit}
-                                className="w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white mb-2"
-                            />
-                            <div className="flex justify-between text-xs text-neutral-400 font-medium font-mono">
-                                <span>{formatTime(progress)}</span>
-                                <span>{formatTime(duration)}</span>
-                            </div>
-                        </div>
-
-                        {/* Controls */}
-                        <div className="flex items-center justify-between mb-8 max-w-md mx-auto w-full">
-                            <button onClick={toggleShuffle} className={shuffle ? 'text-green-500' : 'text-neutral-400'}>
-                                <Shuffle size={24} />
-                            </button>
-                            <button onClick={prevTrack} className="text-white hover:text-neutral-300 transition">
-                                <SkipBack size={32} fill="currentColor" />
-                            </button>
-                            <button onClick={togglePlay} className="w-16 h-16 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-lg">
-                                {isPlaying ? <Pause size={32} fill="currentColor" /> : <Play size={32} fill="currentColor" className="ml-1" />}
-                            </button>
-                            <button onClick={nextTrack} className="text-white hover:text-neutral-300 transition">
-                                <SkipForward size={32} fill="currentColor" />
-                            </button>
-                            <button onClick={toggleRepeat} className={repeatMode !== 'none' ? 'text-green-500' : 'text-neutral-400'}>
-                                <Repeat size={24} />
-                            </button>
-                        </div>
-
-                        {/* Lyric Peek (Tablet optimized) */}
-                        <div
-                            className={`h-16 flex items-center justify-center overflow-hidden cursor-pointer active:scale-95 transition bg-white/5 rounded-xl p-4 hover:bg-white/10 ${!hasInteractedWithLyrics ? 'opacity-50' : 'opacity-100'}`}
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setHasInteractedWithLyrics(true);
-                                openLyrics();
-                            }}
-                        >
-                            {currentLine ? (
-                                <p className="text-white font-bold text-lg text-center animate-in fade-in slide-in-from-bottom-2 line-clamp-2">
-                                    "{currentLine.text}"
-                                </p>
-                            ) : (
-                                <div className="flex items-center gap-2 text-neutral-400">
-                                    <Mic2 size={16} />
-                                    <span className="text-sm font-bold">Tap for Lyrics</span>
+                        {/* Scrubber & Controls */}
+                        <div className="max-w-screen-md mx-auto mt-8">
+                            {/* Scrubber */}
+                            <div className="mb-8">
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={duration || 100}
+                                    value={progress}
+                                    onChange={handleSeek}
+                                    onMouseUp={handleSeekCommit}
+                                    onTouchEnd={handleSeekCommit}
+                                    className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white mb-2 hover:bg-white/30 transition-colors"
+                                />
+                                <div className="flex justify-between text-[10px] md:text-xs text-white/50 font-bold uppercase tracking-widest font-mono">
+                                    <span>{formatTime(progress)}</span>
+                                    <span>{formatTime(duration)}</span>
                                 </div>
-                            )}
+                            </div>
+
+                            {/* Main Playback Controls */}
+                            <div className="flex items-center justify-between w-full">
+                                <button onClick={toggleShuffle} className={`p-2 transition-all duration-300 ${shuffle ? 'text-green-500 scale-110' : 'text-white/40 hover:text-white'}`}>
+                                    <Shuffle size={24} />
+                                </button>
+                                <button onClick={prevTrack} className="text-white hover:scale-110 active:scale-95 transition">
+                                    <SkipBack size={42} fill="currentColor" />
+                                </button>
+                                <button onClick={playerMode === 'video' ? handleVideoPlayPause : togglePlay} className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-black hover:scale-110 active:scale-90 transition shadow-2xl">
+                                    {isPlaying ? <Pause size={42} fill="currentColor" /> : <Play size={42} fill="currentColor" className="ml-1.5" />}
+                                </button>
+                                <button onClick={nextTrack} className="text-white hover:scale-110 active:scale-95 transition">
+                                    <SkipForward size={42} fill="currentColor" />
+                                </button>
+                                <button onClick={toggleRepeat} className={`p-2 transition-all duration-300 ${repeatMode !== 'none' ? 'text-green-500 scale-110' : 'text-white/40 hover:text-white'}`}>
+                                    <Repeat size={24} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -574,7 +633,7 @@ export default function PlayerBar() {
                                 <p className="text-sm text-neutral-400">Artist</p>
                                 <p
                                     className="font-medium text-lg text-spotify-highlight cursor-pointer hover:underline"
-                                    onClick={() => { setIsInfoOpen(false); setIsFullScreenPlayerOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
+                                    onClick={() => { setPlayerMode('audio'); setIsInfoOpen(false); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
                                 >
                                     {currentTrack.artist}
                                 </p>
@@ -590,9 +649,9 @@ export default function PlayerBar() {
                         </div>
                     </div>
                 </div>
-            )}
+                )}
 
-            {/* Modals */}
+                {/* Modals */}
             <QueueModal
                 isOpen={isQueueOpen}
                 onClose={() => setIsQueueOpen(false)}

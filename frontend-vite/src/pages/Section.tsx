@@ -57,7 +57,7 @@ export default function Section() {
                                     <CoverImage
                                         src={playlist.cover_url}
                                         alt={playlist.title}
-                                        className="w-full aspect-square rounded-md shadow-lg"
+                                        className="w-full aspect-square rounded-2xl shadow-lg"
                                         fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
                                     />
                                     <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">

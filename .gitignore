@@ -58,5 +58,12 @@ backend/data_seed/
 *.log
 build_log*.txt
 
+# Rust
+target/
+
 # Backup Files
 *_backup.*
+nul
+*.pid
+frontend.pid
+backend.pid

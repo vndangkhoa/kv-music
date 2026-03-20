@@ -15,7 +15,8 @@ export default function Home() {
     const [loading, setLoading] = useState(true);
     const [sortBy, setSortBy] = useState<SortOption>('recent');
     const [showSortMenu, setShowSortMenu] = useState(false);
-    const { playTrack, playHistory } = usePlayer();
+    const [heroPlaylist, setHeroPlaylist] = useState<StaticPlaylist | null>(null);
+    const { playTrack, playHistory, setIsFullScreenOpen, currentTrack } = usePlayer();
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -24,24 +25,40 @@ export default function Home() {
         else setTimeOfDay("Good evening");
 
         // Cache First Strategy for "Super Fast" loading
-        const cached = localStorage.getItem('ytm_browse_cache_v4');
+        const cached = localStorage.getItem('ytm_browse_cache_v8');
         if (cached) {
             setBrowseData(JSON.parse(cached));
             setLoading(false);
         }
 
-        setLoading(true);
-        libraryService.getBrowseContent()
-            .then(data => {
-                setBrowseData(data);
-                setLoading(false);
-                // Update Cache
-                localStorage.setItem('ytm_browse_cache_v4', JSON.stringify(data));
-            })
-            .catch(err => {
-                console.error("Error fetching browse:", err);
-                setLoading(false);
-            });
+        const fetchBrowseData = () => {
+            setLoading(true);
+            libraryService.getBrowseContent()
+                .then(data => {
+                    setBrowseData(data);
+                    setLoading(false);
+                    // Update Cache
+                    localStorage.setItem('ytm_browse_cache_v8', JSON.stringify(data));
+
+                    // Pick a random playlist for the hero section
+                    const allPlaylists = Object.values(data).flat().filter(p => p.type === 'Playlist');
+                    if (allPlaylists.length > 0) {
+                        const randomIdx = Math.floor(Math.random() * allPlaylists.length);
+                        setHeroPlaylist(allPlaylists[randomIdx]);
+                    }
+                })
+                .catch(err => {
+                    console.error("Error fetching browse:", err);
+                    setLoading(false);
+                });
+        };
+
+        fetchBrowseData();
+
+        // Auto-refresh every 5 minutes
+        const refreshInterval = setInterval(fetchBrowseData, 300000);
+        
+        return () => clearInterval(refreshInterval);
     }, []);
 
     const sortPlaylists = (playlists: StaticPlaylist[]) => {
@@ -58,9 +75,6 @@ export default function Home() {
                 return sorted;
         }
     };
-
-    const firstCategory = Object.keys(browseData)[0];
-    const heroPlaylist = firstCategory && browseData[firstCategory].length > 0 ? browseData[firstCategory][0] : null;
 
     const sortOptions = [
         { value: 'recent', label: 'Recently Added', icon: Clock },
@@ -129,9 +143,9 @@ export default function Home() {
                                 fallbackText="VB"
                             />
                         </div>
-                        <div className="flex flex-col text-center md:text-left">
+                        <div className="flex flex-col text-center md:text-left overflow-hidden">
                             <span className="text-xs font-bold tracking-wider uppercase mb-2">Featured Playlist</span>
-                            <h2 className="text-3xl md:text-5xl font-black mb-4 leading-tight">{heroPlaylist.title}</h2>
+                            <h2 className="text-3xl md:text-5xl font-black mb-4 leading-tight line-clamp-2 md:line-clamp-3" title={heroPlaylist.title}>{heroPlaylist.title}</h2>
                             <p className="text-[#a7a7a7] text-sm md:text-base line-clamp-2 md:line-clamp-3 max-w-2xl mb-6">
                                 {heroPlaylist.description}
                             </p>
@@ -166,23 +180,37 @@ export default function Home() {
                         ))}
                     </div>
                 </div>
-            ) : browseData["Top Albums"] && browseData["Top Albums"].length > 0 && (
+            ) : browseData["Top Albums"] && browseData["Top Albums"].length > 0 && (() => {
+                const seen = new Set<string>();
+                const uniqueAlbums = (browseData["Top Albums"] as any[]).filter(a => {
+                    if (seen.has(a.id)) return false;
+                    seen.add(a.id);
+                    return true;
+                });
+                return (
                 <div className="mb-8">
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-2xl font-bold capitalize hover:underline cursor-pointer">Top Albums</h2>
                     </div>
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
-                        {browseData["Top Albums"].slice(0, 15).map((album) => (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2">
+                        {uniqueAlbums.slice(0, 15).map((album) => (
                             <Link to={`/album/${album.id}`} key={album.id}>
                                 <div className="bg-transparent md:bg-spotify-card p-0 md:p-3 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
                                     <div className="relative mb-2 md:mb-3">
-                                        <CoverImage
-                                            src={album.cover_url}
-                                            alt={album.title}
-                                            className="w-full aspect-square rounded-xl shadow-lg"
-                                            fallbackText={album.title?.substring(0, 2).toUpperCase()}
-                                        />
-                                        <div className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                                            <CoverImage
+                                                src={album.cover_url}
+                                                alt={album.title}
+                                                className="w-full aspect-square rounded-2xl shadow-lg"
+                                                fallbackText={album.title?.substring(0, 2).toUpperCase()}
+                                            />
+                                        <div
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                playTrack(album as any);
+                                            }}
+                                            className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer"
+                                        >
                                             <div className="w-8 h-8 md:w-10 md:h-10 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
                                                 <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-5 md:h-5" />
                                             </div>
@@ -195,7 +223,8 @@ export default function Home() {
                         ))}
                     </div>
                 </div>
-            )}
+                );
+            })()}
 
             {/* Browse Lists */}
             {loading ? (
@@ -217,8 +246,15 @@ export default function Home() {
                 </div>
             ) : Object.keys(browseData).length > 0 ? (
                 Object.entries(browseData)
-                    .filter(([category]) => category !== "Top Albums") // Filter out albums since we showed them above
-                    .map(([category, playlists]) => (
+                    .filter(([category, items]) => category !== "Top Albums" && (items as any[]).length > 0)
+                    .map(([category, playlists]) => {
+                        const seen = new Set<string>();
+                        const uniquePlaylists = (playlists as any[]).filter(p => {
+                            if (seen.has(p.id)) return false;
+                            seen.add(p.id);
+                            return true;
+                        });
+                        return (
                         <div key={category} className="mb-8">
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-2xl font-bold capitalize hover:underline cursor-pointer">{category}</h2>
@@ -228,18 +264,25 @@ export default function Home() {
                             </div>
 
                             {/* USER REQUEST: Bigger Grid, Smaller Text, Smaller Gap */}
-                            <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-6">
-                                {sortPlaylists(playlists).slice(0, 15).map((playlist) => (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2">
+                                {sortPlaylists(uniquePlaylists).slice(0, 15).map((playlist) => (
                                     <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
                                         <div className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
                                             <div className="relative mb-2 md:mb-4">
                                                 <CoverImage
                                                     src={playlist.cover_url}
                                                     alt={playlist.title}
-                                                    className="w-full aspect-square rounded-xl shadow-lg"
+                                                    className="w-full aspect-square rounded-2xl shadow-lg"
                                                     fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
                                                 />
-                                                <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                                                <div
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        playTrack(playlist as any);
+                                                    }}
+                                                    className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer"
+                                                >
                                                     <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
                                                         <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
                                                     </div>
@@ -252,7 +295,8 @@ export default function Home() {
                                 ))}
                             </div>
                         </div>
-                    ))
+                        );
+                    })
             ) : (
                 <div className="text-center py-20">
                     <h2 className="text-xl font-bold mb-4">Ready to explore?</h2>
@@ -265,6 +309,7 @@ export default function Home() {
 
 // Recently Listened Section
 function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Track[], playTrack: (track: Track, queue?: Track[]) => void }) {
+    const { setIsFullScreenOpen, currentTrack } = usePlayer();
     if (playHistory.length === 0) return null;
 
     return (
@@ -278,14 +323,16 @@ function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Trac
                 {playHistory.slice(0, 10).map((track, i) => (
                     <div
                         key={`${track.id}-${i}`}
-                        onClick={() => playTrack(track, playHistory)}
+                        onClick={() => {
+                            playTrack(track, playHistory);
+                        }}
                         className="flex-shrink-0 w-40 bg-spotify-card rounded-xl overflow-hidden hover:bg-spotify-card-hover transition duration-300 group cursor-pointer"
                     >
                         <div className="relative">
                             <CoverImage
                                 src={track.cover_url}
                                 alt={track.title}
-                                className="w-40 h-40"
+                                className="w-40 h-40 rounded-2xl"
                                 fallbackText={track.title?.substring(0, 2).toUpperCase()}
                             />
                             <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
@@ -307,7 +354,7 @@ function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Trac
 
 // Made For You Section
 function MadeForYouSection() {
-    const { playHistory, playTrack } = usePlayer();
+    const { playHistory, playTrack, setIsFullScreenOpen, currentTrack } = usePlayer();
     const [recommendations, setRecommendations] = useState<Track[]>([]);
     const [seedTrack, setSeedTrack] = useState<Track | null>(null);
     const [loading, setLoading] = useState(false);
@@ -351,14 +398,16 @@ function MadeForYouSection() {
                     ))}
                 </div>
             ) : (
-                <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-6">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2">
                     {recommendations.slice(0, 10).map((track, i) => (
-                        <div key={i} onClick={() => playTrack(track, recommendations)} className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
+                        <div key={i} onClick={() => {
+                            playTrack(track, recommendations);
+                        }} className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
                             <div className="relative mb-2 md:mb-4">
                                 <CoverImage
                                     src={track.cover_url}
                                     alt={track.title}
-                                    className="w-full aspect-square rounded-xl shadow-lg"
+                                    className="w-full aspect-square rounded-2xl shadow-lg"
                                     fallbackText={track.title?.substring(0, 2).toUpperCase()}
                                 />
                                 <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
@@ -417,35 +466,50 @@ function ArtistVietnamSection() {
 
         // 2. Load Photos (Cache First Strategy)
         const loadPhotos = async () => {
-            // v3: Progressive Loading + Smaller Thumbnails
-            const cacheKey = 'artist_photos_cache_v3';
+            // v5: Force refresh for authentic channel avatars
+            const cacheKey = 'artist_photos_cache_v6';
             const cached = JSON.parse(localStorage.getItem(cacheKey) || '{}');
 
-            // Initialize with cache immediately
+            // Apply cache to state first
             setArtistPhotos(cached);
-            setLoading(false); // Show names immediately
-
+            
             // Identify missing photos
             const missing = targetArtists.filter(name => !cached[name]);
 
             if (missing.length > 0) {
-                // Fetch missing incrementally
-                for (const name of missing) {
+                // Fetch all missing photos in parallel
+                const fetchPromises = missing.map(async (name) => {
                     try {
-                        // Fetch one by one and update state immediately
-                        // This prevents "batch waiting" feeling
-                        libraryService.getArtistInfo(name).then(data => {
-                            if (data.photo) {
-                                setArtistPhotos(prev => {
-                                    const next: Record<string, string> = { ...prev, [name]: data.photo || "" };
-                                    localStorage.setItem(cacheKey, JSON.stringify(next));
-                                    return next;
-                                });
-                            }
-                        });
+                        const data = await libraryService.getArtistInfo(name);
+                        if (data.photo) {
+                            return { name, photo: data.photo };
+                        }
                     } catch { /* ignore */ }
+                    return null;
+                });
+
+                // Wait for ALL fetches to complete
+                const results = await Promise.all(fetchPromises);
+                
+                // Update state with all results at once
+                const updates: Record<string, string> = {};
+                results.forEach(result => {
+                    if (result) {
+                        updates[result.name] = result.photo;
+                    }
+                });
+
+                if (Object.keys(updates).length > 0) {
+                    setArtistPhotos(prev => {
+                        const next: Record<string, string> = { ...prev, ...updates };
+                        localStorage.setItem(cacheKey, JSON.stringify(next));
+                        return next;
+                    });
                 }
             }
+
+            // Only set loading false AFTER all photos are loaded
+            setLoading(false);
         };
 
         loadPhotos();
@@ -459,11 +523,11 @@ function ArtistVietnamSection() {
             </div>
             <p className="text-sm text-[#a7a7a7] mb-4">Based on your recent listening</p>
 
-            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+            <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
                 {artists.length === 0 && loading ? (
                     [1, 2, 3, 4, 5, 6].map(i => (
                         <div key={i} className="flex-shrink-0 w-36 text-center space-y-3">
-                            <Skeleton className="w-36 h-36 rounded-xl" />
+                            <Skeleton className="w-36 h-36 rounded-full" />
                             <Skeleton className="h-4 w-3/4 mx-auto" />
                         </div>
                     ))
@@ -475,12 +539,12 @@ function ArtistVietnamSection() {
                                     <CoverImage
                                         src={artistPhotos[name]}
                                         alt={name}
-                                        className="w-36 h-36 rounded-xl shadow-lg group-hover:shadow-xl transition object-cover"
+                                        className="w-36 h-36 rounded-full shadow-lg group-hover:shadow-xl transition object-cover"
                                         fallbackText={name.substring(0, 2).toUpperCase()}
                                     />
-                                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center">
-                                        <div className="w-12 h-12 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
-                                            <Play className="fill-black text-black ml-1 w-5 h-5" />
+                                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition rounded-full flex items-center justify-center">
+                                        <div className="w-10 h-10 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
+                                            <Play className="fill-black text-black ml-0.5 w-4 h-4" />
                                         </div>
                                     </div>
                                 </div>

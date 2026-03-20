@@ -1,11 +1,17 @@
 services:
   spotify-clone:
-    image: vndangkhoa/spotify-clone:latest
+    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v3
     container_name: spotify-clone
-    restart: always
-    network_mode: bridge # Synology often prefers explicit bridge or host
+    restart: unless-stopped
     ports:
-      - "3110:3000" # Web UI
-
+      - "3110:8080"
+    environment:
+      - PORT=8080
     volumes:
-      - ./data:/app/backend/data
+      - ./data:/tmp/spotify-clone-downloads
+      - ./cache:/tmp/spotify-clone-cache
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
