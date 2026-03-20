@@ -21,12 +21,14 @@ RUN cargo build --release --bin backend-rust
 FROM python:3.11-slim-bookworm
 WORKDIR /app
 
-# Install runtime dependencies including Node.js for yt-dlp
+# Install runtime dependencies including Node.js and libssl
 RUN apt-get update && apt-get install -y \
     ffmpeg \
     ca-certificates \
     curl \
     gnupg \
+    libssl3 \
+    zlib1g \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
@@ -46,4 +48,5 @@ EXPOSE 8080
 RUN chmod +x /app/server
 USER 0
 
-CMD ["/app/server"]
+# Use a shell wrapper to ensure we see SOMETHING in the logs
+CMD ["sh", "-c", "echo 'CONTAINER STARTUP INITIATED...' && ls -l /app/server && /app/server 2>&1"]
