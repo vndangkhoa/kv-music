@@ -1,6 +1,6 @@
 version: "3"
 services:
   spotify-clone:
-    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v4
+    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v5
     ports:
       - 3110:8080
