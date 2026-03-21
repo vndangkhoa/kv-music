@@ -172,3 +172,147 @@ pub async fn recommendations_handler(
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
     }
 }
+
+#[derive(Deserialize)]
+pub struct LyricsQuery {
+    pub track: String,
+    pub artist: String,
+}
+
+pub async fn lyrics_handler(
+    Query(params): Query<LyricsQuery>,
+) -> impl IntoResponse {
+    let track = params.track.trim();
+    let artist = params.artist.trim();
+    
+    if track.is_empty() || artist.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Track and artist required"})));
+    }
+
+    // Try multiple lyrics APIs in sequence for better coverage
+    let apis = [
+        format!("https://api.lyrics.ovh/v1/{}/{}", 
+                urlencoding::encode(artist), 
+                urlencoding::encode(track)),
+        format!("https://lrclib.net/api/search?artist_name={}&track_name={}", 
+                urlencoding::encode(artist), 
+                urlencoding::encode(track)),
+    ];
+
+    for api_url in &apis {
+        match reqwest::get(api_url).await {
+            Ok(response) => {
+                if response.status().is_success() {
+                    match response.text().await {
+                        Ok(text) => {
+                            // Parse response based on API
+                            if api_url.contains("lyrics.ovh") {
+                                // lyrics.ovh returns { "lyrics": "..." }
+                                if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if let Some(lyrics) = json.get("lyrics").and_then(|l| l.as_str()) {
+                                        return (StatusCode::OK, Json(serde_json::json!({
+                                            "plainLyrics": lyrics
+                                        })));
+                                    }
+                                }
+                            } else if api_url.contains("lrclib.net") {
+                                // LRCLIB returns array of results
+                                if let Ok(results) = serde_json::from_str::<Vec<serde_json::Value>>(&text) {
+                                    if let Some(first) = results.first() {
+                                        let plain = first.get("plainLyrics").and_then(|l| l.as_str());
+                                        let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
+                                        return (StatusCode::OK, Json(serde_json::json!({
+                                            "plainLyrics": plain,
+                                            "syncedLyrics": synced
+                                        })));
+                                    }
+                                }
+                            }
+                        }
+                        Err(_) => continue,
+                    }
+                }
+            }
+            Err(_) => continue,
+        }
+    }
+
+    (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Lyrics not found"})))
+}
+
+pub async fn zingmp3_lyrics_handler(
+    Query(params): Query<LyricsQuery>,
+) -> impl IntoResponse {
+    let track = params.track.trim();
+    let artist = params.artist.trim();
+    
+    if track.is_empty() || artist.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Track and artist required"})));
+    }
+
+    // Clean up track name for better search
+    let clean_track = track
+        .replace(r"(?i)\s*\(.*?\)", "")
+        .replace(r"(?i)\s*\[.*?\]", "")
+        .replace(r"(?i)\s*-\s*Official Audio", "")
+        .replace(r"(?i)\s*-\s*Lyrics Video", "")
+        .replace(r"(?i)\s*-\s*MV", "")
+        .replace(r"(?i)\s*-\s*Audio", "")
+        .replace(r"(?i)\s*-\s*Video", "")
+        .trim()
+        .to_string();
+
+    let clean_artist = artist
+        .replace(r"(?i)\s*\(.*?\)", "")
+        .replace(r"(?i)\s*\[.*?\]", "")
+        .replace(r"(?i)\s*-\s*Official", "")
+        .replace(r"(?i)\s*-\s*Topic", "")
+        .trim()
+        .to_string();
+
+    // Try ZingMP3 API for Vietnamese lyrics
+    // Search for the song
+    let search_query = format!("{} {}", clean_artist, clean_track);
+    let search_url = format!("https://zingmp3.vn/api/v2/search?query={}&type=song&limit=5", 
+                            urlencoding::encode(&search_query));
+
+    match reqwest::get(&search_url).await {
+        Ok(response) => {
+            if response.status().is_success() {
+                if let Ok(text) = response.text().await {
+                    if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
+                        if let Some(songs) = json.get("data").and_then(|d| d.as_array()) {
+                            for song in songs {
+                                if let Some(song_id) = song.get("id").and_then(|id| id.as_str()) {
+                                    // Try to get lyrics for this song
+                                    let lyrics_url = format!("https://zingmp3.vn/api/v2/song/get/lyrics?id={}", song_id);
+                                    
+                                    if let Ok(lyrics_response) = reqwest::get(&lyrics_url).await {
+                                        if lyrics_response.status().is_success() {
+                                            if let Ok(lyrics_text) = lyrics_response.text().await {
+                                                if let Ok(lyrics_json) = serde_json::from_str::<serde_json::Value>(&lyrics_text) {
+                                                    if let Some(data) = lyrics_json.get("data") {
+                                                        if let Some(lyrics) = data.get("lyrics").and_then(|l| l.as_str()) {
+                                                            return (StatusCode::OK, Json(serde_json::json!({
+                                                                "plainLyrics": lyrics
+                                                            })));
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Err(_) => {
+            // ZingMP3 API might have CORS issues, try alternative
+        }
+    }
+
+    (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Lyrics not found on ZingMP3"})))
+}

@@ -76,7 +76,7 @@ localStorage.removeItem('ytm_browse_cache_v8');
 
                 {/* Header */}
                 <div className={`flex items-center justify-between p-5 border-b ${isApple ? 'border-white/10' : 'border-[#282828]'}`}>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center">
                         <div className={`p-2 rounded-xl ${isApple ? 'bg-[#fa2d48]/20 text-[#fa2d48]' : 'bg-green-500/20 text-green-500'}`}>
                             <Activity className="w-5 h-5" />
                         </div>

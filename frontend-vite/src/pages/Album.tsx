@@ -95,10 +95,10 @@ export default function Album() {
                 />
             )}
 
-            <div className="relative z-10 flex flex-col md:flex-row gap-4 md:gap-8 p-4 md:p-12 items-center md:items-end pt-16 md:pt-16">
+            <div className="relative z-10 flex flex-col md:flex-row p-4 md:p-12 items-center md:items-end pt-16 md:pt-16 gap-6 md:gap-8">
                 {/* Cover */}
                 <div
-                    className="w-48 h-48 md:w-64 md:h-64 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden shrink-0 mt-8 md:mt-0 cursor-pointer group/cover relative"
+                    className="w-48 h-48 md:w-64 md:h-64 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden shrink-0 cursor-pointer group/cover relative"
                     onClick={() => {
                         if (tracks.length > 0) {
                             playTrack(tracks[0], tracks);
@@ -113,16 +113,16 @@ export default function Album() {
                 </div>
 
                 {/* Info */}
-                <div className="flex flex-col items-center md:items-start text-center md:text-left gap-2 md:gap-4 flex-1">
+                <div className="flex flex-col items-center md:items-start text-center md:text-left gap-2 md:gap-3 flex-1">
                     <span className="text-xs md:text-sm font-bold tracking-widest uppercase text-white/70">Album</span>
                     <h1 className="text-2xl md:text-6xl font-black text-white leading-tight line-clamp-3 text-ellipsis overflow-hidden">{albumInfo.title}</h1>
-                    <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 text-white/80 font-medium text-sm md:text-base">
+                    <div className="flex items-center gap-2 text-white/80 font-medium text-sm md:text-base mt-1 md:mt-2">
                         <img src={albumInfo.cover} className="w-6 h-6 rounded-full" />
                         <span className="hover:underline cursor-pointer">{albumInfo.artist}</span>
-                        <span>•</span>
-                        <span>{albumInfo.year}</span>
-                        <span>•</span>
-                        <span>{tracks.length} songs, {formattedDuration}</span>
+                        <span className="text-white/40">•</span>
+                        <span className="text-white/60">{albumInfo.year}</span>
+                        <span className="text-white/40">•</span>
+                        <span className="text-white/60">{tracks.length} songs, {formattedDuration}</span>
                     </div>
                 </div>
             </div>
@@ -197,7 +197,7 @@ export default function Album() {
                             <span className="text-xs font-bold text-[#b3b3b3] uppercase tracking-wider hover:text-white cursor-pointer">Show discography</span>
                         </Link>
                     </div>
-                    <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                    <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {moreByArtist.map((track) => (
                             <div
                                 className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col"

@@ -32,12 +32,14 @@ async fn main() {
         .allow_methods(Any)
         .allow_headers(Any);
 
-    let app = Router::new()
+let app = Router::new()
         .route("/api/search", get(api::search_handler))
         .route("/api/stream/{id}", get(api::stream_handler))
         .route("/api/artist/info", get(api::artist_info_handler))
         .route("/api/browse", get(api::browse_handler))
         .route("/api/recommendations", get(api::recommendations_handler))
+        .route("/api/lyrics", get(api::lyrics_handler))
+        .route("/api/lyrics/zingmp3", get(api::zingmp3_lyrics_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(cors)
         .with_state(app_state);

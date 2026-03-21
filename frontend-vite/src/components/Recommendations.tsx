@@ -95,19 +95,19 @@ export default function Recommendations({
                 <h2 className="text-2xl font-bold hover:underline cursor-pointer">{title}</h2>
             </div>
 
-            {isLoading && (
-                <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
-                    {[1, 2, 3, 4, 5].map(i => (
-                        <div key={`skel-${i}`} className="bg-[#181818] p-3 md:p-4 rounded-xl space-y-3 md:space-y-4">
-                            <div className="w-full aspect-square bg-neutral-800 rounded-2xl animate-pulse" />
-                            <div className="h-4 bg-neutral-800 rounded w-3/4" />
-                            <div className="h-3 bg-neutral-800 rounded w-1/2" />
-                        </div>
-                    ))}
-                </div>
-            )}
+{isLoading && (
+<div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
+                     {[1, 2, 3, 4, 5].map(i => (
+                         <div key={`skel-${i}`} className="bg-[#181818] p-3 md:p-4 rounded-xl space-y-3 md:space-y-4">
+                             <div className="w-full aspect-square bg-neutral-800 rounded-2xl animate-pulse" />
+                             <div className="h-4 bg-neutral-800 rounded w-3/4" />
+                             <div className="h-3 bg-neutral-800 rounded w-1/2" />
+                         </div>
+                     ))}
+                 </div>
+             )}
             
-            <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                 {/* Tracks */}
                 {showTracks && data.tracks.slice(0, 8).map((track) => (
                     <div

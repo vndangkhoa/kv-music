@@ -1,12 +1,9 @@
-import { Home, Search, Library, Settings } from 'lucide-react';
+import { Home, Search, Library } from 'lucide-react';
 import { useLocation, Link } from 'react-router-dom';
-import { useState } from 'react';
-import SettingsModal from './SettingsModal';
 
 export default function BottomNav() {
     const location = useLocation();
     const path = location.pathname;
-    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
     const tabs = [
         { name: 'Home', icon: Home, path: '/' },
@@ -31,19 +28,7 @@ export default function BottomNav() {
                         </Link>
                     );
                 })}
-                <button
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="flex flex-col items-center justify-center w-full h-full transition-colors text-neutral-500 hover:text-neutral-300"
-                >
-                    <Settings className="w-6 h-6 mb-1" strokeWidth={2} />
-                    <span className="text-[10px] uppercase font-medium tracking-wide">Settings</span>
-                </button>
             </div>
-
-            <SettingsModal
-                isOpen={isSettingsOpen}
-                onClose={() => setIsSettingsOpen(false)}
-            />
         </div>
     );
 }

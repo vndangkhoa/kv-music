@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { libraryService } from '../services/library';
+import { useLyrics } from '../hooks/useLyrics';
 
 interface LyricsProps {
     trackTitle: string;
@@ -7,56 +7,25 @@ interface LyricsProps {
     currentTime: number;
     isOpen: boolean;
     onClose: () => void;
+    videoId?: string;
 }
 
-interface LyricLine {
-    time: number;
-    text: string;
-}
-
-export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, onClose }: LyricsProps) {
-    const [lyrics, setLyrics] = useState<string | null>(null);
-    const [syncedLines, setSyncedLines] = useState<LyricLine[]>([]);
-    const [loading, setLoading] = useState(false);
+export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, onClose, videoId }: LyricsProps) {
     const activeLineRef = useRef<HTMLParagraphElement>(null);
-
-    useEffect(() => {
-        if (isOpen && trackTitle) {
-            setLoading(true);
-            setLyrics(null);
-            setSyncedLines([]);
-
-            libraryService.getLyrics(trackTitle, artistName)
-                .then(data => {
-                    if (data) {
-                        if (data.syncedLyrics) {
-                            setSyncedLines(parseSyncedLyrics(data.syncedLyrics));
-                        } else {
-                            setLyrics(data.plainLyrics || "No lyrics available.");
-                        }
-                    } else {
-                        setLyrics("Lyrics not found.");
-                    }
-                    setLoading(false);
-                })
-                .catch(() => {
-                    setLyrics("Failed to load lyrics.");
-                    setLoading(false);
-                });
-        }
-    }, [trackTitle, artistName, isOpen]);
-
-    // Find active line
-    const activeIndex = syncedLines.findIndex((line, i) => {
-        const nextLine = syncedLines[i + 1];
-        return currentTime >= line.time && (!nextLine || currentTime < nextLine.time);
-    });
+    
+    // Use the optimized useLyrics hook
+    const { 
+        lyrics, 
+        syncedLines, 
+        loading, 
+        activeIndex 
+    } = useLyrics(trackTitle, artistName, currentTime, isOpen, videoId);
 
     useEffect(() => {
         if (activeLineRef.current) {
             activeLineRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }
-    }, [activeIndex]); // Only scroll when line changes!
+    }, [activeIndex]);
 
     return (
         <div className="fixed inset-0 bg-black/95 z-[80] flex flex-col animate-in slide-in-from-bottom">
@@ -82,8 +51,9 @@ export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, on
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-6 py-4 text-center no-scrollbar mask-gradient">
                 {loading ? (
-                    <div className="h-full flex items-center justify-center">
+                    <div className="h-full flex flex-col items-center justify-center gap-4">
                         <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-white"></div>
+                        <span className="text-neutral-400 text-sm">Searching for lyrics...</span>
                     </div>
                 ) : syncedLines.length > 0 ? (
                     <div className="space-y-6 py-[50vh]">
@@ -100,31 +70,50 @@ export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, on
                             </p>
                         ))}
                     </div>
+                ) : lyrics ? (
+                    <div className="h-full overflow-y-auto py-8 mask-gradient">
+                        <div className="whitespace-pre-wrap text-lg md:text-2xl leading-relaxed text-neutral-300 px-4 text-center">
+                            {lyrics.split('\n').map((line, i) => (
+                                <p key={i} className="mb-4 hover:text-white transition-colors">
+                                    {line || '\u00A0'}
+                                </p>
+                            ))}
+                        </div>
+                    </div>
                 ) : (
-                    <div className="h-full flex items-center justify-center whitespace-pre-wrap text-lg md:text-2xl leading-relaxed text-neutral-300">
-                        {lyrics}
+                    <div className="h-full flex flex-col items-center justify-center gap-4 px-8">
+                        <div className="w-16 h-16 rounded-full bg-neutral-800 flex items-center justify-center mb-4">
+                            <svg className="w-8 h-8 text-neutral-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+                            </svg>
+                        </div>
+                        <h3 className="text-xl font-bold text-white">Không tìm thấy lời bài hát</h3>
+                        <p className="text-neutral-400 text-center text-sm leading-relaxed">
+                            Lyrics for this song are not available.<br/>
+                            <span className="text-neutral-500">
+                                For Vietnamese songs, try searching on:{' '}
+                                <a 
+                                    href={`https://zingmp3.vn/tim-kiem?q=${encodeURIComponent(trackTitle || '')}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-[#1DB954] hover:underline"
+                                >
+                                    ZingMP3
+                                </a>
+                                {' '}or{' '}
+                                <a 
+                                    href={`https://www.nhaccuatui.com/tim-kiem?q=${encodeURIComponent(trackTitle || '')}`} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-[#1DB954] hover:underline"
+                                >
+                                    NhacCuaTui
+                                </a>
+                            </span>
+                        </p>
                     </div>
                 )}
             </div>
         </div>
     );
-}
-
-function parseSyncedLyrics(lrc: string): LyricLine[] {
-    const lines = lrc.split('\n');
-    const result: LyricLine[] = [];
-    const regex = /\[(\d{2}):(\d{2})\.(\d{2,3})\](.*)/;
-
-    for (const line of lines) {
-        const match = line.match(regex);
-        if (match) {
-            const min = parseInt(match[1]);
-            const sec = parseInt(match[2]);
-            const ms = parseInt(match[3].length === 2 ? match[3] + '0' : match[3]); // Normalize ms
-            const time = min * 60 + sec + ms / 1000;
-            const text = match[4].trim();
-            if (text) result.push({ time, text });
-        }
-    }
-    return result;
 }

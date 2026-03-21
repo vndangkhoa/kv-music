@@ -199,12 +199,12 @@ export default function Playlist() {
             )}
 
             {/* Hero Header */}
-            <div className="relative z-10 flex flex-col md:flex-row gap-4 md:gap-8 p-4 md:p-12 items-center md:items-end pt-16 md:pt-16">
+            <div className="relative z-10 flex flex-col md:flex-row p-4 md:p-12 items-center md:items-end pt-16 md:pt-16 gap-6 md:gap-8">
                 <Link to="/library" className="absolute top-4 left-4 md:hidden">
                     <ArrowLeft className="w-6 h-6" />
                 </Link>
                 <div
-                    className="w-48 h-48 md:w-64 md:h-64 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden shrink-0 mt-8 md:mt-0 cursor-pointer group/cover relative"
+                    className="w-48 h-48 md:w-64 md:h-64 shadow-[0_20px_50px_rgba(0,0,0,0.5)] rounded-2xl overflow-hidden shrink-0 cursor-pointer group/cover relative"
                     onClick={() => {
                         if (playlist && playlist.tracks.length > 0) {
                             playTrack(playlist.tracks[0], playlist.tracks);
@@ -222,21 +222,21 @@ export default function Playlist() {
                         <Play fill="white" size={48} className="text-white drop-shadow-2xl" />
                     </div>
                 </div>
-                <div className="flex flex-col items-center md:items-start text-center md:text-left gap-2 md:gap-4 flex-1">
+                <div className="flex flex-col items-center md:items-start text-center md:text-left gap-2 md:gap-3 flex-1">
                     <span className="text-xs md:text-sm font-bold tracking-widest uppercase text-white/70">Playlist</span>
                     <h1 className="text-2xl md:text-6xl font-black text-white leading-tight line-clamp-2">{playlist.title}</h1>
-                    <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 text-white/80 font-medium text-sm md:text-base">
+                    <div className="flex flex-wrap justify-center md:justify-start items-center gap-2 text-white/80 font-medium text-sm md:text-base mt-1 md:mt-2">
                         {'description' in playlist && playlist.description && (
                             <span className="text-neutral-300">{playlist.description}</span>
                         )}
-                        <span>•</span>
-                        <span className="text-white">
+                        <span className="text-white/40">•</span>
+                        <span className="text-white/80">
                             {loadingTracks ? 'Updating...' : `${playlist.tracks.length} songs`}
                         </span>
                         {totalDuration > 0 && (
                             <>
-                                <span>•</span>
-                                <span>{Math.floor(totalDuration / 60)} min</span>
+                                <span className="text-white/40">•</span>
+                                <span className="text-white/60">{Math.floor(totalDuration / 60)} min</span>
                             </>
                         )}
                     </div>
@@ -374,7 +374,7 @@ export default function Playlist() {
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-2xl font-bold hover:underline cursor-pointer">More like this</h2>
                     </div>
-                    <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                    <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {moreLikeThis.map((track) => (
                             <div
                                 className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col"

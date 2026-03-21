@@ -150,7 +150,7 @@ export default function Search() {
             {loading && results.length === 0 ? (
                 <div className="space-y-8 animate-pulse">
                     <Skeleton className="h-8 w-48 mb-4" />
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {[1, 2, 3, 4].map(i => <Skeleton key={i} className="aspect-square rounded-xl" />)}
                     </div>
                 </div>

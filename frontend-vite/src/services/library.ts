@@ -236,10 +236,10 @@ export const libraryService = {
     },
 
     async getArtistInfo(artistName: string): Promise<{ bio?: string; photo?: string }> {
-        // Method 1: Try backend API for real YouTube channel photo
+        // Method 1: Try backend API for real YouTube channel photo (with short timeout)
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 2000); // Reduced to 2 second timeout
             
             const res = await fetch(`/api/artist/info?q=${encodeURIComponent(artistName)}`, {
                 signal: controller.signal
@@ -248,29 +248,227 @@ export const libraryService = {
             
             if (res.ok) {
                 const data = await res.json();
-                console.log(`[ArtistInfo] ${artistName}:`, data);
-                if (data.image) {
+                if (data.image && data.image !== '') {
+                    console.log(`[ArtistInfo] Found real image for ${artistName}`);
                     return { photo: data.image };
                 }
             }
         } catch (e) {
-            console.error(`[ArtistInfo] Error for ${artistName}:`, e);
-            // Fall through to next method
+            // Silently fall through to fallback - this is expected behavior
+            // console.log(`[ArtistInfo] Using fallback for ${artistName}`);
         }
 
         // Method 2: Use UI-Avatars API (instant, always works)
-        // Using smaller size (128) for faster loading
+        // This is the primary fallback since the backend is often slow
         const encodedName = encodeURIComponent(artistName);
         const avatarUrl = `https://ui-avatars.com/api/?name=${encodedName}&background=random&color=fff&size=128&rounded=true&bold=true&font-size=0.33`;
         return { photo: avatarUrl };
     },
 
-    async getLyrics(track: string, artist: string): Promise<{ plainLyrics?: string; syncedLyrics?: string; } | null> {
+async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plainLyrics?: string; syncedLyrics?: string; } | null> {
         try {
-            const res = await apiFetch(`/lyrics?track=${encodeURIComponent(track)}&artist=${encodeURIComponent(artist)}`);
-            if (res && (res.plainLyrics || res.syncedLyrics)) {
-                return res;
+            // More aggressive track name cleaning for better search results
+            const cleanTrack = track
+                .replace(/\(.*?\)/g, '') // Remove parentheses content
+                .replace(/\[.*?\]/g, '') // Remove brackets content
+                .replace(/ feat\..*/gi, '') // Remove "feat." and everything after
+                .replace(/ ft\..*/gi, '') // Remove "ft." and everything after
+                .replace(/ - lyrics video/gi, '') // Remove "lyrics video" suffix
+                .replace(/ - official video/gi, '') // Remove "official video" suffix
+                .replace(/ - official audio/gi, '') // Remove "official audio" suffix
+                .replace(/ - mv/gi, '') // Remove "mv" suffix
+                .replace(/ - audio/gi, '') // Remove "audio" suffix
+                .replace(/ - video/gi, '') // Remove "video" suffix
+                .replace(/ - lyric/gi, '') // Remove "lyric" suffix
+                .replace(/ - live/gi, '') // Remove "live" suffix
+                .replace(/ - acoustic/gi, '') // Remove "acoustic" suffix
+                .replace(/ - cover/gi, '') // Remove "cover" suffix
+                .replace(/ - remix/gi, '') // Remove "remix" suffix
+                .replace(/ - ver\./gi, '') // Remove "ver." suffix
+                .replace(/ - version/gi, '') // Remove "version" suffix
+                .replace(/\s+/g, ' ') // Normalize whitespace
+                .trim();
+            
+            const cleanArtist = artist
+                .replace(/ \(.*?\)/g, '') // Remove parentheses content
+                .replace(/ \[.*?\]/g, '') // Remove brackets content
+                .replace(/ - official/gi, '') // Remove "official" suffix
+                .replace(/ - topic/gi, '') // Remove "topic" suffix
+                .replace(/\s+/g, ' ') // Normalize whitespace
+                .trim();
+
+            console.log(`Searching lyrics for: "${cleanTrack}" by "${cleanArtist}"`);
+
+            // Helper function to try fetching lyrics from a URL
+            const tryFetch = async (url: string, parser: (data: any) => { plainLyrics?: string; syncedLyrics?: string } | null): Promise<{ plainLyrics?: string; syncedLyrics?: string } | null> => {
+                try {
+                    const controller = new AbortController();
+                    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+                    
+                    const response = await fetch(url, { 
+                        signal: controller.signal,
+                        headers: { 'Accept': 'application/json' }
+                    });
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        return parser(data);
+                    }
+                } catch (e) {
+                    console.log(`API error for ${url}:`, e);
+                }
+                return null;
+            };
+
+            // Try lyrics.ovh (best for English songs)
+            const lyricsOvhResult = await tryFetch(
+                `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTrack)}`,
+                (data) => data.lyrics ? { plainLyrics: data.lyrics } : null
+            );
+            if (lyricsOvhResult) {
+                console.log('Found lyrics from lyrics.ovh');
+                return lyricsOvhResult;
             }
+
+            // Try LRCLIB (good for synced lyrics)
+            const lrclibResult = await tryFetch(
+                `https://lrclib.net/api/search?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTrack)}`,
+                (data) => {
+                    if (Array.isArray(data) && data.length > 0) {
+                        const first = data[0];
+                        return {
+                            plainLyrics: first.plainLyrics || undefined,
+                            syncedLyrics: first.syncedLyrics || undefined
+                        };
+                    }
+                    return null;
+                }
+            );
+            if (lrclibResult) {
+                console.log('Found lyrics from LRCLIB');
+                return lrclibResult;
+            }
+
+            // Helper function to check if text is likely Vietnamese
+            const isVietnameseText = (text: string): boolean => {
+                // Vietnamese characters: àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ
+                const vietnamesePattern = /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
+                return vietnamesePattern.test(text);
+            };
+
+            // If we have a video ID, try SimpMusic with video ID
+            if (videoId) {
+                console.log('Trying SimpMusic with video ID:', videoId);
+                const simpmusicVideoResult = await tryFetch(
+                    `https://api-lyrics.simpmusic.org/v1/${videoId}`,
+                    (data) => {
+                        console.log('SimpMusic FULL response:', data);
+                        
+                        // Handle SimpMusic API response format: { type: 'success', data: Array(1), success: true }
+                        if (data && data.type === 'success' && Array.isArray(data.data) && data.data.length > 0) {
+                            const lyricsData = data.data[0];
+                            console.log('SimpMusic first item:', lyricsData);
+                            
+                            const lyrics = lyricsData.lyrics || lyricsData.syncedLyrics;
+                            
+                            if (lyrics) {
+                                // Check if lyrics are in Vietnamese
+                                if (isVietnameseText(lyrics)) {
+                                    console.log('SimpMusic Vietnamese lyrics found:', lyrics.substring(0, 100));
+                                    return {
+                                        plainLyrics: lyricsData.lyrics || undefined,
+                                        syncedLyrics: lyricsData.syncedLyrics || undefined
+                                    };
+                                } else {
+                                    console.log('SimpMusic lyrics are not Vietnamese, skipping');
+                                    return null;
+                                }
+                            } else {
+                                console.log('SimpMusic data item has no lyrics property');
+                                return null;
+                            }
+                        } else if (data && data.type === 'error') {
+                            console.log('SimpMusic error:', data.error?.reason || 'Unknown error');
+                            return null;
+                        }
+                        console.log('SimpMusic: Unexpected response format');
+                        return null;
+                    }
+                );
+                if (simpmusicVideoResult) {
+                    console.log('Found Vietnamese lyrics from SimpMusic (video ID)');
+                    return simpmusicVideoResult;
+                } else {
+                    console.log('SimpMusic video ID search returned null');
+                }
+            }
+
+            // Try with simplified names (remove special characters)
+            const simpleTrack = cleanTrack.replace(/[^\w\s]/g, '').trim();
+            const simpleArtist = cleanArtist.replace(/[^\w\s]/g, '').trim();
+            
+            if (simpleTrack !== cleanTrack || simpleArtist !== cleanArtist) {
+                console.log(`Trying simplified search: "${simpleTrack}" by "${simpleArtist}"`);
+                
+                const simpleResult = await tryFetch(
+                    `https://api.lyrics.ovh/v1/${encodeURIComponent(simpleArtist)}/${encodeURIComponent(simpleTrack)}`,
+                    (data) => data.lyrics ? { plainLyrics: data.lyrics } : null
+                );
+                if (simpleResult) {
+                    console.log('Found lyrics with simplified search');
+                    return simpleResult;
+                }
+            }
+
+            // Last resort: Try SimpMusic search by title
+            console.log('Trying SimpMusic search by title...');
+            const simpmusicSearchResult = await tryFetch(
+                `https://api-lyrics.simpmusic.org/v1/search/title?title=${encodeURIComponent(cleanTrack)}`,
+                (data) => {
+                    console.log('SimpMusic search response:', data);
+                    if (data && data.type === 'success' && Array.isArray(data.data) && data.data.length > 0) {
+                        const first = data.data[0];
+                        const lyrics = first.lyrics || first.syncedLyrics;
+                        
+                        if (lyrics) {
+                            // Check if lyrics are in Vietnamese
+                            if (isVietnameseText(lyrics)) {
+                                console.log('SimpMusic search found Vietnamese lyrics:', lyrics.substring(0, 100));
+                                return {
+                                    plainLyrics: first.lyrics || undefined,
+                                    syncedLyrics: first.syncedLyrics || undefined
+                                };
+                            } else {
+                                console.log('SimpMusic search lyrics are not Vietnamese, skipping');
+                                return null;
+                            }
+                        }
+                    }
+                    return null;
+                }
+            );
+            if (simpmusicSearchResult) {
+                console.log('Found lyrics from SimpMusic search');
+                return simpmusicSearchResult;
+            }
+
+            // Try ZingMP3 API for Vietnamese lyrics (via proxy)
+            console.log('Trying ZingMP3 API for Vietnamese lyrics...');
+            try {
+                const zingmp3Response = await fetch(`/api/lyrics/zingmp3?artist=${encodeURIComponent(cleanArtist)}&track=${encodeURIComponent(cleanTrack)}`);
+                if (zingmp3Response.ok) {
+                    const zingmp3Data = await zingmp3Response.json();
+                    if (zingmp3Data && zingmp3Data.lyrics) {
+                        console.log('Found lyrics from ZingMP3');
+                        return { plainLyrics: zingmp3Data.lyrics };
+                    }
+                }
+            } catch (e) {
+                console.log('ZingMP3 API error:', e);
+            }
+
+            console.log('No lyrics found from any API');
             return null;
         } catch (e) {
             console.error("Failed to fetch lyrics", e);

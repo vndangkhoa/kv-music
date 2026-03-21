@@ -38,18 +38,18 @@ export default function Section() {
             </div>
 
             {/* Grid */}
-            {loading ? (
-                <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                        <div key={i} className="space-y-3">
-                            <Skeleton className="w-full aspect-square rounded-md" />
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-3 w-1/2" />
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
+{loading ? (
+                 <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
+                     {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                         <div key={i} className="space-y-3">
+                             <Skeleton className="w-full aspect-square rounded-md" />
+                             <Skeleton className="h-4 w-3/4" />
+                             <Skeleton className="h-3 w-1/2" />
+                         </div>
+                     ))}
+                 </div>
+             ) : (
+                <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                     {playlists.map((playlist) => (
                         <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
                             <div className="bg-[#181818] p-2 md:p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer h-full flex flex-col">

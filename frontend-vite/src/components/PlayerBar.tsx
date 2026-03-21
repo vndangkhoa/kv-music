@@ -5,6 +5,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import TechSpecs from './TechSpecs';
 import AddToPlaylistModal from "./AddToPlaylistModal";
 import Lyrics from './Lyrics';
+import VideoPlayer from './VideoPlayer';
 import QueueModal from './QueueModal';
 import Recommendations from './Recommendations';
 import { useDominantColor } from '../hooks/useDominantColor';
@@ -29,7 +30,8 @@ export default function PlayerBar() {
         currentTrack?.title || '',
         currentTrack?.artist || '',
         progress,
-        isLyricsOpen || hasInteractedWithLyrics // Only fetch if opened or previously interacted
+        isLyricsOpen || hasInteractedWithLyrics, // Only fetch if opened or previously interacted
+        currentTrack?.id || undefined // Pass video ID for better lyrics search
     );
 
     // Swipe Logic
@@ -108,47 +110,26 @@ export default function PlayerBar() {
     // Handle audio/video mode switching
     const handleModeSwitch = (mode: 'audio' | 'video') => {
         if (mode === 'video') {
-            // Pause audio ref but DON'T toggle isPlaying state to false
-            // The iframe useEffect will pick up isPlaying=true and start the video
             audioRef.current?.pause();
             setIsVideoReady(false);
-            
-            // If currently playing, start video playback after iframe loads
-            if (isPlaying && iframeRef.current && iframeRef.current.contentWindow) {
-                setTimeout(() => {
-                    if (iframeRef.current?.contentWindow) {
-                        iframeRef.current.contentWindow.postMessage(JSON.stringify({
-                            event: 'command',
-                            func: 'playVideo'
-                        }), '*');
-                    }
-                }, 1000);
-            }
+            // Video will autoplay via URL parameter
         } else {
-            // Switching back to audio
-            if (isPlaying) {
-                audioRef.current?.play().catch(() => { });
+            // Switching back to audio - sync audio time with video progress
+            if (audioRef.current) {
+                audioRef.current.currentTime = progress;
+                if (isPlaying) {
+                    audioRef.current.play().catch(() => { });
+                }
             }
         }
         setPlayerMode(mode);
     };
 
-    // Handle play/pause for video mode - send command to YouTube iframe only
+    // Handle play/pause for video mode - controlled by Artplayer via isPlaying prop
     const handleVideoPlayPause = () => {
-        if (playerMode !== 'video' || !iframeRef.current || !iframeRef.current.contentWindow) return;
+        if (playerMode !== 'video') return;
         
-        // Send play/pause command directly to YouTube
-        const action = isPlaying ? 'pauseVideo' : 'playVideo';
-        try {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({
-                event: 'command',
-                func: action
-            }), '*');
-        } catch (e) {
-            // Ignore cross-origin errors
-        }
-        
-        // Toggle local state for UI sync only (audio won't play since it's paused)
+        // Toggle play state - Artplayer will respond via the isPlaying prop
         togglePlay();
     };
 
@@ -510,64 +491,99 @@ export default function PlayerBar() {
                     onTouchStart={resetIdleTimer}
                 >
                     {playerMode === 'video' ? (
-                        /* CINEMATIC VIDEO MODE: Full Background Video */
-                        <div className="absolute inset-0 z-0 bg-black">
-                            <div className="w-full h-full transform scale-[1.01]"> {/* Slight scale to hide any possible edges */}
-                                {!isVideoReady && (
-                                    <div className="absolute inset-0 flex items-center justify-center">
-                                        <div className="w-12 h-12 border-4 border-white/30 border-t-white rounded-full animate-spin" />
-                                    </div>
-                                )}
-                                <iframe
-                                    key={`${currentTrack.id}-${playerMode}`}
-                                    ref={iframeRef}
-                                    width="100%"
-                                    height="100%"
-                                    src={`https://www.youtube.com/embed/${currentTrack.id}?autoplay=1&playsinline=1&modestbranding=1&rel=0&controls=1&enablejsapi=1&fs=1&vq=hd1080`}
-                                    title="YouTube video player"
-                                    frameBorder="0"
-                                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                                    allowFullScreen
-                                    className={`pointer-events-auto transition-opacity duration-500 ${isVideoReady ? 'opacity-100' : 'opacity-0'}`}
-                                    onLoad={() => setIsVideoReady(true)}
-                                ></iframe>
+                        /* CENTERED VIDEO MODE: Video Player centered like album art */
+                        <div className="h-full flex flex-col items-center justify-center p-8 md:p-12 pb-48 md:pb-40 animate-in zoom-in-95 duration-500">
+                            <div className="relative w-full max-w-[480px] md:max-w-[640px] mb-6 md:mb-8">
+                                {/* Video Container with 16:9 aspect ratio */}
+                                <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.5)] bg-black relative">
+                                    <VideoPlayer
+                                        videoId={currentTrack.id}
+                                        isPlaying={isPlaying}
+                                        onTimeUpdate={(time) => {
+                                            // Sync video time with player progress
+                                            if (Math.abs(time - progress) > 2) {
+                                                setProgress(time);
+                                            }
+                                        }}
+                                        onPlay={() => {
+                                            setIsVideoReady(true);
+                                            // Only toggle play if we're not already playing to avoid infinite loop
+                                            if (!isPlaying) {
+                                                togglePlay();
+                                            }
+                                        }}
+                                        onPause={() => {
+                                            // Only toggle pause if we're already playing to avoid infinite loop
+                                            if (isPlaying) {
+                                                togglePlay();
+                                            }
+                                        }}
+                                        onEnded={() => {
+                                            nextTrack();
+                                        }}
+                                        className="w-full h-full"
+                                    />
+                                </div>
+                                {/* Subtle gradient overlay for depth */}
+                                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
                             </div>
-                            {/* Overlay Gradient for cinematic feel */}
-                            <div className={`absolute inset-0 bg-gradient-to-t from-black via-transparent to-black/40 pointer-events-none transition-opacity duration-1000 ${isIdle ? 'opacity-20' : 'opacity-60'}`} />
+                            
+                            {/* Song Info Below Video */}
+                            <div className="text-center max-w-full px-4">
+                                <h2 className="font-black text-white text-2xl md:text-3xl mb-1 md:mb-2 drop-shadow-lg tracking-tight line-clamp-2">{currentTrack.title}</h2>
+                                <p
+                                    onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
+                                    className="text-white/80 font-medium text-base md:text-lg cursor-pointer hover:text-white hover:underline transition drop-shadow-md line-clamp-1"
+                                >
+                                    {currentTrack.artist}
+                                </p>
+                            </div>
                         </div>
                     ) : (
                         /* SONG MODE: Centered Case */
-                        <div className="h-full flex items-center justify-center p-8 md:p-12 animate-in zoom-in-95 duration-500">
-                            <img
-                                src={currentTrack.cover_url}
-                                alt={currentTrack.title}
-                                className="w-full aspect-square object-cover rounded-[2rem] shadow-[0_30px_60px_rgba(0,0,0,0.5)] max-h-[50vh] md:max-h-[60vh] transition-transform duration-700 group-hover:scale-[1.02]"
-                            />
+                        <div className="h-full flex flex-col items-center justify-center p-8 md:p-12 pb-48 md:pb-40 animate-in zoom-in-95 duration-500">
+                            <div 
+                                className="relative w-full max-w-[280px] md:max-w-[360px] mb-6 md:mb-8 cursor-pointer"
+                                onClick={() => setIsInfoOpen(true)}
+                            >
+                                <img
+                                    src={currentTrack.cover_url}
+                                    alt={currentTrack.title}
+                                    className="w-full aspect-square object-cover rounded-2xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] transition-transform duration-700 hover:scale-[1.03]"
+                                />
+                                {/* Subtle gradient overlay for depth */}
+                                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
+                            </div>
+                            
+                            {/* Song Info Below Cover */}
+                            <div className="text-center max-w-full px-4">
+                                <h2 className="font-black text-white text-2xl md:text-3xl mb-1 md:mb-2 drop-shadow-lg tracking-tight line-clamp-2">{currentTrack.title}</h2>
+                                <p
+                                    onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
+                                    className="text-white/80 font-medium text-base md:text-lg cursor-pointer hover:text-white hover:underline transition drop-shadow-md line-clamp-1"
+                                >
+                                    {currentTrack.artist}
+                                </p>
+                            </div>
                         </div>
                     )}
 
                     {/* Controls Overlay (Bottom) */}
                     <div className={`absolute bottom-0 left-0 right-0 z-20 px-8 pb-12 transition-all duration-700 ${playerMode === 'video' ? 'bg-gradient-to-t from-black via-black/40 to-transparent' : ''} ${isIdle && playerMode === 'video' ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
                         <div className="max-w-screen-xl mx-auto flex flex-col md:flex-row md:items-end gap-8">
-                            {/* Metadata */}
-                            <div className="flex-1">
-                                <h2 className={`font-black text-white mb-2 drop-shadow-lg tracking-tight transition-all duration-500 ${playerMode === 'video' ? 'text-xl md:text-3xl' : 'text-3xl md:text-5xl'}`}>{currentTrack.title}</h2>
-                                <p
-                                    onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
-                                    className={`text-white/70 font-medium cursor-pointer hover:text-white hover:underline transition drop-shadow-md ${playerMode === 'video' ? 'text-base md:text-xl' : 'text-lg md:text-2xl'}`}
-                                >
-                                    {currentTrack.artist}
-                                </p>
-                            </div>
-
-                            {/* Secondary Actions */}
-                            <div className="flex items-center gap-4 text-white">
-                                <button onClick={() => toggleLike(currentTrack)} className={`p-3 rounded-full hover:bg-white/10 transition ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-white/60'}`}>
-                                    <Heart size={32} fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
-                                </button>
-                                <button onClick={() => setIsInfoOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition text-white/60 hover:text-white">
-                                    <Info size={28} />
-                                </button>
+                            {/* Secondary Actions Only (Metadata moved below cover in song mode) */}
+                            <div className="flex-1 flex justify-center">
+                                <div className="flex items-center gap-6 text-white">
+                                    <button onClick={() => toggleLike(currentTrack)} className={`p-3 rounded-full hover:bg-white/10 transition ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-white/60'}`}>
+                                        <Heart size={32} fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
+                                    </button>
+                                    <button onClick={() => toggleLyrics()} className={`p-3 rounded-full hover:bg-white/10 transition ${isLyricsOpen ? 'text-green-500' : 'text-white/60 hover:text-white'}`}>
+                                        <Mic2 size={28} />
+                                    </button>
+                                    <button onClick={() => setIsInfoOpen(true)} className="p-3 rounded-full hover:bg-white/10 transition text-white/60 hover:text-white">
+                                        <Info size={28} />
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -679,6 +695,7 @@ export default function PlayerBar() {
                     currentTime={progress}
                     isOpen={isLyricsOpen}
                     onClose={closeLyrics}
+                    videoId={currentTrack.id}
                 />
             )}
         </>

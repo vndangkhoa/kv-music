@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { libraryService } from '../services/library';
 
 export interface LyricLine {
@@ -6,33 +6,104 @@ export interface LyricLine {
     text: string;
 }
 
-export function useLyrics(trackTitle: string, artistName: string, currentTime: number, enabled: boolean = true) {
+// Cache for lyrics to avoid repeated API calls
+const lyricsCache = new Map<string, { plainLyrics?: string; syncedLyrics?: string }>();
+
+export function useLyrics(trackTitle: string, artistName: string, currentTime: number, enabled: boolean = true, videoId?: string) {
     const [lyrics, setLyrics] = useState<string | null>(null);
     const [syncedLines, setSyncedLines] = useState<LyricLine[]>([]);
     const [loading, setLoading] = useState(false);
+    const lastFetchTime = useRef<number>(0);
+    const currentTrackRef = useRef<string>('');
 
     useEffect(() => {
-        if (trackTitle && artistName && enabled) {
-            setLoading(true);
-            setLyrics(null);
-            setSyncedLines([]);
+        // Only fetch if we have track info and it's enabled
+        if (!trackTitle || !artistName || !enabled) {
+            return;
+        }
 
-            libraryService.getLyrics(trackTitle, artistName)
+        const trackKey = `${artistName}:${trackTitle}:${videoId || ''}`.toLowerCase();
+        
+        // Check cache first
+        const cached = lyricsCache.get(trackKey);
+        if (cached) {
+            if (cached.syncedLyrics) {
+                setSyncedLines(parseSyncedLyrics(cached.syncedLyrics));
+                setLyrics(null);
+            } else if (cached.plainLyrics) {
+                setLyrics(cached.plainLyrics);
+                setSyncedLines([]);
+            } else {
+                setLyrics(null);
+                setSyncedLines([]);
+            }
+            setLoading(false);
+            return;
+        }
+
+        // Avoid rapid successive calls
+        const now = Date.now();
+        if (now - lastFetchTime.current < 500 && currentTrackRef.current === trackKey) {
+            return;
+        }
+
+        lastFetchTime.current = now;
+        currentTrackRef.current = trackKey;
+        setLoading(true);
+        setLyrics(null);
+        setSyncedLines([]);
+
+        // Add timeout to prevent hanging requests
+        const timeoutId = setTimeout(() => {
+            setLoading(false);
+        }, 5000);
+
+libraryService.getLyrics(trackTitle, artistName, videoId)
                 .then(data => {
+                    clearTimeout(timeoutId);
+                    
                     if (data) {
+                        // Cache the result
+                        lyricsCache.set(trackKey, data);
+                        
                         if (data.syncedLyrics) {
                             setSyncedLines(parseSyncedLyrics(data.syncedLyrics));
+                            setLyrics(null);
+                        } else if (data.plainLyrics) {
+                            setLyrics(data.plainLyrics);
+                            setSyncedLines([]);
                         } else {
-                            setLyrics(data.plainLyrics || "No lyrics available.");
+                            setLyrics(null);
+                            setSyncedLines([]);
                         }
                     } else {
+                        // Cache empty result to avoid repeated failed requests
+                        lyricsCache.set(trackKey, {});
                         setLyrics(null);
+                        setSyncedLines([]);
                     }
                     setLoading(false);
                 })
                 .catch(() => {
+                    clearTimeout(timeoutId);
                     setLoading(false);
                 });
+
+        // Cleanup timeout on unmount
+        return () => clearTimeout(timeoutId);
+    }, [trackTitle, artistName, enabled]);
+
+    // Clear cache when track changes to prevent stale data
+    useEffect(() => {
+        const trackKey = `${artistName}:${trackTitle}`.toLowerCase();
+        if (!lyricsCache.has(trackKey)) {
+            // Clear old cache entries if cache gets too large
+            if (lyricsCache.size > 50) {
+                const firstKey = lyricsCache.keys().next().value;
+                if (firstKey) {
+                    lyricsCache.delete(firstKey);
+                }
+            }
         }
     }, [trackTitle, artistName]);
 

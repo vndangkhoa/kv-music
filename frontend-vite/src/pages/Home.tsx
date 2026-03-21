@@ -171,7 +171,7 @@ export default function Home() {
             {loading ? (
                 <div className="mb-8">
                     <Skeleton className="h-8 w-48 mb-4" />
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4">
+                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {[1, 2, 3, 4, 5].map(j => (
                             <div key={j} className="space-y-3">
                                 <Skeleton className="w-full aspect-square rounded-md" />
@@ -192,7 +192,7 @@ export default function Home() {
                     <div className="flex items-center justify-between mb-4">
                         <h2 className="text-2xl font-bold capitalize hover:underline cursor-pointer">Top Albums</h2>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2">
+<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-2">
                         {uniqueAlbums.slice(0, 15).map((album) => (
                             <Link to={`/album/${album.id}`} key={album.id}>
                                 <div className="bg-transparent md:bg-spotify-card p-0 md:p-3 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
@@ -232,15 +232,15 @@ export default function Home() {
                     {[1, 2].map(i => (
                         <div key={i}>
                             <Skeleton className="h-8 w-48 mb-4" />
-                            <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4">
-                                {[1, 2, 3, 4, 5].map(j => (
-                                    <div key={j} className="space-y-3">
-                                        <Skeleton className="w-full aspect-square rounded-md" />
-                                        <Skeleton className="h-4 w-3/4" />
-                                        <Skeleton className="h-3 w-1/2" />
-                                    </div>
-                                ))}
-                            </div>
+<div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
+                                 {[1, 2, 3, 4, 5].map(j => (
+                                     <div key={j} className="space-y-3">
+                                         <Skeleton className="w-full aspect-square rounded-md" />
+                                         <Skeleton className="h-4 w-3/4" />
+                                         <Skeleton className="h-3 w-1/2" />
+                                     </div>
+                                 ))}
+                             </div>
                         </div>
                     ))}
                 </div>
@@ -263,8 +263,8 @@ export default function Home() {
                                 </Link>
                             </div>
 
-                            {/* USER REQUEST: Bigger Grid, Smaller Text, Smaller Gap */}
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2">
+{/* USER REQUEST: Bigger Grid, Smaller Text, Smaller Gap */}
+ <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-2">
                                 {sortPlaylists(uniquePlaylists).slice(0, 15).map((playlist) => (
                                     <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
                                         <div className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
@@ -313,11 +313,11 @@ function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Trac
     if (playHistory.length === 0) return null;
 
     return (
-        <div className="mb-8 animate-in">
-            <div className="flex items-center gap-2 mb-4">
-                <Clock className="w-5 h-5 text-[#1DB954]" />
-                <h2 className="text-2xl font-bold">Recently Listened</h2>
-            </div>
+<div className="mb-8 animate-in">
+             <div className="flex items-center mb-4">
+                 <Clock className="w-5 h-5 text-[#1DB954]" />
+                 <h2 className="text-2xl font-bold">Recently Listened</h2>
+             </div>
 
             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
                 {playHistory.slice(0, 10).map((track, i) => (
@@ -378,50 +378,50 @@ function MadeForYouSection() {
     if (!loading && recommendations.length === 0) return null;
 
     return (
-        <div className="mb-8 animate-in">
-            <div className="flex items-center gap-2 mb-2">
-                <Music2 className="w-5 h-5 text-[#1DB954]" />
-                <h2 className="text-2xl font-bold">Made For You</h2>
-            </div>
+<div className="mb-8 animate-in">
+             <div className="flex items-center mb-2">
+                 <Music2 className="w-5 h-5 text-[#1DB954]" />
+                 <h2 className="text-2xl font-bold">Made For You</h2>
+             </div>
             <p className="text-sm text-[#a7a7a7] mb-4">
                 {seedTrack ? <>Because you listened to <span className="text-white font-medium">{seedTrack.artist}</span></> : "Recommended for you"}
             </p>
 
-            {loading ? (
-                <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-6">
-                    {[1, 2, 3, 4, 5].map(i => (
-                        <div key={i} className="space-y-3">
-                            <Skeleton className="w-full aspect-square rounded-md" />
-                            <Skeleton className="h-4 w-3/4" />
-                            <Skeleton className="h-3 w-1/2" />
-                        </div>
-                    ))}
-                </div>
-            ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-1 md:gap-2">
-                    {recommendations.slice(0, 10).map((track, i) => (
-                        <div key={i} onClick={() => {
-                            playTrack(track, recommendations);
-                        }} className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
-                            <div className="relative mb-2 md:mb-4">
-                                <CoverImage
-                                    src={track.cover_url}
-                                    alt={track.title}
-                                    className="w-full aspect-square rounded-2xl shadow-lg"
-                                    fallbackText={track.title?.substring(0, 2).toUpperCase()}
-                                />
-                                <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                                    <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                        <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
-                                    </div>
-                                </div>
-                            </div>
-                            <h3 className="font-bold mb-0.5 truncate text-[11px] md:text-base">{track.title}</h3>
-                            <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{track.artist}</p>
-                        </div>
-                    ))}
-                </div>
-            )}
+{loading ? (
+                 <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
+                     {[1, 2, 3, 4, 5].map(i => (
+                         <div key={i} className="space-y-3">
+                             <Skeleton className="w-full aspect-square rounded-md" />
+                             <Skeleton className="h-4 w-3/4" />
+                             <Skeleton className="h-3 w-1/2" />
+                         </div>
+                     ))}
+                 </div>
+             ) : (
+<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-2">
+                     {recommendations.slice(0, 10).map((track, i) => (
+                         <div key={i} onClick={() => {
+                             playTrack(track, recommendations);
+                         }} className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
+                             <div className="relative mb-2 md:mb-4">
+                                 <CoverImage
+                                     src={track.cover_url}
+                                     alt={track.title}
+                                     className="w-full aspect-square rounded-2xl shadow-lg"
+                                     fallbackText={track.title?.substring(0, 2).toUpperCase()}
+                                 />
+                                 <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
+                                     <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
+                                         <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                     </div>
+                                 </div>
+                             </div>
+                             <h3 className="font-bold mb-0.5 truncate text-[11px] md:text-base">{track.title}</h3>
+                             <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{track.artist}</p>
+                         </div>
+                     ))}
+                 </div>
+             )}
         </div>
     );
 }

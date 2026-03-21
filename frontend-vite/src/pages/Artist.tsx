@@ -183,14 +183,14 @@ export default function Artist() {
                     </div>
                 </section>
 
-                {/* Albums (Mock UI for now as strict album search is hard with yt-dlp only) */}
-                <section>
-                    <div className="flex items-center justify-between mb-6">
-                        <h2 className="text-2xl font-bold">Albums</h2>
-                        <button className="text-sm font-bold text-neutral-400 hover:text-white uppercase tracking-wider">See All</button>
-                    </div>
-                    {/* Placeholder Logic: Show top song covers as "Albums" for visual parity if no real albums */}
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
+                 {/* Albums (Mock UI for now as strict album search is hard with yt-dlp only) */}
+                 <section>
+                     <div className="flex items-center justify-between mb-6">
+                         <h2 className="text-2xl font-bold">Albums</h2>
+                         <button className="text-sm font-bold text-neutral-400 hover:text-white uppercase tracking-wider">See All</button>
+                     </div>
+                     {/* Placeholder Logic: Show top song covers as "Albums" for visual parity if no real albums */}
+                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {artist.topSongs.slice(0, 5).map((track) => (
                             <div
                                 key={track.id}
@@ -217,10 +217,10 @@ export default function Artist() {
                     </div>
                 </section>
 
-                {/* Singles */}
-                <section>
-                    <h2 className="text-2xl font-bold mb-6">Singles</h2>
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-6">
+                 {/* Singles */}
+                 <section>
+                     <h2 className="text-2xl font-bold mb-6">Singles</h2>
+                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {artist.topSongs.slice(0, 4).reverse().map((track) => (
                             <div
                                 key={track.id}
