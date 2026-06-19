@@ -13,3 +13,8 @@ backend-go/
 data/
 cache/
 backend-rust/target/
+.tools/
+scripts/
+*.bat
+*.md
+package-lock.json
