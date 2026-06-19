@@ -35,14 +35,14 @@ RUN apt-get update && apt-get install -y \
     gnupg \
     libssl3 \
     zlib1g \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install -y nodejs \
     && rm -rf /var/lib/apt/lists/*
 
 # Fix for PEP 668 (externally managed environment)
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -U "yt-dlp[default]"
+RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs
 
 # Copy artifacts
 COPY --from=backend-builder /app/backend-rust-bin /app/server
