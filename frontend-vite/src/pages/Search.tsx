@@ -142,16 +142,16 @@ export default function Search() {
                         value={query}
                         onChange={handleInputChange}
                         placeholder="What do you want to listen to?"
-                        className="w-full pl-12 pr-4 py-3 bg-white text-black rounded-full font-medium placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#1DB954]"
+                        className="w-full pl-12 pr-4 py-3 bg-white text-black rounded-full font-medium placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
                     />
                 </div>
             </form>
 
             {loading && results.length === 0 ? (
                 <div className="space-y-8 animate-pulse">
-                    <Skeleton className="h-8 w-48 mb-4" />
+                    <Skeleton className="h-8 w-48 mb-4 animate-pulse" />
                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="aspect-square rounded-xl" />)}
+                        {[1, 2, 3, 4].map(i => <Skeleton key={i} className="aspect-square rounded-xl animate-pulse" />)}
                     </div>
                 </div>
             ) : results.length > 0 ? (
@@ -200,7 +200,7 @@ export default function Search() {
                             {results.map((track, index) => (
                                 <div
                                     key={`${track.id}-${index}`}
-                                    className="flex items-center gap-4 p-2 rounded-md hover:bg-spotify-card-hover transition group cursor-pointer"
+                                    className="flex items-center gap-4 p-2 rounded-md hover:bg-white/10 transition group cursor-pointer"
                                     onClick={() => playTrack(track, results)}
                                 >
                                     <div className="w-8 text-center text-neutral-400 group-hover:hidden">{index + 1}</div>
@@ -214,8 +214,8 @@ export default function Search() {
                                     </div>
                                     <p className="hidden md:block text-sm text-neutral-400 truncate max-w-[200px]">{track.album}</p>
                                     <div className="flex items-center gap-3 ml-4">
-                                        <button onClick={(e) => { e.stopPropagation(); toggleLike(track); }} className={`transition opacity-0 group-hover:opacity-100 ${likedTracks.has(track.id) ? 'text-[#1DB954] opacity-100' : 'text-neutral-400 hover:text-white'}`}>
-                                            <Heart className={`w-5 h-5 ${likedTracks.has(track.id) ? 'fill-current' : ''}`} />
+                                        <button onClick={(e) => { e.stopPropagation(); toggleLike(track); }} className={`transition opacity-0 group-hover:opacity-100 ${likedTracks.has(track.id) ? 'text-[#FF0000] opacity-100' : 'text-neutral-400 hover:text-white'}`}>
+                                            <Heart className={`w-5 h-5 ${likedTracks.has(track.id) ? 'fill-[#FF0000]' : ''}`} />
                                         </button>
                                         <button onClick={(e) => { e.stopPropagation(); setSelectedTrack(track); }} className="text-neutral-400 hover:text-white transition opacity-0 group-hover:opacity-100">
                                             <PlusCircle className="w-5 h-5" />

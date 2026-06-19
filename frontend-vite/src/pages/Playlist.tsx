@@ -24,8 +24,8 @@ export default function Playlist() {
     const [isUserPlaylist, setIsUserPlaylist] = useState(false);
     const [moreLikeThis, setMoreLikeThis] = useState<Track[]>([]);
 
-    const { playTrack, currentTrack, isPlaying, togglePlay, likedTracks, toggleLike, setIsFullScreenOpen } = usePlayer();
-    const { libraryItems, userPlaylists, refreshLibrary } = useLibrary();
+    const { playTrack, currentTrack, isPlaying, togglePlay, likedTracks, toggleLike, setIsFullScreenOpen, shuffle, toggleShuffle } = usePlayer();
+    const { userPlaylists, refreshLibrary } = useLibrary();
 
     useEffect(() => {
         if (!playlistId) return;
@@ -131,7 +131,7 @@ export default function Playlist() {
         };
 
         loadPlaylist();
-    }, [playlistId, userPlaylists, libraryItems]);
+    }, [playlistId, userPlaylists]);
 
     const handlePlayAll = () => {
         if (playlist && playlist.tracks.length > 0) {
@@ -176,14 +176,14 @@ export default function Playlist() {
             <div className="h-full flex items-center justify-center">
                 <div className="text-center">
                     <h2 className="text-xl font-bold mb-2">Playlist not found</h2>
-                    <Link to="/" className="text-[#1DB954] hover:underline">Go back home</Link>
+                    <Link to="/" className="text-[#FF0000] hover:underline">Go back home</Link>
                 </div>
             </div>
         );
     }
 
     return (
-        <div className="flex-1 overflow-y-auto bg-[#121212] no-scrollbar pb-32 relative">
+        <div className="flex-1 overflow-y-auto bg-[#030303] no-scrollbar pb-32 relative">
             {/* Banner Background */}
             {playlist.cover_url && (
                 <div
@@ -247,12 +247,23 @@ export default function Playlist() {
             <div className="px-6 py-4 flex items-center justify-center gap-6">
                 <button
                     onClick={handlePlayAll}
-                    disabled={loadingTracks || playlist.tracks.length === 0}
-                    className="w-14 h-14 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-[#1ed760]"
+                    disabled={loadingTracks || !playlist || playlist.tracks.length === 0}
+                    className="w-14 h-14 bg-[#FF0000] text-white rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    <Play className="w-6 h-6 text-black fill-black ml-1" />
+                    <Play className="w-6 h-6 text-white fill-white ml-1" />
                 </button>
-                <button className="text-neutral-400 hover:text-white transition p-2 hover:bg-white/10 rounded-full">
+                <button
+                    onClick={() => {
+                        if (playlist && playlist.tracks.length > 0) {
+                            if (!shuffle) toggleShuffle();
+                            const randomIndex = Math.floor(Math.random() * playlist.tracks.length);
+                            playTrack(playlist.tracks[randomIndex], playlist.tracks);
+                        }
+                    }}
+                    disabled={loadingTracks || !playlist || playlist.tracks.length === 0}
+                    className={`transition p-2 hover:bg-white/10 rounded-full disabled:opacity-50 ${shuffle ? 'text-[#FF0000]' : 'text-neutral-400 hover:text-white'}`}
+                    title="Shuffle"
+                >
                     <Shuffle className="w-6 h-6" />
                 </button>
             </div>
@@ -286,7 +297,7 @@ export default function Playlist() {
                 {!loadingTracks && playlist.tracks.length === 0 ? (
                     <div className="text-center py-12">
                         <p className="text-neutral-400 mb-4">This playlist is empty.</p>
-                        <Link to="/search" className="text-[#1DB954] hover:underline">Search for music to add</Link>
+                        <Link to="/search" className="text-[#FF0000] hover:underline">Search for music to add</Link>
                     </div>
                 ) : (
                     playlist.tracks.map((track, index) => {
@@ -300,12 +311,12 @@ export default function Playlist() {
                             >
                                 {/* Track Number / Playing indicator */}
                                 <div className="flex items-center">
-                                    <span className={`text-sm ${isCurrentTrack ? 'text-[#1DB954]' : 'text-neutral-400'} group-hover:hidden`}>
+                                    <span className={`text-sm ${isCurrentTrack ? 'text-[#FF0000]' : 'text-neutral-400'} group-hover:hidden`}>
                                         {isCurrentTrack && isPlaying ? (
                                             <div className="flex items-end gap-[2px] h-4">
-                                                <div className="w-[3px] bg-[#1DB954] rounded-full animate-soundwave-1" />
-                                                <div className="w-[3px] bg-[#1DB954] rounded-full animate-soundwave-2" />
-                                                <div className="w-[3px] bg-[#1DB954] rounded-full animate-soundwave-3" />
+                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-1" />
+                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-2" />
+                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-3" />
                                             </div>
                                         ) : (
                                             index + 1
@@ -328,7 +339,7 @@ export default function Playlist() {
                                         fallbackText="♪"
                                     />
                                     <div className="min-w-0">
-                                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-[#1DB954]' : 'text-white'}`}>{track.title}</p>
+                                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-[#FF0000]' : 'text-white'}`}>{track.title}</p>
                                         <p className="text-sm text-neutral-400 truncate">{track.artist}</p>
                                     </div>
                                 </div>
@@ -340,9 +351,9 @@ export default function Playlist() {
                                 <div className="flex items-center justify-end gap-3">
                                     <button
                                         onClick={(e) => { e.stopPropagation(); toggleLike(track); }}
-                                        className={`opacity-0 group-hover:opacity-100 transition ${likedTracks.has(track.id) ? 'text-[#1DB954] opacity-100' : 'text-neutral-400 hover:text-white'}`}
+                                        className={`opacity-0 group-hover:opacity-100 transition ${likedTracks.has(track.id) ? 'text-[#FF0000] opacity-100' : 'text-neutral-400 hover:text-white'}`}
                                     >
-                                        <Heart className={`w-4 h-4 ${likedTracks.has(track.id) ? 'fill-current' : ''}`} />
+                                        <Heart className={`w-4 h-4 ${likedTracks.has(track.id) ? 'fill-[#FF0000]' : ''}`} />
                                     </button>
                                     <button
                                         onClick={(e) => { e.stopPropagation(); setSelectedTrack(track); }}
@@ -377,22 +388,22 @@ export default function Playlist() {
                     <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {moreLikeThis.map((track) => (
                             <div
-                                className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col"
+                                className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col border border-white/5"
                                 key={track.id}
                                 onClick={() => {
                                     playTrack(track, moreLikeThis);
                                 }}
                             >
-                                <div className="relative mb-3 md:mb-4">
-                                    <img src={track.cover_url} className="w-full aspect-square rounded-2xl shadow-lg object-cover" />
-                                    <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                            <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                <div className="relative mb-3">
+                                    <img src={track.cover_url} className="w-full aspect-square rounded-xl shadow-lg object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                        <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                         </div>
                                     </div>
                                 </div>
-                                <h3 className="font-bold text-sm md:text-base mb-1 truncate">{track.title}</h3>
-                                <p className="text-xs md:text-sm text-[#a7a7a7] truncate">{track.artist}</p>
+                                <h3 className="font-bold text-white text-sm mb-1 truncate">{track.title}</h3>
+                                <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
                             </div>
                         ))}
                     </div>

@@ -12,9 +12,9 @@ export default defineConfig({
             registerType: 'autoUpdate',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
             manifest: {
-                name: 'Spotify Clone',
-                short_name: 'Spotify Clone',
-                description: 'A modern Spotify Clone built with Vite and Go',
+                name: 'KV Music',
+                short_name: 'KV Music',
+                description: 'A modern music streaming experience',
                 theme_color: '#121212',
                 background_color: '#121212',
                 display: 'standalone',

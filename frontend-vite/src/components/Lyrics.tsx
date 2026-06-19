@@ -27,6 +27,8 @@ export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, on
         }
     }, [activeIndex]);
 
+    if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 bg-black/95 z-[80] flex flex-col animate-in slide-in-from-bottom">
             {/* Header */}
@@ -87,29 +89,9 @@ export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, on
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                             </svg>
                         </div>
-                        <h3 className="text-xl font-bold text-white">Không tìm thấy lời bài hát</h3>
+                        <h3 className="text-xl font-bold text-white">No lyrics found</h3>
                         <p className="text-neutral-400 text-center text-sm leading-relaxed">
-                            Lyrics for this song are not available.<br/>
-                            <span className="text-neutral-500">
-                                For Vietnamese songs, try searching on:{' '}
-                                <a 
-                                    href={`https://zingmp3.vn/tim-kiem?q=${encodeURIComponent(trackTitle || '')}`} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-[#1DB954] hover:underline"
-                                >
-                                    ZingMP3
-                                </a>
-                                {' '}or{' '}
-                                <a 
-                                    href={`https://www.nhaccuatui.com/tim-kiem?q=${encodeURIComponent(trackTitle || '')}`} 
-                                    target="_blank" 
-                                    rel="noopener noreferrer"
-                                    className="text-[#1DB954] hover:underline"
-                                >
-                                    NhacCuaTui
-                                </a>
-                            </span>
+                            Lyrics for this song are not available from free sources.
                         </p>
                     </div>
                 )}

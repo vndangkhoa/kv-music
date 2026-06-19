@@ -2,14 +2,17 @@ import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Play, ArrowLeft } from 'lucide-react';
 import { useLibrary } from '../context/LibraryContext';
+import { usePlayer } from '../context/PlayerContext';
+import { libraryService } from '../services/library';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
 
 export default function Section() {
     const [searchParams] = useSearchParams();
     const category = searchParams.get('category');
-    const { libraryItems } = useLibrary();
+    const { userPlaylists } = useLibrary();
     const [loading, setLoading] = useState(true);
+    const { playTrack } = usePlayer();
 
     useEffect(() => {
         // Simulate loading
@@ -17,7 +20,18 @@ export default function Section() {
         return () => clearTimeout(timer);
     }, [category]);
 
-    const playlists = libraryItems.filter(item => item.type === 'Playlist');
+    const playCollection = async (playlistId: string) => {
+        try {
+            const playlist = await libraryService.getPlaylist(playlistId);
+            if (playlist && playlist.tracks.length > 0) {
+                playTrack(playlist.tracks[0], playlist.tracks);
+            }
+        } catch (e) {
+            console.error("Failed to play playlist from section", e);
+        }
+    };
+
+    const playlists = userPlaylists;
 
     if (!category) {
         return (
@@ -38,36 +52,45 @@ export default function Section() {
             </div>
 
             {/* Grid */}
-{loading ? (
+            {loading ? (
                  <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                      {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                         <div key={i} className="space-y-3">
-                             <Skeleton className="w-full aspect-square rounded-md" />
-                             <Skeleton className="h-4 w-3/4" />
-                             <Skeleton className="h-3 w-1/2" />
+                         <div key={i} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
+                             <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
+                             <Skeleton className="h-4 w-3/4 animate-pulse" />
+                             <Skeleton className="h-3 w-1/2 animate-pulse" />
                          </div>
                      ))}
                  </div>
-             ) : (
+              ) : (
                 <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                     {playlists.map((playlist) => (
                         <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
-                            <div className="bg-[#181818] p-2 md:p-4 rounded-md hover:bg-[#282828] transition duration-300 group cursor-pointer h-full flex flex-col">
-                                <div className="relative mb-2 md:mb-4">
-                                    <CoverImage
-                                        src={playlist.cover_url}
-                                        alt={playlist.title}
-                                        className="w-full aspect-square rounded-2xl shadow-lg"
-                                        fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
-                                    />
-                                    <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                                        <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                            <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                            <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer h-full flex flex-col border border-white/5 justify-between">
+                                <div>
+                                    <div className="relative mb-3">
+                                        <CoverImage
+                                            src={playlist.cover_url}
+                                            alt={playlist.title}
+                                            className="w-full aspect-square rounded-xl shadow-lg"
+                                            fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
+                                        />
+                                        <div
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                playCollection(playlist.id);
+                                            }}
+                                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center"
+                                        >
+                                            <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+                                            </div>
                                         </div>
                                     </div>
+                                    <h3 className="font-bold text-white mb-1 truncate text-xs md:text-base">{playlist.title}</h3>
+                                    <p className="text-neutral-400 text-xs md:text-sm line-clamp-2">{playlist.description}</p>
                                 </div>
-                                <h3 className="font-bold mb-0.5 md:mb-1 truncate text-xs md:text-base">{playlist.title}</h3>
-                                <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{playlist.description}</p>
                             </div>
                         </Link>
                     ))}

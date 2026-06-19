@@ -1,6 +1,61 @@
 import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
 
+function getUserCountry(): string {
+    const cached = localStorage.getItem('user_country');
+    if (cached && cached.length === 2) {
+        return cached;
+    }
+
+    try {
+        const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (tz) {
+            if (tz.includes('Ho_Chi_Minh') || tz.includes('Saigon') || tz.includes('Hanoi')) {
+                localStorage.setItem('user_country', 'VN');
+                return 'VN';
+            }
+            if (tz.includes('New_York') || tz.includes('Chicago') || tz.includes('Los_Angeles') || tz.includes('Denver')) {
+                localStorage.setItem('user_country', 'US');
+                return 'US';
+            }
+            if (tz.includes('London') || tz.includes('Belfast') || tz.includes('Dublin')) {
+                localStorage.setItem('user_country', 'GB');
+                return 'GB';
+            }
+        }
+    } catch (e) {}
+
+    try {
+        const lang = navigator.language || '';
+        if (lang) {
+            const parts = lang.split('-');
+            const code = parts[parts.length - 1].toUpperCase();
+            if (code.length === 2) {
+                localStorage.setItem('user_country', code);
+                return code;
+            }
+            if (parts[0] === 'vi') return 'VN';
+            if (parts[0] === 'en') return 'US';
+        }
+    } catch (e) {}
+
+    return 'VN';
+}
+
+// Background geo-resolver
+setTimeout(async () => {
+    if (!localStorage.getItem('user_country_resolved')) {
+        try {
+            const res = await fetch('https://ipapi.co/json/');
+            const data = await res.json();
+            if (data && data.country_code) {
+                localStorage.setItem('user_country', data.country_code);
+                localStorage.setItem('user_country_resolved', 'true');
+            }
+        } catch (e) {}
+    }
+}, 4000);
+
 const API_BASE = '/api';
 
 const apiFetch = async (path: string) => {
@@ -48,7 +103,8 @@ export const libraryService = {
     async getBrowseContent(): Promise<Record<string, StaticPlaylist[]>> {
         // Fetch dynamic preloaded content from backend
         try {
-            const data = await apiFetch('/browse');
+            const country = getUserCountry();
+            const data = await apiFetch(`/browse?country=${country}`);
             if (data && Object.keys(data).length > 0) {
                 return data;
             }
@@ -150,7 +206,8 @@ export const libraryService = {
 
         // 2. Try to find in dynamic backend browse cache
         try {
-            const browseData = await apiFetch('/browse');
+            const country = getUserCountry();
+            const browseData = await apiFetch(`/browse?country=${country}`);
             for (const category in browseData) {
                 const plist = browseData[category].find((p: any) => p.id === id);
                 if (plist) {
@@ -203,7 +260,8 @@ export const libraryService = {
         }
 
         try {
-            const browseData = await apiFetch('/browse');
+            const country = getUserCountry();
+            const browseData = await apiFetch(`/browse?country=${country}`);
             for (const category in browseData) {
                 const plist = browseData[category].find((p: any) => p.id === id);
                 if (plist) {
@@ -235,11 +293,11 @@ export const libraryService = {
         return null;
     },
 
-    async getArtistInfo(artistName: string): Promise<{ bio?: string; photo?: string }> {
+    async getArtistInfo(artistName: string): Promise<{ bio?: string; photo?: string; isPlaceholder?: boolean }> {
         // Method 1: Try backend API for real YouTube channel photo (with short timeout)
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 2000); // Reduced to 2 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 8000); // 8 second timeout to allow yt-dlp to run
             
             const res = await fetch(`/api/artist/info?q=${encodeURIComponent(artistName)}`, {
                 signal: controller.signal
@@ -248,9 +306,9 @@ export const libraryService = {
             
             if (res.ok) {
                 const data = await res.json();
-                if (data.image && data.image !== '') {
+                if (data.image && data.image !== '' && !data.image.includes('ui-avatars.com') && !data.image.includes('placehold.co')) {
                     console.log(`[ArtistInfo] Found real image for ${artistName}`);
-                    return { photo: data.image };
+                    return { photo: data.image, isPlaceholder: false };
                 }
             }
         } catch (e) {
@@ -262,7 +320,7 @@ export const libraryService = {
         // This is the primary fallback since the backend is often slow
         const encodedName = encodeURIComponent(artistName);
         const avatarUrl = `https://ui-avatars.com/api/?name=${encodedName}&background=random&color=fff&size=128&rounded=true&bold=true&font-size=0.33`;
-        return { photo: avatarUrl };
+        return { photo: avatarUrl, isPlaceholder: true };
     },
 
 async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plainLyrics?: string; syncedLyrics?: string; } | null> {
@@ -370,20 +428,15 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                             const lyricsData = data.data[0];
                             console.log('SimpMusic first item:', lyricsData);
                             
-                            const lyrics = lyricsData.lyrics || lyricsData.syncedLyrics;
+                            const synced = lyricsData.syncedLyrics;
+                            const plain = lyricsData.lyrics;
                             
-                            if (lyrics) {
-                                // Check if lyrics are in Vietnamese
-                                if (isVietnameseText(lyrics)) {
-                                    console.log('SimpMusic Vietnamese lyrics found:', lyrics.substring(0, 100));
-                                    return {
-                                        plainLyrics: lyricsData.lyrics || undefined,
-                                        syncedLyrics: lyricsData.syncedLyrics || undefined
-                                    };
-                                } else {
-                                    console.log('SimpMusic lyrics are not Vietnamese, skipping');
-                                    return null;
-                                }
+                            if (synced || plain) {
+                                console.log('SimpMusic lyrics found:', (plain || synced).substring(0, 100));
+                                return {
+                                    plainLyrics: plain || undefined,
+                                    syncedLyrics: synced || undefined
+                                };
                             } else {
                                 console.log('SimpMusic data item has no lyrics property');
                                 return null;
@@ -397,7 +450,7 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                     }
                 );
                 if (simpmusicVideoResult) {
-                    console.log('Found Vietnamese lyrics from SimpMusic (video ID)');
+                    console.log('Found lyrics from SimpMusic (video ID)');
                     return simpmusicVideoResult;
                 } else {
                     console.log('SimpMusic video ID search returned null');
@@ -429,20 +482,15 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                     console.log('SimpMusic search response:', data);
                     if (data && data.type === 'success' && Array.isArray(data.data) && data.data.length > 0) {
                         const first = data.data[0];
-                        const lyrics = first.lyrics || first.syncedLyrics;
+                        const synced = first.syncedLyrics;
+                        const plain = first.lyrics;
                         
-                        if (lyrics) {
-                            // Check if lyrics are in Vietnamese
-                            if (isVietnameseText(lyrics)) {
-                                console.log('SimpMusic search found Vietnamese lyrics:', lyrics.substring(0, 100));
-                                return {
-                                    plainLyrics: first.lyrics || undefined,
-                                    syncedLyrics: first.syncedLyrics || undefined
-                                };
-                            } else {
-                                console.log('SimpMusic search lyrics are not Vietnamese, skipping');
-                                return null;
-                            }
+                        if (synced || plain) {
+                            console.log('SimpMusic search found lyrics:', (plain || synced).substring(0, 100));
+                            return {
+                                plainLyrics: plain || undefined,
+                                syncedLyrics: synced || undefined
+                            };
                         }
                     }
                     return null;
@@ -453,19 +501,23 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 return simpmusicSearchResult;
             }
 
-            // Try ZingMP3 API for Vietnamese lyrics (via proxy)
-            console.log('Trying ZingMP3 API for Vietnamese lyrics...');
-            try {
-                const zingmp3Response = await fetch(`/api/lyrics/zingmp3?artist=${encodeURIComponent(cleanArtist)}&track=${encodeURIComponent(cleanTrack)}`);
-                if (zingmp3Response.ok) {
-                    const zingmp3Data = await zingmp3Response.json();
-                    if (zingmp3Data && zingmp3Data.lyrics) {
-                        console.log('Found lyrics from ZingMP3');
-                        return { plainLyrics: zingmp3Data.lyrics };
+            // Try LRCLIB get by name (alternative endpoint)
+            console.log('Trying LRCLIB get-by-name...');
+            const lrclibGetResult = await tryFetch(
+                `https://lrclib.net/api/get?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTrack)}`,
+                (data) => {
+                    if (data && (data.plainLyrics || data.syncedLyrics)) {
+                        return {
+                            plainLyrics: data.plainLyrics || undefined,
+                            syncedLyrics: data.syncedLyrics || undefined
+                        };
                     }
+                    return null;
                 }
-            } catch (e) {
-                console.log('ZingMP3 API error:', e);
+            );
+            if (lrclibGetResult) {
+                console.log('Found lyrics from LRCLIB get-by-name');
+                return lrclibGetResult;
             }
 
             console.log('No lyrics found from any API');
@@ -523,7 +575,7 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                     results.push({
                         id: `discovery-playlist-${randomQuery.replace(/\s+/g, '-')}-Mix`,
                         title: `${randomQuery} Mix`,
-                        creator: 'Spotify Clone',
+                        creator: 'KV Music',
                         cover_url: tracks[0].cover_url,
                         type: 'Playlist'
                     });

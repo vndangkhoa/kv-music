@@ -1,0 +1,155 @@
+"""Extract Edge cookies with v20 App Bound Encryption support."""
+import os, sys, json, base64, sqlite3, tempfile, ctypes, ctypes.wintypes, struct
+
+kernel32 = ctypes.windll.kernel32
+crypt32 = ctypes.windll.crypt32
+
+class DATA_BLOB(ctypes.Structure):
+    _fields_ = [('cbData', ctypes.wintypes.DWORD), ('pbData', ctypes.POINTER(ctypes.c_char))]
+
+def read_locked_file(filepath):
+    handle = kernel32.CreateFileW(filepath, 0x80000000, 0x01 | 0x02 | 0x04, None, 3, 0x80, None)
+    if handle == -1:
+        raise ctypes.WinError(ctypes.get_last_error())
+    try:
+        high = ctypes.wintypes.DWORD(0)
+        low = kernel32.GetFileSize(handle, ctypes.byref(high))
+        file_size = (high.value << 32) | low
+        buf = ctypes.create_string_buffer(file_size)
+        bytes_read = ctypes.wintypes.DWORD(0)
+        kernel32.ReadFile(handle, buf, file_size, ctypes.byref(bytes_read), None)
+        return buf.raw[:bytes_read.value]
+    finally:
+        kernel32.CloseHandle(handle)
+
+def dpapi_decrypt(data):
+    blob_in = DATA_BLOB(len(data), ctypes.create_string_buffer(data, len(data)))
+    blob_out = DATA_BLOB()
+    if crypt32.CryptUnprotectData(ctypes.byref(blob_in), None, None, None, None, 0, ctypes.byref(blob_out)):
+        result = ctypes.string_at(blob_out.pbData, blob_out.cbData)
+        kernel32.LocalFree(blob_out.pbData)
+        return result
+    return None
+
+def get_browser_encryption_key():
+    """Get the AES key from Edge's Local State file, decrypted via DPAPI."""
+    local_state_path = os.path.expanduser('~') + r'\AppData\Local\Microsoft\Edge\User Data\Local State'
+    with open(local_state_path, 'r', encoding='utf-8') as f:
+        local_state = json.load(f)
+    
+    encrypted_key_b64 = local_state['os_crypt']['encrypted_key']
+    encrypted_key = base64.b64decode(encrypted_key_b64)
+    
+    # First 5 bytes are "DPAPI" prefix
+    if encrypted_key[:5] != b'DPAPI':
+        raise ValueError("Invalid DPAPI prefix in encryption key")
+    
+    key_data = encrypted_key[5:]
+    decrypted_key = dpapi_decrypt(key_data)
+    if not decrypted_key:
+        raise ValueError("Failed to decrypt browser encryption key via DPAPI")
+    
+    return decrypted_key  # AES-256 key
+
+def decrypt_cookie_v20(key, encrypted_value):
+    """Decrypt v20 (AES-256-GCM) encrypted cookie."""
+    # v20 prefix: 3 bytes "v20" + 12 bytes nonce + ciphertext + 16 bytes tag
+    if encrypted_value[:3] != b'v20':
+        # Try v10 (same format)
+        if encrypted_value[:3] != b'v10':
+            return None
+    
+    nonce = encrypted_value[3:15]
+    ciphertext_with_tag = encrypted_value[15:]
+    
+    # Split ciphertext and GCM tag (last 16 bytes)
+    ciphertext = ciphertext_with_tag[:-16]
+    tag = ciphertext_with_tag[-16:]
+    
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        aesgcm = AESGCM(key)
+        # GCM tag needs to be appended to ciphertext for decryption
+        plaintext = aesgcm.decrypt(nonce, ciphertext + tag, None)
+        return plaintext.decode('utf-8', errors='replace')
+    except ImportError:
+        # Fallback: use ctypes with bcrypt
+        print("WARNING: 'cryptography' package not installed. Run: pip install cryptography")
+        return None
+    except Exception as e:
+        print(f"Decryption failed: {e}")
+        return None
+
+def main():
+    edge_db = os.path.expanduser('~') + r'\AppData\Local\Microsoft\Edge\User Data\Default\Network\Cookies'
+    cookies_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "backend-rust", "cookies.txt")
+    
+    if not os.path.exists(edge_db):
+        print("Edge cookies DB not found.")
+        return False
+    
+    # Get browser encryption key
+    try:
+        key = get_browser_encryption_key()
+        print(f"Got browser encryption key ({len(key)} bytes)")
+    except Exception as e:
+        print(f"Failed to get encryption key: {e}")
+        return False
+    
+    # Read locked cookies DB
+    try:
+        data = read_locked_file(edge_db)
+        print(f"Read {len(data)} bytes from cookies DB")
+    except Exception as e:
+        print(f"Failed to read cookies DB: {e}")
+        return False
+    
+    # Parse with sqlite3
+    tmp = os.path.join(tempfile.gettempdir(), 'edge_cookies_extract.db')
+    with open(tmp, 'wb') as f:
+        f.write(data)
+    
+    conn = sqlite3.connect(f'file:{tmp}?mode=ro', uri=True)
+    cur = conn.cursor()
+    
+    cur.execute("""
+        SELECT name, value, encrypted_value, host_key, path, expires_utc, is_secure, is_httponly
+        FROM cookies
+        WHERE host_key LIKE '%youtube%' OR host_key LIKE '%google%'
+    """)
+    
+    rows = cur.fetchall()
+    print(f"Found {len(rows)} YouTube/Google cookies")
+    
+    os.makedirs(os.path.dirname(cookies_path), exist_ok=True)
+    written = 0
+    with open(cookies_path, 'w') as f:
+        f.write('# Netscape HTTP Cookie File\n')
+        f.write('# Generated by extract_cookies.py\n\n')
+        
+        for name, value, enc_value, host, path, expires, secure, httponly in rows:
+            cookie_val = value if value else ''
+            
+            if not cookie_val and enc_value:
+                if enc_value[:3] in (b'v10', b'v20'):
+                    cookie_val = decrypt_cookie_v20(key, enc_value) or ''
+                else:
+                    cookie_val = dpapi_decrypt(enc_value) or ''
+            
+            if not cookie_val:
+                continue
+            
+            domain = host
+            flag = 'TRUE' if domain.startswith('.') else 'FALSE'
+            secure_str = 'TRUE' if secure else 'FALSE'
+            f.write(f'{domain}\t{flag}\t{path}\t{secure_str}\t{expires}\t{name}\t{cookie_val}\n')
+            written += 1
+    
+    print(f"Wrote {written} cookies to {cookies_path}")
+    conn.close()
+    os.remove(tmp)
+    return written > 0
+
+if __name__ == '__main__':
+    success = main()
+    sys.exit(0 if success else 1)

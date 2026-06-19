@@ -37,7 +37,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
                             value={name}
                             onChange={(e) => setName(e.target.value)}
                             placeholder="My Playlist"
-                            className="w-full px-4 py-3 bg-neutral-700 rounded-lg text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#1DB954] mb-4"
+                            className="w-full px-4 py-3 bg-neutral-700 rounded-lg text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#FF0000] mb-4"
                             autoFocus
                         />
                         <div className="flex gap-3 justify-end">
@@ -50,7 +50,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
                             </button>
                             <button
                                 type="submit"
-                                className="px-6 py-2 bg-[#1DB954] text-black font-bold rounded-full hover:scale-105 transition"
+                                className="px-6 py-2 bg-[#FF0000] text-white font-bold rounded-full hover:scale-105 transition"
                             >
                                 Create
                             </button>

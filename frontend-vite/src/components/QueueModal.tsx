@@ -143,9 +143,9 @@ function QueueItem({ track, isCurrent, isPlaying, onClick }: { track: Track, isC
                 {isCurrent && isPlaying && (
                     <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
                         <div className="flex items-end gap-[2px] h-3">
-                            <div className="w-[2px] bg-[#1DB954] rounded-full animate-soundwave-1" />
-                            <div className="w-[2px] bg-[#1DB954] rounded-full animate-soundwave-2" />
-                            <div className="w-[2px] bg-[#1DB954] rounded-full animate-soundwave-3" />
+                            <div className="w-[2px] bg-[#FF0000] rounded-full animate-soundwave-1" />
+                            <div className="w-[2px] bg-[#FF0000] rounded-full animate-soundwave-2" />
+                            <div className="w-[2px] bg-[#FF0000] rounded-full animate-soundwave-3" />
                         </div>
                     </div>
                 )}
@@ -156,7 +156,7 @@ function QueueItem({ track, isCurrent, isPlaying, onClick }: { track: Track, isC
                 )}
             </div>
             <div className="min-w-0 flex-1">
-                <p className={`font-medium truncate text-sm ${isCurrent ? 'text-[#1DB954]' : 'text-white'}`}>{track.title}</p>
+                <p className={`font-medium truncate text-sm ${isCurrent ? 'text-[#FF0000]' : 'text-white'}`}>{track.title}</p>
                 <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
             </div>
         </div>

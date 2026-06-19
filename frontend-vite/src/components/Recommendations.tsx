@@ -44,10 +44,35 @@ export default function Recommendations({
     });
     const [loading, setLoading] = useState(false);
 
+    const playCollection = async (collectionId: string, isAlbum: boolean) => {
+        try {
+            const result = isAlbum 
+                ? await libraryService.getAlbum(collectionId)
+                : await libraryService.getPlaylist(collectionId);
+            if (result && result.tracks.length > 0) {
+                playTrack(result.tracks[0], result.tracks);
+            }
+        } catch (e) {
+            console.error("Failed to play collection in recommendations", e);
+        }
+    };
+
+    const playArtist = async (artistName: string) => {
+        try {
+            const tracks = await libraryService.search(artistName);
+            if (tracks && tracks.length > 0) {
+                playTrack(tracks[0], tracks);
+            }
+        } catch (e) {
+            console.error("Failed to play artist in recommendations", e);
+        }
+    };
+
     useEffect(() => {
         if (!seed) return;
         
         const fetchRecommendations = async () => {
+            setLoading(true);
             try {
                 const result = await libraryService.getRelatedContent(seed, seedType, limit);
                 
@@ -72,6 +97,8 @@ export default function Recommendations({
                 setData({ ...result, artists: artistsWithPhotos });
             } catch (error) {
                 console.error('Failed to fetch recommendations:', error);
+            } finally {
+                setLoading(false);
             }
         };
 
@@ -95,65 +122,70 @@ export default function Recommendations({
                 <h2 className="text-2xl font-bold hover:underline cursor-pointer">{title}</h2>
             </div>
 
-{isLoading && (
-<div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
+            {isLoading && (
+                <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                      {[1, 2, 3, 4, 5].map(i => (
-                         <div key={`skel-${i}`} className="bg-[#181818] p-3 md:p-4 rounded-xl space-y-3 md:space-y-4">
-                             <div className="w-full aspect-square bg-neutral-800 rounded-2xl animate-pulse" />
-                             <div className="h-4 bg-neutral-800 rounded w-3/4" />
-                             <div className="h-3 bg-neutral-800 rounded w-1/2" />
-                         </div>
+                          <div key={`skel-${i}`} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
+                              <div className="w-full aspect-square bg-neutral-800 rounded-xl animate-pulse" />
+                              <div className="h-4 bg-neutral-800 rounded w-3/4 animate-pulse" />
+                              <div className="h-3 bg-neutral-800 rounded w-1/2 animate-pulse" />
+                          </div>
                      ))}
                  </div>
-             )}
+            )}
             
             <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                 {/* Tracks */}
                 {showTracks && data.tracks.slice(0, 8).map((track) => (
                     <div
                         key={track.id}
-                        className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col"
+                        className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col border border-white/5"
                         onClick={() => playTrack(track, data.tracks)}
                     >
-                        <div className="relative mb-3 md:mb-4">
-                                <CoverImage
-                                    src={track.cover_url}
-                                    alt={track.title}
-                                    className="w-full aspect-square rounded-2xl shadow-lg"
-                                    fallbackText={track.title?.substring(0, 3).toUpperCase() || '♪'}
-                                />
-                            <div 
-                                className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer"
-                            >
-                                <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                    <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                        <div className="relative mb-3">
+                            <CoverImage
+                                src={track.cover_url}
+                                alt={track.title}
+                                className="w-full aspect-square rounded-xl shadow-lg"
+                                fallbackText={track.title?.substring(0, 3).toUpperCase() || '♪'}
+                            />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                    <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                 </div>
                             </div>
                         </div>
-                        <h3 className="font-bold text-sm md:text-base mb-1 truncate">{track.title}</h3>
-                        <p className="text-xs md:text-sm text-[#a7a7a7] truncate">{track.artist}</p>
+                        <h3 className="font-bold text-white text-sm mb-1 truncate">{track.title}</h3>
+                        <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
                     </div>
                 ))}
 
                 {/* Albums */}
                 {showAlbums && data.albums.slice(0, 8).map((album) => (
                     <Link to={`/album/${encodeURIComponent(album.id)}`} key={album.id}>
-                        <div className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col h-full">
-                            <div className="relative mb-3 md:mb-4">
+                        <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col h-full border border-white/5">
+                            <div className="relative mb-3">
                                 <CoverImage
                                     src={album.cover_url}
                                     alt={album.title}
-                                    className="w-full aspect-square rounded-2xl shadow-lg"
+                                    className="w-full aspect-square rounded-xl shadow-lg"
                                     fallbackText={album.title?.substring(0, 3).toUpperCase() || '♪'}
                                 />
-                                <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer">
-                                    <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                        <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                <div
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        playCollection(album.id, true);
+                                    }}
+                                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center"
+                                >
+                                    <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                        <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                     </div>
                                 </div>
                             </div>
-                            <h3 className="font-bold text-sm md:text-base mb-1 truncate">{album.title}</h3>
-                            <p className="text-xs md:text-sm text-[#a7a7a7] truncate">{album.artist}</p>
+                            <h3 className="font-bold text-white text-sm mb-1 truncate">{album.title}</h3>
+                            <p className="text-xs text-neutral-400 truncate">{album.artist}</p>
                         </div>
                     </Link>
                 ))}
@@ -161,22 +193,29 @@ export default function Recommendations({
                 {/* Playlists */}
                 {showPlaylists && data.playlists.slice(0, 8).map((playlist) => (
                     <Link to={`/playlist/${encodeURIComponent(playlist.id)}`} key={playlist.id}>
-                        <div className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col h-full">
-                            <div className="relative mb-3 md:mb-4">
+                        <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col h-full border border-white/5">
+                            <div className="relative mb-3">
                                 <CoverImage
                                     src={playlist.cover_url}
                                     alt={playlist.title}
-                                    className="w-full aspect-square rounded-2xl shadow-lg"
+                                    className="w-full aspect-square rounded-xl shadow-lg"
                                     fallbackText={playlist.title?.substring(0, 3).toUpperCase() || '♪'}
                                 />
-                                <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer">
-                                    <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                        <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                <div
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        playCollection(playlist.id, false);
+                                    }}
+                                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center"
+                                >
+                                    <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                        <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                     </div>
                                 </div>
                             </div>
-                            <h3 className="font-bold text-sm md:text-base mb-1 truncate">{playlist.title}</h3>
-                            <p className="text-xs md:text-sm text-[#a7a7a7] truncate">{playlist.track_count} songs</p>
+                            <h3 className="font-bold text-white text-sm mb-1 truncate">{playlist.title}</h3>
+                            <p className="text-xs text-neutral-400 truncate">{playlist.track_count} songs</p>
                         </div>
                     </Link>
                 ))}
@@ -184,22 +223,29 @@ export default function Recommendations({
                 {/* Artists */}
                 {showArtists && data.artists.slice(0, 8).map((artist) => (
                     <Link to={`/artist/${encodeURIComponent(artist.name)}`} key={artist.id}>
-                        <div className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col h-full">
-                            <div className="relative mb-3 md:mb-4">
+                        <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col h-full border border-white/5 text-center">
+                            <div className="relative mb-3">
                                 <CoverImage
                                     src={artist.cover_url || artist.photo_url}
                                     alt={artist.name}
-                                    className="w-full aspect-square rounded-full shadow-lg"
+                                    className="w-full aspect-square rounded-full shadow-lg object-cover"
                                     fallbackText={artist.name?.substring(0, 3).toUpperCase() || '♪'}
                                 />
-                                <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer">
-                                    <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                        <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                <div
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        playArtist(artist.name);
+                                    }}
+                                    className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition rounded-full flex items-center justify-center"
+                                >
+                                    <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                        <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                     </div>
                                 </div>
                             </div>
-                            <h3 className="font-bold text-sm md:text-base mb-1 truncate text-center">{artist.name}</h3>
-                            <p className="text-xs md:text-sm text-[#a7a7a7] text-center">Artist</p>
+                            <h3 className="font-bold text-white text-sm mb-1 truncate px-2">{artist.name}</h3>
+                            <p className="text-xs text-neutral-400">Artist</p>
                         </div>
                     </Link>
                 ))}

@@ -1,23 +1,39 @@
 import { Link } from 'react-router-dom';
-import { Play, Plus } from 'lucide-react';
+import { Play, Plus, Music, Disc3, Users, Clock } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useLibrary } from '../context/LibraryContext';
 import { usePlayer } from '../context/PlayerContext';
+import { useAuth } from '../context/AuthContext';
 import CoverImage from '../components/CoverImage';
 import CreatePlaylistModal from '../components/CreatePlaylistModal';
 import { dbService } from '../services/db';
-import { libraryService } from '../services/library';
-import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
-import Skeleton from '../components/Skeleton';
+import LoginModal from '../components/LoginModal';
+
+interface GradientColor {
+    from: string;
+    to: string;
+}
+
+function getAvatarGradient(avatarColor: string): string {
+    try {
+        const parsed: GradientColor = JSON.parse(avatarColor);
+        return `linear-gradient(135deg, ${parsed.from}, ${parsed.to})`;
+    } catch {
+        return 'linear-gradient(135deg, #ff6b6b, #ee5a24)';
+    }
+}
 
 export default function Library() {
-    const { userPlaylists, libraryItems, refreshLibrary, activeFilter, setActiveFilter } = useLibrary();
-    const { likedTracks } = usePlayer();
+    const { userPlaylists, followedArtists, savedAlbums, refreshLibrary, activeFilter, setActiveFilter, deriveSavedAlbums } = useLibrary();
+    const { likedTracks, playHistory } = usePlayer();
+    const { user, isLoggedIn } = useAuth();
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+    const [isLoginOpen, setIsLoginOpen] = useState(false);
 
-    // Discovery State
-    const [discoveryItems, setDiscoveryItems] = useState<any[]>([]);
-    const [isFetching, setIsFetching] = useState(false);
+    // Derive saved albums from play history on change
+    useEffect(() => {
+        deriveSavedAlbums(playHistory);
+    }, [playHistory, deriveSavedAlbums]);
 
     const handleCreatePlaylist = async (name: string) => {
         await dbService.createPlaylist(name);
@@ -31,55 +47,12 @@ export default function Library() {
         { key: 'albums', label: 'Albums' },
     ] as const;
 
-    // Filter Logic: Local Items
-    const filteredLocalItems = useMemo(() => {
-        return libraryItems.filter(item => {
-            if (activeFilter === 'all') return true;
-            if (activeFilter === 'playlists') return item.type === 'Playlist';
-            if (activeFilter === 'artists') return item.type === 'Artist';
-            if (activeFilter === 'albums') return item.type === 'Album';
-            return true;
-        });
-    }, [libraryItems, activeFilter]);
+    const showAll = activeFilter === 'all';
+    const showPlaylists = showAll || activeFilter === 'playlists';
+    const showArtists = showAll || activeFilter === 'artists';
+    const showAlbums = showAll || activeFilter === 'albums';
 
-    // Infinite Information
-    const filteredDiscoveryItems = useMemo(() => {
-        return discoveryItems.filter(item => {
-            if (activeFilter === 'all') return true;
-            if (activeFilter === 'playlists') return item.type === 'Playlist';
-            if (activeFilter === 'artists') return item.type === 'Artist';
-            if (activeFilter === 'albums') return item.type === 'Album';
-            return true;
-        });
-    }, [discoveryItems, activeFilter]);
-
-    const displayItems = [...filteredLocalItems, ...filteredDiscoveryItems];
-
-    // Load More (Discovery)
-    const loadMore = async () => {
-        if (isFetching) return;
-        setIsFetching(true);
-
-        // Simulate network delay for UX
-        await new Promise(r => setTimeout(r, 800));
-
-        const moreContent = await libraryService.discoverContent(activeFilter);
-        setDiscoveryItems(prev => [...prev, ...moreContent]);
-        setIsFetching(false);
-    };
-
-    const lastElementRef = useInfiniteScroll(loadMore, isFetching);
-
-    // Reset discovery on filter change? Optional, but maybe good to keep it fresh
-    useEffect(() => {
-        // We can keep discovery items but maybe filter them? 
-        // Or clear them to finding new specific ones?
-        // Let's clear to find specific ones if switching tabs.
-        // setDiscoveryItems([]); 
-        // Actually, let's just append. If I switch to Artists, I want artists.
-        // But if I switch back to All, I want see what I had.
-        // Simple approach: Keep them, but `discoverContent` takes type.
-    }, [activeFilter]);
+    const totalItems = userPlaylists.length + followedArtists.length + savedAlbums.length + likedTracks.size;
 
     return (
         <div className="h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-24">
@@ -101,6 +74,53 @@ export default function Library() {
                 </div>
             </div>
 
+            {/* Stats Header - Only when logged in */}
+            {isLoggedIn && user && (
+                <div className="mb-6 flex items-center gap-4 p-4 bg-[#1a1a2e]/60 backdrop-blur-sm rounded-2xl border border-white/5">
+                    <div
+                        className="w-16 h-16 rounded-full flex items-center justify-center text-white text-2xl font-bold shadow-lg flex-shrink-0"
+                        style={{ background: getAvatarGradient(user.avatarColor) }}
+                    >
+                        {user.name.trim()[0].toUpperCase()}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                        <h2 className="text-xl font-bold text-white truncate">{user.name}</h2>
+                        <p className="text-sm text-neutral-400">Your music at a glance</p>
+                    </div>
+                    <div className="hidden md:flex gap-6 text-center">
+                        <div>
+                            <p className="text-lg font-bold text-white">{likedTracks.size}</p>
+                            <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Liked</p>
+                        </div>
+                        <div>
+                            <p className="text-lg font-bold text-white">{userPlaylists.length}</p>
+                            <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Playlists</p>
+                        </div>
+                        <div>
+                            <p className="text-lg font-bold text-white">{followedArtists.length}</p>
+                            <p className="text-[10px] text-neutral-400 uppercase tracking-wider">Artists</p>
+                        </div>
+                        <div>
+                            <p className="text-lg font-bold text-white">{playHistory.length}</p>
+                            <p className="text-[10px] text-neutral-400 uppercase tracking-wider">History</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Logged out prompt */}
+            {!isLoggedIn && (
+                <div className="mb-6 p-6 bg-[#1a1a2e]/40 backdrop-blur-sm rounded-2xl border border-white/5 text-center">
+                    <p className="text-neutral-400 mb-3">Sign in to see your full library stats</p>
+                    <button
+                        onClick={() => setIsLoginOpen(true)}
+                        className="px-6 py-2 bg-white text-black font-bold rounded-full hover:scale-105 transition text-sm"
+                    >
+                        Create Profile
+                    </button>
+                </div>
+            )}
+
             {/* Create Playlist Button - Compact */}
             <div className="flex justify-end mb-6">
                 <button
@@ -113,7 +133,7 @@ export default function Library() {
             </div>
 
             {/* Liked Songs Card */}
-            {(activeFilter === 'all' || activeFilter === 'playlists') && (
+            {showPlaylists && (
                 <Link to="/collection/tracks">
                     <div className="mb-4 flex items-center gap-4 p-4 bg-gradient-to-r from-indigo-800/30 to-blue-600/30 rounded-lg hover:from-indigo-800/50 hover:to-blue-600/50 transition group cursor-pointer">
                         <div className="w-16 h-16 bg-gradient-to-br from-indigo-700 to-blue-300 rounded flex items-center justify-center shadow-lg">
@@ -125,35 +145,35 @@ export default function Library() {
                             <h3 className="font-bold text-lg">Liked Songs</h3>
                             <p className="text-sm text-neutral-400">{likedTracks.size} songs</p>
                         </div>
-                        <div className="w-12 h-12 bg-[#1DB954] rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg">
-                            <Play className="w-5 h-5 text-black fill-black ml-0.5" />
+                        <div className="w-12 h-12 bg-[#FF0000] text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow-lg">
+                            <Play className="w-5 h-5 text-white fill-white ml-0.5" />
                         </div>
                     </div>
                 </Link>
             )}
 
-            {/* User Playlists */}
-            {(activeFilter === 'all' || activeFilter === 'playlists') && userPlaylists.length > 0 && (
+            {/* Your Playlists Section */}
+            {showPlaylists && userPlaylists.length > 0 && (
                 <div className="mb-6">
                     <h2 className="text-lg font-bold mb-3">Your Playlists</h2>
                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
                         {userPlaylists.map((playlist) => (
                             <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
-                                <div className="bg-transparent md:bg-spotify-card p-0 md:p-3 rounded-xl hover:bg-spotify-card-hover transition group cursor-pointer">
-                                    <div className="relative mb-2 md:mb-3">
+                                <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer border border-white/5 relative h-full flex flex-col justify-between">
+                                    <div className="relative mb-3">
                                         <CoverImage
                                             src={playlist.cover_url}
                                             alt={playlist.title}
-                                            className="w-full aspect-square rounded-2xl shadow-lg"
+                                            className="w-full aspect-square rounded-xl shadow-lg"
                                             fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
                                         />
-                                        <div className="absolute bottom-2 right-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition">
-                                            <div className="w-8 h-8 md:w-10 md:h-10 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg">
-                                                <Play className="w-4 h-4 md:w-5 md:h-5 text-black fill-black ml-0.5" />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                            <div className="w-10 h-10 md:w-12 md:h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                <Play className="w-4 h-4 md:w-5 md:h-5 text-black fill-current ml-0.5" />
                                             </div>
                                         </div>
                                     </div>
-                                    <h3 className="font-bold truncate text-[11px] md:text-base">{playlist.title}</h3>
+                                    <h3 className="font-bold text-white truncate text-[11px] md:text-base">{playlist.title}</h3>
                                     <p className="text-[10px] md:text-xs text-neutral-400 line-clamp-1">{playlist.tracks.length} songs</p>
                                 </div>
                             </Link>
@@ -162,60 +182,93 @@ export default function Library() {
                 </div>
             )}
 
-            {/* Main Library Grid (Local + Discovery) */}
-            {displayItems.length > 0 && (
-                <div>
-                    {(activeFilter === 'all' || activeFilter !== 'playlists') && <h2 className="text-lg font-bold mb-3">Saved & Discovered</h2>}
+            {/* Followed Artists Section */}
+            {showArtists && followedArtists.length > 0 && (
+                <div className="mb-6">
+                    <h2 className="text-lg font-bold mb-3">Followed Artists</h2>
                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
-                        {displayItems.map((item, index) => (
-                            <Link
-                                to={
-                                    item.type === 'Playlist' ? `/playlist/${item.id}` :
-                                        item.type === 'Artist' ? `/artist/${encodeURIComponent(item.title)}` :
-                                            `/search?q=${encodeURIComponent(item.title)}` // Albums link to search for now as we don't have dedicated album page yet, wait we do have Album.tsx but routing might need check.
-                                    // Actually Album.tsx exists.
-                                    // item.type === 'Album' ? `/album/${item.id}` : ...
-                                    // But item.id for discovery is random.
-                                    // Let's stick to Search for generic album discovery navigation or update Album page to fetch by title.
-                                    // Search is safest for discovered items.
-                                }
-                                key={`${item.id}-${index}`}
-                                ref={index === displayItems.length - 1 ? lastElementRef : null}
-                            >
-                                <div className="bg-transparent md:bg-spotify-card p-0 md:p-3 rounded-xl hover:bg-spotify-card-hover transition group cursor-pointer h-full">
+                        {followedArtists.map((artistName) => (
+                            <Link to={`/artist/${encodeURIComponent(artistName)}`} key={artistName}>
+                                <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer border border-white/5 relative h-full flex flex-col justify-between">
                                     <div className="relative mb-3">
                                         <CoverImage
-                                            src={item.cover_url}
-                                            alt={item.title}
-                                            className={`w-full aspect-square shadow-lg rounded-2xl`}
-                                            fallbackText={item.title?.substring(0, 2).toUpperCase()}
+                                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=random&color=fff&size=128&rounded=true&bold=true&font-size=0.33`}
+                                            alt={artistName}
+                                            className="w-full aspect-square rounded-full shadow-lg"
+                                            fallbackText={artistName?.substring(0, 2).toUpperCase()}
                                         />
-                                        <div className="absolute bottom-2 right-2 translate-y-2 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition">
-                                            <div className="w-10 h-10 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg">
-                                                <Play className="w-5 h-5 text-black fill-black ml-0.5" />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-full flex items-center justify-center">
+                                            <div className="w-10 h-10 md:w-12 md:h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                <Play className="w-4 h-4 md:w-5 md:h-5 text-black fill-current ml-0.5" />
                                             </div>
                                         </div>
                                     </div>
-                                    <h3 className="font-bold truncate text-[11px] md:text-base">{item.title}</h3>
-                                    <p className="text-[10px] md:text-xs text-neutral-400 capitalize line-clamp-1">{item.type}{item.creator ? ` • ${item.creator}` : ''}</p>
+                                    <h3 className="font-bold text-white truncate text-[11px] md:text-base">{artistName}</h3>
+                                    <p className="text-[10px] md:text-xs text-neutral-400 capitalize line-clamp-1">Artist</p>
                                 </div>
                             </Link>
                         ))}
+                    </div>
+                </div>
+            )}
 
-                        {/* Loading Skeletons */}
-                        {isFetching && Array.from({ length: 10 }).map((_, i) => (
-                            <div key={`skel-${i}`} className="p-3">
-                                <Skeleton className="w-full aspect-square rounded-md mb-3" />
-                                <Skeleton className="h-4 w-3/4 mb-2" />
-                                <Skeleton className="h-3 w-1/2" />
+            {/* Saved Albums Section */}
+            {showAlbums && savedAlbums.length > 0 && (
+                <div className="mb-6">
+                    <h2 className="text-lg font-bold mb-3">Saved Albums</h2>
+                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-2 md:gap-4">
+                        {savedAlbums.map((album) => (
+                            <Link to={`/album/${album.id}`} key={album.id}>
+                                <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer border border-white/5 relative h-full flex flex-col justify-between">
+                                    <div className="relative mb-3">
+                                        <CoverImage
+                                            src={album.cover_url}
+                                            alt={album.title}
+                                            className="w-full aspect-square rounded-xl shadow-lg"
+                                            fallbackText={album.title?.substring(0, 2).toUpperCase()}
+                                        />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                            <div className="w-10 h-10 md:w-12 md:h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                <Play className="w-4 h-4 md:w-5 md:h-5 text-black fill-current ml-0.5" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <h3 className="font-bold text-white truncate text-[11px] md:text-base">{album.title}</h3>
+                                    <p className="text-[10px] md:text-xs text-neutral-400 capitalize line-clamp-1">{album.artist}</p>
+                                </div>
+                            </Link>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Recently Played Section */}
+            {(showAll || activeFilter === 'playlists' || showAlbums) && playHistory.length > 0 && (
+                <div className="mb-6">
+                    <h2 className="text-lg font-bold mb-3">Recently Played</h2>
+                    <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
+                        {playHistory.slice(0, 12).map((track, index) => (
+                            <div key={`${track.id}-${index}`} className="flex-shrink-0 w-[140px] md:w-[160px]">
+                                <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer border border-white/5">
+                                    <div className="relative mb-3">
+                                        <CoverImage
+                                            src={track.cover_url}
+                                            alt={track.title}
+                                            className="w-full aspect-square rounded-xl shadow-lg"
+                                            fallbackText={track.title?.substring(0, 2).toUpperCase()}
+                                        />
+                                    </div>
+                                    <h3 className="font-bold text-white truncate text-[11px] md:text-sm">{track.title}</h3>
+                                    <p className="text-[10px] md:text-xs text-neutral-400 truncate">{track.artist}</p>
+                                </div>
                             </div>
                         ))}
                     </div>
                 </div>
             )}
 
-            {/* Empty State (Only if absolutely nothing) */}
-            {displayItems.length === 0 && userPlaylists.length === 0 && !isFetching && (
+            {/* Empty State */}
+            {totalItems === 0 && playHistory.length === 0 && (
                 <div className="text-center py-20">
                     <div className="w-20 h-20 mx-auto mb-4 bg-[#282828] rounded-full flex items-center justify-center">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-500">
@@ -232,13 +285,6 @@ export default function Library() {
                     >
                         Create Playlist
                     </button>
-                    {/* Trigger discovery manually if empty */}
-                    <button
-                        onClick={loadMore}
-                        className="block mx-auto mt-4 text-sm text-neutral-400 hover:text-white underline"
-                    >
-                        Browse Recommended
-                    </button>
                 </div>
             )}
 
@@ -247,6 +293,8 @@ export default function Library() {
                 onClose={() => setIsCreateModalOpen(false)}
                 onCreate={handleCreatePlaylist}
             />
+
+            <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
         </div>
     );
 }

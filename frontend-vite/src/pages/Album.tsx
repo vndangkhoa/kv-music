@@ -8,7 +8,7 @@ import Recommendations from '../components/Recommendations';
 
 export default function Album() {
     const { id } = useParams();
-    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, currentTrack } = usePlayer();
+    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, currentTrack, shuffle, toggleShuffle, addToQueue } = usePlayer();
     const [tracks, setTracks] = useState<Track[]>([]);
     const [albumInfo, setAlbumInfo] = useState<{ title: string, artist: string, cover?: string, year?: string } | null>(null);
     const [moreByArtist, setMoreByArtist] = useState<Track[]>([]);
@@ -130,17 +130,35 @@ export default function Album() {
             {/* Toolbar */}
             <div className="px-4 py-3 flex items-center justify-center gap-6 bg-black/20 backdrop-blur-sm sticky top-0 z-10 md:px-8">
                 <button
-                    onClick={() => tracks.length > 0 && playTrack(tracks[0])} // Should play all
+                    onClick={() => tracks.length > 0 && playTrack(tracks[0], tracks)} // Should play all
                     className="bg-white text-black px-8 py-2 rounded-full font-bold text-sm hover:scale-105 transition flex items-center gap-2 shadow-lg hover:shadow-xl hover:bg-neutral-200"
                 >
                     <Play fill="currentColor" size={18} />
                     Play
                 </button>
                 <div className="flex items-center gap-4">
-                    <button className="p-2 text-neutral-400 hover:text-white transition border border-white/10 rounded-full hover:bg-white/10 hover:border-white">
+                    <button
+                        onClick={() => {
+                            if (tracks.length > 0) {
+                                if (!shuffle) toggleShuffle();
+                                const randomIndex = Math.floor(Math.random() * tracks.length);
+                                playTrack(tracks[randomIndex], tracks);
+                            }
+                        }}
+                        className={`p-2 transition border rounded-full hover:bg-white/10 hover:border-white ${shuffle ? 'text-[#FF0000] border-[#FF0000]' : 'text-neutral-400 border-white/10'}`}
+                        title="Shuffle"
+                    >
                         <Shuffle size={20} />
                     </button>
-                    <button className="p-2 text-neutral-400 hover:text-white transition border border-white/10 rounded-full hover:bg-white/10 hover:border-white">
+                    <button
+                        onClick={() => {
+                            if (tracks.length > 0) {
+                                addToQueue(tracks);
+                            }
+                        }}
+                        className="p-2 text-neutral-400 hover:text-white transition border border-white/10 rounded-full hover:bg-white/10 hover:border-white"
+                        title="Add to queue"
+                    >
                         <ListPlus size={20} />
                     </button>
                     <button className="p-2 text-neutral-400 hover:text-white transition border border-white/10 rounded-full hover:bg-white/10 hover:border-white">
@@ -200,22 +218,22 @@ export default function Album() {
                     <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {moreByArtist.map((track) => (
                             <div
-                                className="bg-[#181818] p-3 md:p-4 rounded-xl hover:bg-[#282828] transition duration-300 group cursor-pointer relative flex flex-col"
+                                className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col border border-white/5"
                                 key={track.id}
                                 onClick={() => {
                                     playTrack(track, moreByArtist);
                                 }}
                             >
-                                <div className="relative mb-3 md:mb-4">
-                                    <img src={track.cover_url} className="w-full aspect-square rounded-2xl shadow-lg object-cover" />
-                                    <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                                        <div className="w-10 h-10 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                            <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                <div className="relative mb-3">
+                                    <img src={track.cover_url} className="w-full aspect-square rounded-xl shadow-lg object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                        <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                         </div>
                                     </div>
                                 </div>
-                                <h3 className="font-bold text-sm md:text-base mb-1 truncate">{track.title}</h3>
-                                <p className="text-xs md:text-sm text-[#a7a7a7] truncate">{track.artist}</p>
+                                <h3 className="font-bold text-white text-sm mb-1 truncate">{track.title}</h3>
+                                <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
                             </div>
                         ))}
                     </div>

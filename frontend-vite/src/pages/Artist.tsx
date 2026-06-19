@@ -18,17 +18,33 @@ interface ArtistData {
 export default function Artist() {
     const { id } = useParams(); // Start with name or id
     const navigate = useNavigate();
-    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen } = usePlayer();
+    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, shuffle, toggleShuffle } = usePlayer();
 
     const [artist, setArtist] = useState<ArtistData | null>(null);
     const [loading, setLoading] = useState(true);
     const [songsLoading, setSongsLoading] = useState(true);
+    const [isLiked, setIsLiked] = useState(false);
 
-    // YouTube Music uses name-based IDs or channel IDs. 
-    // Our 'id' might be a name if clicked from Home.
-    // If it's a UUID (from DB), we might need to look up.
-    // For now, assume ID = Name or handle both.
     const artistName = decodeURIComponent(id || '');
+
+    useEffect(() => {
+        if (!artistName) return;
+        const liked = JSON.parse(localStorage.getItem('likedArtists') || '[]');
+        setIsLiked(liked.includes(artistName));
+    }, [artistName]);
+
+    const toggleLikeArtist = () => {
+        const liked = JSON.parse(localStorage.getItem('likedArtists') || '[]');
+        let updated: string[];
+        if (liked.includes(artistName)) {
+            updated = liked.filter((name: string) => name !== artistName);
+            setIsLiked(false);
+        } else {
+            updated = [...liked, artistName];
+            setIsLiked(true);
+        }
+        localStorage.setItem('likedArtists', JSON.stringify(updated));
+    };
 
     useEffect(() => {
         if (!artistName) return;
@@ -122,12 +138,28 @@ export default function Artist() {
                             <Play fill="currentColor" size={20} />
                             Play
                         </button>
-                        <button className="bg-white/10 backdrop-blur-md text-white px-6 py-3 rounded-full font-bold text-lg hover:bg-white/20 transition border border-white/20 flex items-center gap-2">
-                            <Shuffle size={20} />
+                        <button
+                            onClick={() => {
+                                if (artist.topSongs.length > 0) {
+                                    if (!shuffle) toggleShuffle();
+                                    const randomIndex = Math.floor(Math.random() * artist.topSongs.length);
+                                    playTrack(artist.topSongs[randomIndex], artist.topSongs);
+                                }
+                            }}
+                            className="bg-white/10 backdrop-blur-md text-white px-6 py-3 rounded-full font-bold text-lg hover:bg-white/20 transition border border-white/20 flex items-center gap-2"
+                        >
+                            <Shuffle size={20} className={shuffle ? "text-red-500" : ""} />
                             Shuffle
                         </button>
-                        <button className="bg-white/10 backdrop-blur-md text-white p-3 rounded-full hover:bg-white/20 transition border border-white/20">
-                            <Heart size={24} />
+                        <button
+                            onClick={toggleLikeArtist}
+                            className={`p-3 rounded-full transition border flex items-center justify-center ${
+                                isLiked
+                                    ? 'bg-[#FF0000] border-[#FF0000] text-white hover:bg-[#CC0000]'
+                                    : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
+                            }`}
+                        >
+                            <Heart size={24} className={isLiked ? 'fill-current text-white' : ''} />
                         </button>
                     </div>
                 </div>
@@ -247,17 +279,7 @@ export default function Artist() {
                     </div>
                 </section>
 
-                {/* Related Artists & Content */}
-                <Recommendations
-                    seed={artist.name}
-                    seedType="artist"
-                    limit={20}
-                    title="Fans also like"
-                    showTracks={true}
-                    showAlbums={true}
-                    showPlaylists={true}
-                    showArtists={true}
-                />
+
             </div>
         </div>
     );

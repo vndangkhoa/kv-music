@@ -52,9 +52,9 @@ export default function Collection() {
                 <button
                     onClick={handlePlayAll}
                     disabled={likedTracksData.length === 0}
-                    className="w-14 h-14 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg disabled:opacity-50"
+                    className="w-14 h-14 bg-[#FF0000] text-white rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg disabled:opacity-50"
                 >
-                    <Play className="w-6 h-6 text-black fill-black ml-1" />
+                    <Play className="w-6 h-6 text-white fill-white ml-1" />
                 </button>
                 <button
                     onClick={handleShufflePlay}
@@ -99,12 +99,12 @@ export default function Collection() {
                             >
                                 {/* Index / Play indicator */}
                                 <div className="flex items-center">
-                                    <span className={`text-sm ${isCurrentTrack ? 'text-[#1DB954]' : 'text-neutral-400'} group-hover:hidden`}>
+                                    <span className={`text-sm ${isCurrentTrack ? 'text-[#FF0000]' : 'text-neutral-400'} group-hover:hidden`}>
                                         {isCurrentTrack && isPlaying ? (
                                             <div className="flex items-end gap-[2px] h-4">
-                                                <div className="w-[3px] bg-[#1DB954] rounded-full animate-soundwave-1" />
-                                                <div className="w-[3px] bg-[#1DB954] rounded-full animate-soundwave-2" />
-                                                <div className="w-[3px] bg-[#1DB954] rounded-full animate-soundwave-3" />
+                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-1" />
+                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-2" />
+                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-3" />
                                             </div>
                                         ) : (
                                             index + 1
@@ -127,7 +127,7 @@ export default function Collection() {
                                         fallbackText="♪"
                                     />
                                     <div className="min-w-0">
-                                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-[#1DB954]' : 'text-white'}`}>{track.title}</p>
+                                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-[#FF0000]' : 'text-white'}`}>{track.title}</p>
                                         <p className="text-sm text-neutral-400 truncate">{track.artist}</p>
                                     </div>
                                 </div>
@@ -137,7 +137,7 @@ export default function Collection() {
 
                                 {/* Duration */}
                                 <div className="flex items-center justify-end">
-                                    <Heart className="w-4 h-4 text-[#1DB954] fill-current mr-4 opacity-0 group-hover:opacity-100" />
+                                    <Heart className="w-4 h-4 text-[#FF0000] fill-current mr-4 opacity-0 group-hover:opacity-100" />
                                     <span className="text-sm text-neutral-400">{formatDuration(track.duration)}</span>
                                 </div>
                             </div>

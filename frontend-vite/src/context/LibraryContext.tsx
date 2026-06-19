@@ -1,116 +1,78 @@
-import React, { createContext, useContext, useState, useEffect } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { dbService, Playlist } from "../services/db";
-import { libraryService } from "../services/library";
 import { Track } from "../types";
 
 type FilterType = 'all' | 'playlists' | 'artists' | 'albums';
 
+interface SavedAlbum {
+    id: string;
+    title: string;
+    artist: string;
+    cover_url: string;
+}
+
 interface LibraryContextType {
     userPlaylists: Playlist[];
-    libraryItems: LibraryItem[];
+    followedArtists: string[];
+    savedAlbums: SavedAlbum[];
     activeFilter: FilterType;
     setActiveFilter: (filter: FilterType) => void;
     refreshLibrary: () => Promise<void>;
-}
-
-interface LibraryItem {
-    id: string;
-    title: string;
-    type: 'Playlist' | 'Artist' | 'Album';
-    cover_url?: string;
-    creator?: string;
-    tracks?: Track[];
-    description?: string;
+    deriveSavedAlbums: (playHistory: Track[]) => void;
 }
 
 const LibraryContext = createContext<LibraryContextType | undefined>(undefined);
 
 export function LibraryProvider({ children }: { children: React.ReactNode }) {
     const [userPlaylists, setUserPlaylists] = useState<Playlist[]>([]);
-    const [libraryItems, setLibraryItems] = useState<LibraryItem[]>([]);
+    const [followedArtists, setFollowedArtists] = useState<string[]>([]);
+    const [savedAlbums, setSavedAlbums] = useState<SavedAlbum[]>([]);
     const [activeFilter, setActiveFilter] = useState<FilterType>('all');
 
-    const fetchAllData = async () => {
+    const fetchAllData = useCallback(async () => {
         try {
             // 1. User Playlists from IndexedDB
             const playlists = await dbService.getPlaylists() || [];
             setUserPlaylists(playlists);
 
-            // 2. Browse Content from Backend
-            const browse = await libraryService.getBrowseContent();
-
-            // Explicitly handle categories
-            const seedPlaylists = browse['Top Playlists'] || [];
-            const seedAlbums = browse['Top Albums'] || [];
-            const seedArtists = browse['Popular Artists'] || [];
-
-            // 3. Extract metadata from tracks (Only if we have tracks to parse)
-            // But mostly we typically rely on Seed Data now.
-            // We can still try to discover more from whatever tracks we have.
-
-            const allItems: LibraryItem[] = [];
-
-            // Add Seed Artists
-            seedArtists.forEach(a => {
-                allItems.push({
-                    id: a.id,
-                    title: a.title,
-                    type: 'Artist',
-                    cover_url: a.cover_url,
-                    description: 'Artist'
-                });
-            });
-
-            // Add Seed Albums
-            seedAlbums.forEach(a => {
-                allItems.push({
-                    id: a.id,
-                    title: a.title,
-                    type: 'Album',
-                    cover_url: a.cover_url,
-                    creator: a.creator,
-                    description: a.description
-                });
-            });
-
-            // Add Seed Playlists
-            seedPlaylists.forEach(p => {
-                allItems.push({
-                    id: p.id,
-                    title: p.title,
-                    type: 'Playlist',
-                    cover_url: p.cover_url,
-                    description: p.description,
-                    tracks: p.tracks
-                });
-            });
-
-            // Deduplicate
-            const seenIds = new Set();
-            const uniqueItems = allItems.filter(item => {
-                if (seenIds.has(item.id)) return false;
-                seenIds.add(item.id);
-                return true;
-            });
-
-            setLibraryItems(uniqueItems);
+            // 2. Followed Artists from localStorage (same source as Artist page heart button)
+            const likedArtists = JSON.parse(localStorage.getItem('likedArtists') || '[]') as string[];
+            setFollowedArtists(likedArtists);
 
         } catch (err) {
             console.error(err);
         }
-    };
+    }, []);
+
+    // Derive saved albums from play history (called from component using PlayerContext)
+    const deriveSavedAlbums = useCallback((playHistory: Track[]) => {
+        const seen = new Map<string, SavedAlbum>();
+        for (const track of playHistory) {
+            if (track.album && !seen.has(track.album)) {
+                seen.set(track.album, {
+                    id: track.album.replace(/\s+/g, '-').toLowerCase(),
+                    title: track.album,
+                    artist: track.artist,
+                    cover_url: track.cover_url,
+                });
+            }
+        }
+        setSavedAlbums(Array.from(seen.values()));
+    }, []);
 
     useEffect(() => {
         fetchAllData();
-    }, []);
+    }, [fetchAllData]);
 
     return (
         <LibraryContext.Provider value={{
             userPlaylists,
-            libraryItems,
+            followedArtists,
+            savedAlbums,
             activeFilter,
             setActiveFilter,
-            refreshLibrary: fetchAllData
+            refreshLibrary: fetchAllData,
+            deriveSavedAlbums,
         }}>
             {children}
         </LibraryContext.Provider>

@@ -17,6 +17,29 @@ export default function Home() {
     const [showSortMenu, setShowSortMenu] = useState(false);
     const [heroPlaylist, setHeroPlaylist] = useState<StaticPlaylist | null>(null);
     const { playTrack, playHistory, setIsFullScreenOpen, currentTrack } = usePlayer();
+    const [activeChip, setActiveChip] = useState<'all' | string>('all');
+
+    const playCollection = async (id: string, isAlbum: boolean) => {
+        try {
+            const data = isAlbum 
+                ? await libraryService.getAlbum(id)
+                : await libraryService.getPlaylist(id);
+            if (data && data.tracks.length > 0) {
+                playTrack(data.tracks[0], data.tracks);
+            }
+        } catch (e) {
+            console.error("Failed to play collection", e);
+        }
+    };
+
+
+    const filterChips = [
+        { id: 'energize', label: 'Energize', categories: ['Workout Energy', 'Party Anthems', 'Rap Viet', 'Gaming Music'] },
+        { id: 'workout', label: 'Workout', categories: ['Workout Energy', 'Gaming Music'] },
+        { id: 'relax', label: 'Relax', categories: ['Lofi Chill Vietnam', 'Sleep Sounds', 'Acoustic Thu Gian', 'Piano Focus'] },
+        { id: 'focus', label: 'Focus', categories: ['Piano Focus', 'Lofi Chill Vietnam'] },
+        { id: 'commute', label: 'Commute', categories: ['US UK Top Hits', 'Trending Music', 'V-Pop Rising', 'Viral Hits Vietnam'] }
+    ];
 
     useEffect(() => {
         const hour = new Date().getHours();
@@ -26,17 +49,22 @@ export default function Home() {
 
         // Cache First Strategy for "Super Fast" loading
         const cached = localStorage.getItem('ytm_browse_cache_v8');
+        let hasCache = false;
         if (cached) {
             setBrowseData(JSON.parse(cached));
             setLoading(false);
+            hasCache = true;
         }
 
         const fetchBrowseData = () => {
-            setLoading(true);
+            if (!hasCache) {
+                setLoading(true);
+            }
             libraryService.getBrowseContent()
                 .then(data => {
                     setBrowseData(data);
                     setLoading(false);
+                    hasCache = true;
                     // Update Cache
                     localStorage.setItem('ytm_browse_cache_v8', JSON.stringify(data));
 
@@ -86,21 +114,21 @@ export default function Home() {
     return (
         <div className="h-full overflow-y-auto p-6 no-scrollbar pb-24">
             {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-                <h1 className="text-3xl font-bold">{timeOfDay}</h1>
+            <div className="flex items-center justify-between mb-6 select-none">
+                <h1 className="text-3xl font-extrabold tracking-tight text-white">{timeOfDay}</h1>
 
                 {/* Sort Dropdown */}
                 <div className="relative">
                     <button
                         onClick={() => setShowSortMenu(!showSortMenu)}
-                        className="flex items-center gap-2 px-4 py-2 bg-spotify-card hover:bg-spotify-card-hover rounded-full text-sm font-medium transition"
+                        className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-full text-sm font-bold transition select-none"
                     >
                         <ArrowUpDown className="w-4 h-4" />
                         Sort
                     </button>
 
                     {showSortMenu && (
-                        <div className="absolute right-0 mt-2 w-48 bg-[#282828] rounded-lg shadow-xl z-50 py-1 border border-[#383838]">
+                        <div className="absolute right-0 mt-2 w-48 bg-[#212121] rounded-xl shadow-xl z-50 py-1 border border-white/5">
                             {sortOptions.map((option) => (
                                 <button
                                     key={option.value}
@@ -108,12 +136,12 @@ export default function Home() {
                                         setSortBy(option.value as SortOption);
                                         setShowSortMenu(false);
                                     }}
-                                    className={`w-full px-4 py-2 text-left text-sm flex items-center gap-2 hover:bg-[#3a3a3a] transition ${sortBy === option.value ? 'text-[#1DB954]' : 'text-white'}`}
+                                    className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:bg-white/5 transition ${sortBy === option.value ? 'text-[#FF0000] font-bold' : 'text-white'}`}
                                 >
                                     <option.icon className="w-4 h-4" />
                                     {option.label}
                                     {sortBy === option.value && (
-                                        <span className="ml-auto text-[#1DB954]">✓</span>
+                                        <span className="ml-auto text-[#FF0000]">✓</span>
                                     )}
                                 </button>
                             ))}
@@ -122,109 +150,146 @@ export default function Home() {
                 </div>
             </div>
 
+            {/* YTM Filter Chips */}
+            <div className="flex gap-2 overflow-x-auto no-scrollbar mb-8 select-none">
+                <button
+                    onClick={() => setActiveChip('all')}
+                    className={`px-4 py-1.5 rounded-full text-xs font-bold transition duration-200 whitespace-nowrap ${
+                        activeChip === 'all'
+                            ? 'bg-white text-black shadow-md'
+                            : 'bg-white/5 text-white hover:bg-white/10'
+                    }`}
+                >
+                    All
+                </button>
+                {filterChips.map((chip) => (
+                    <button
+                        key={chip.id}
+                        onClick={() => setActiveChip(activeChip === chip.id ? 'all' : chip.id)}
+                        className={`px-4 py-1.5 rounded-full text-xs font-bold transition duration-200 whitespace-nowrap ${
+                            activeChip === chip.id
+                                ? 'bg-white text-black shadow-md'
+                                : 'bg-white/5 text-white hover:bg-white/10'
+                        }`}
+                    >
+                        {chip.label}
+                    </button>
+                ))}
+            </div>
+
             {/* Hero Section */}
-            {loading ? (
-                <div className="mb-8 w-full h-80 bg-spotify-card rounded-xl flex items-center p-8 animate-pulse">
-                    <Skeleton className="w-56 h-56 rounded-md shadow-2xl mr-8" />
-                    <div className="flex-1 space-y-4">
-                        <Skeleton className="h-6 w-32" />
-                        <Skeleton className="h-12 w-3/4" />
-                        <Skeleton className="h-4 w-1/2" />
-                    </div>
-                </div>
-            ) : heroPlaylist && (
-                <Link to={`/playlist/${heroPlaylist.id}`}>
-                    <div className="mb-8 w-full h-auto md:h-80 bg-gradient-to-r from-[#2a2a2a] to-[#181818] rounded-xl flex flex-col md:flex-row items-center p-6 md:p-8 hover:bg-[#2a2a2a] transition duration-300 group cursor-pointer shadow-2xl">
-                        <div className="relative mb-4 md:mb-0 md:mr-8 flex-shrink-0">
-                            <CoverImage
-                                src={heroPlaylist.cover_url}
-                                alt={heroPlaylist.title}
-                                className="w-48 h-48 md:w-56 md:h-56 rounded-2xl shadow-2xl group-hover:scale-105 transition duration-500"
-                                fallbackText="VB"
-                            />
+            {activeChip === 'all' && (
+                loading ? (
+                    <div className="mb-8 w-full h-80 bg-[#1f1f1f] rounded-2xl flex items-center p-8 animate-pulse">
+                        <div className="w-56 h-56 bg-white/5 rounded-2xl mr-8 shadow-2xl" />
+                        <div className="flex-1 space-y-4">
+                            <div className="h-6 bg-white/5 rounded w-32" />
+                            <div className="h-12 bg-white/5 rounded w-3/4" />
+                            <div className="h-4 bg-white/5 rounded w-1/2" />
                         </div>
-                        <div className="flex flex-col text-center md:text-left overflow-hidden">
-                            <span className="text-xs font-bold tracking-wider uppercase mb-2">Featured Playlist</span>
-                            <h2 className="text-3xl md:text-5xl font-black mb-4 leading-tight line-clamp-2 md:line-clamp-3" title={heroPlaylist.title}>{heroPlaylist.title}</h2>
-                            <p className="text-[#a7a7a7] text-sm md:text-base line-clamp-2 md:line-clamp-3 max-w-2xl mb-6">
-                                {heroPlaylist.description}
-                            </p>
-                            <div className="mt-auto inline-flex items-center gap-2 bg-[#1DB954] text-black px-8 py-3 rounded-full font-bold uppercase tracking-widest hover:scale-105 transition self-center md:self-start">
-                                <Play className="fill-black" />
-                                Play Now
+                    </div>
+                ) : heroPlaylist && (
+                    <Link to={`/playlist/${heroPlaylist.id}`}>
+                        <div className="mb-8 w-full h-auto md:h-80 bg-gradient-to-r from-[#212121] to-[#0f0f0f] rounded-2xl flex flex-col md:flex-row items-center p-6 md:p-8 hover:bg-[#252525] transition duration-300 group cursor-pointer shadow-2xl border border-white/5">
+                            <div className="relative mb-4 md:mb-0 md:mr-8 flex-shrink-0">
+                                <CoverImage
+                                    src={heroPlaylist.cover_url}
+                                    alt={heroPlaylist.title}
+                                    className="w-48 h-48 md:w-56 md:h-56 rounded-2xl shadow-2xl group-hover:scale-[1.02] transition duration-500"
+                                    fallbackText="VB"
+                                />
+                            </div>
+                            <div className="flex flex-col text-center md:text-left overflow-hidden">
+                                <span className="text-xs font-bold tracking-wider text-[#FF0000] uppercase mb-2">Featured Playlist</span>
+                                <h2 className="text-3xl md:text-5xl font-black mb-4 text-white leading-tight line-clamp-2 md:line-clamp-3" title={heroPlaylist.title}>{heroPlaylist.title}</h2>
+                                <p className="text-neutral-400 text-sm md:text-base line-clamp-2 md:line-clamp-3 max-w-2xl mb-6">
+                                    {heroPlaylist.description}
+                                </p>
+                                <div className="mt-auto inline-flex items-center gap-2 bg-white text-black px-8 py-3 rounded-full font-bold uppercase tracking-wider hover:scale-105 active:scale-95 transition self-center md:self-start shadow-lg">
+                                    <Play className="fill-current text-black w-4 h-4" />
+                                    Play Now
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </Link>
+                    </Link>
+                )
             )}
 
             {/* Recently Listened */}
-            <RecentlyListenedSection playHistory={playHistory} playTrack={playTrack} />
+            {activeChip === 'all' && (
+                <RecentlyListenedSection playHistory={playHistory} playTrack={playTrack} />
+            )}
 
             {/* Made For You */}
-            <MadeForYouSection />
+            {activeChip === 'all' && (
+                <MadeForYouSection />
+            )}
 
             {/* Artist Vietnam */}
-            <ArtistVietnamSection />
+            {activeChip === 'all' && (
+                <ArtistVietnamSection />
+            )}
 
             {/* Top Albums Section (NEW) */}
-            {loading ? (
-                <div className="mb-8">
-                    <Skeleton className="h-8 w-48 mb-4" />
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                        {[1, 2, 3, 4, 5].map(j => (
-                            <div key={j} className="space-y-3">
-                                <Skeleton className="w-full aspect-square rounded-md" />
-                                <Skeleton className="h-4 w-3/4" />
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            ) : browseData["Top Albums"] && browseData["Top Albums"].length > 0 && (() => {
-                const seen = new Set<string>();
-                const uniqueAlbums = (browseData["Top Albums"] as any[]).filter(a => {
-                    if (seen.has(a.id)) return false;
-                    seen.add(a.id);
-                    return true;
-                });
-                return (
-                <div className="mb-8">
-                    <div className="flex items-center justify-between mb-4">
-                        <h2 className="text-2xl font-bold capitalize hover:underline cursor-pointer">Top Albums</h2>
-                    </div>
-<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-2">
-                        {uniqueAlbums.slice(0, 15).map((album) => (
-                            <Link to={`/album/${album.id}`} key={album.id}>
-                                <div className="bg-transparent md:bg-spotify-card p-0 md:p-3 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
-                                    <div className="relative mb-2 md:mb-3">
-                                            <CoverImage
-                                                src={album.cover_url}
-                                                alt={album.title}
-                                                className="w-full aspect-square rounded-2xl shadow-lg"
-                                                fallbackText={album.title?.substring(0, 2).toUpperCase()}
-                                            />
-                                        <div
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
-                                                playTrack(album as any);
-                                            }}
-                                            className="absolute bottom-2 right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer"
-                                        >
-                                            <div className="w-8 h-8 md:w-10 md:h-10 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                                <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-5 md:h-5" />
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <h3 className="font-bold mb-0.5 truncate text-[11px] md:text-base">{album.title}</h3>
-                                    <p className="text-[10px] md:text-xs text-[#a7a7a7] line-clamp-1">{album.description}</p>
+            {activeChip === 'all' && (
+                loading ? (
+                    <div className="mb-8">
+                        <Skeleton className="h-8 w-48 mb-4" />
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {[1, 2, 3, 4].map(j => (
+                                <div key={j} className="space-y-3">
+                                    <Skeleton className="w-full aspect-square rounded-2xl" />
+                                    <Skeleton className="h-4 w-3/4" />
                                 </div>
-                            </Link>
-                        ))}
+                            ))}
+                        </div>
                     </div>
-                </div>
-                );
-            })()}
+                ) : browseData["Top Albums"] && browseData["Top Albums"].length > 0 && (() => {
+                    const seen = new Set<string>();
+                    const uniqueAlbums = (browseData["Top Albums"] as any[]).filter(a => {
+                        if (seen.has(a.id)) return false;
+                        seen.add(a.id);
+                        return true;
+                    });
+                    return (
+                        <div className="mb-8">
+                            <div className="flex items-center justify-between mb-4">
+                                <h2 className="text-xl font-bold text-white hover:underline cursor-pointer">Top Albums</h2>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {uniqueAlbums.slice(0, 12).map((album) => (
+                                    <Link to={`/album/${album.id}`} key={album.id}>
+                                        <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative h-full flex flex-col border border-white/5">
+                                            <div className="relative mb-3">
+                                                <CoverImage
+                                                    src={album.cover_url}
+                                                    alt={album.title}
+                                                    className="w-full aspect-square rounded-xl shadow-lg"
+                                                    fallbackText={album.title?.substring(0, 2).toUpperCase()}
+                                                />
+                                                <div
+                                                    onClick={(e) => {
+                                                        e.preventDefault();
+                                                        e.stopPropagation();
+                                                        playCollection(album.id, true);
+                                                    }}
+                                                    className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center"
+                                                >
+                                                    <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                        <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <h3 className="font-bold text-white text-sm mb-0.5 truncate">{album.title}</h3>
+                                            <p className="text-xs text-neutral-400 line-clamp-1">{album.description}</p>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })()
+            )}
 
             {/* Browse Lists */}
             {loading ? (
@@ -232,10 +297,10 @@ export default function Home() {
                     {[1, 2].map(i => (
                         <div key={i}>
                             <Skeleton className="h-8 w-48 mb-4" />
-<div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                                 {[1, 2, 3, 4, 5].map(j => (
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                 {[1, 2, 3, 4].map(j => (
                                      <div key={j} className="space-y-3">
-                                         <Skeleton className="w-full aspect-square rounded-md" />
+                                         <Skeleton className="w-full aspect-square rounded-2xl" />
                                          <Skeleton className="h-4 w-3/4" />
                                          <Skeleton className="h-3 w-1/2" />
                                      </div>
@@ -246,7 +311,14 @@ export default function Home() {
                 </div>
             ) : Object.keys(browseData).length > 0 ? (
                 Object.entries(browseData)
-                    .filter(([category, items]) => category !== "Top Albums" && (items as any[]).length > 0)
+                    .filter(([category, items]) => {
+                        if (category === "Top Albums" || (items as any[]).length === 0) return false;
+                        if (activeChip !== 'all') {
+                            const selected = filterChips.find(c => c.id === activeChip);
+                            return selected ? selected.categories.includes(category) : true;
+                        }
+                        return true;
+                    })
                     .map(([category, playlists]) => {
                         const seen = new Set<string>();
                         const uniquePlaylists = (playlists as any[]).filter(p => {
@@ -255,52 +327,51 @@ export default function Home() {
                             return true;
                         });
                         return (
-                        <div key={category} className="mb-8">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-2xl font-bold capitalize hover:underline cursor-pointer">{category}</h2>
-                                <Link to={`/section?category=${encodeURIComponent(category)}`}>
-                                    <span className="text-xs font-bold text-[#b3b3b3] uppercase tracking-wider hover:text-white cursor-pointer">Show all</span>
-                                </Link>
-                            </div>
+                            <div key={category} className="mb-8">
+                                <div className="flex items-center justify-between mb-4">
+                                    <h2 className="text-xl font-bold text-white hover:underline cursor-pointer">{category}</h2>
+                                    <Link to={`/section?category=${encodeURIComponent(category)}`}>
+                                        <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider hover:text-white cursor-pointer">Show all</span>
+                                    </Link>
+                                </div>
 
-{/* USER REQUEST: Bigger Grid, Smaller Text, Smaller Gap */}
- <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-2">
-                                {sortPlaylists(uniquePlaylists).slice(0, 15).map((playlist) => (
-                                    <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
-                                        <div className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
-                                            <div className="relative mb-2 md:mb-4">
-                                                <CoverImage
-                                                    src={playlist.cover_url}
-                                                    alt={playlist.title}
-                                                    className="w-full aspect-square rounded-2xl shadow-lg"
-                                                    fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
-                                                />
-                                                <div
-                                                    onClick={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        playTrack(playlist as any);
-                                                    }}
-                                                    className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl cursor-pointer"
-                                                >
-                                                    <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                                        <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                    {sortPlaylists(uniquePlaylists).slice(0, 12).map((playlist) => (
+                                        <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
+                                            <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative h-full flex flex-col border border-white/5">
+                                                <div className="relative mb-3">
+                                                    <CoverImage
+                                                        src={playlist.cover_url}
+                                                        alt={playlist.title}
+                                                        className="w-full aspect-square rounded-xl shadow-lg"
+                                                        fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
+                                                    />
+                                                    <div
+                                                        onClick={(e) => {
+                                                            e.preventDefault();
+                                                            e.stopPropagation();
+                                                            playCollection(playlist.id, false);
+                                                        }}
+                                                        className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center"
+                                                    >
+                                                        <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <h3 className="font-bold text-white text-sm mb-0.5 truncate">{playlist.title}</h3>
+                                                <p className="text-xs text-neutral-400 line-clamp-2">{playlist.description}</p>
                                             </div>
-                                            <h3 className="font-bold mb-0.5 truncate text-[11px] md:text-base">{playlist.title}</h3>
-                                            <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{playlist.description}</p>
-                                        </div>
-                                    </Link>
-                                ))}
+                                        </Link>
+                                    ))}
+                                </div>
                             </div>
-                        </div>
                         );
                     })
             ) : (
                 <div className="text-center py-20">
-                    <h2 className="text-xl font-bold mb-4">Ready to explore?</h2>
-                    <p className="text-[#a7a7a7]">Browse content is loading or empty. Try searching for music.</p>
+                    <h2 className="text-xl font-bold mb-4 text-white">Ready to explore?</h2>
+                    <p className="text-neutral-400">Browse content is loading or empty. Try searching for music.</p>
                 </div>
             )}
         </div>
@@ -313,42 +384,42 @@ function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Trac
     if (playHistory.length === 0) return null;
 
     return (
-<div className="mb-8 animate-in">
-             <div className="flex items-center mb-4">
-                 <Clock className="w-5 h-5 text-[#1DB954]" />
-                 <h2 className="text-2xl font-bold">Recently Listened</h2>
-             </div>
+        <div className="mb-8 animate-in">
+             <div className="flex items-center gap-2 mb-4">
+                  <Clock className="w-5 h-5 text-[#FF0000]" />
+                  <h2 className="text-2xl font-bold">Recently Listened</h2>
+              </div>
 
-            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-                {playHistory.slice(0, 10).map((track, i) => (
-                    <div
-                        key={`${track.id}-${i}`}
-                        onClick={() => {
-                            playTrack(track, playHistory);
-                        }}
-                        className="flex-shrink-0 w-40 bg-spotify-card rounded-xl overflow-hidden hover:bg-spotify-card-hover transition duration-300 group cursor-pointer"
-                    >
-                        <div className="relative">
-                            <CoverImage
-                                src={track.cover_url}
-                                alt={track.title}
-                                className="w-40 h-40 rounded-2xl"
-                                fallbackText={track.title?.substring(0, 2).toUpperCase()}
-                            />
-                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                                <div className="w-12 h-12 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
-                                    <Play className="fill-black text-black ml-1 w-5 h-5" />
-                                </div>
-                            </div>
-                        </div>
-                        <div className="p-3">
-                            <h3 className="font-medium text-sm truncate">{track.title}</h3>
-                            <p className="text-xs text-[#a7a7a7] truncate">{track.artist}</p>
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
+             <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+                 {playHistory.slice(0, 10).map((track, i) => (
+                     <div
+                         key={`${track.id}-${i}`}
+                         onClick={() => {
+                             playTrack(track, playHistory);
+                         }}
+                         className="flex-shrink-0 w-40 bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer border border-white/5 flex flex-col justify-between"
+                     >
+                         <div>
+                             <div className="relative mb-3">
+                                 <CoverImage
+                                     src={track.cover_url}
+                                     alt={track.title}
+                                     className="w-full aspect-square rounded-xl shadow-lg"
+                                     fallbackText={track.title?.substring(0, 2).toUpperCase()}
+                                 />
+                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                     <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                         <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+                                     </div>
+                                 </div>
+                             </div>
+                             <h3 className="font-bold text-white text-sm mb-0.5 truncate">{track.title}</h3>
+                             <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
+                         </div>
+                     </div>
+                 ))}
+             </div>
+         </div>
     );
 }
 
@@ -378,51 +449,51 @@ function MadeForYouSection() {
     if (!loading && recommendations.length === 0) return null;
 
     return (
-<div className="mb-8 animate-in">
-             <div className="flex items-center mb-2">
-                 <Music2 className="w-5 h-5 text-[#1DB954]" />
-                 <h2 className="text-2xl font-bold">Made For You</h2>
-             </div>
-            <p className="text-sm text-[#a7a7a7] mb-4">
-                {seedTrack ? <>Because you listened to <span className="text-white font-medium">{seedTrack.artist}</span></> : "Recommended for you"}
-            </p>
+        <div className="mb-8 animate-in">
+              <div className="flex items-center gap-2 mb-2">
+                  <Music2 className="w-5 h-5 text-[#FF0000]" />
+                  <h2 className="text-2xl font-bold">Made For You</h2>
+              </div>
+             <p className="text-sm text-[#a7a7a7] mb-4">
+                 {seedTrack ? <>Because you listened to <span className="text-white font-medium">{seedTrack.artist}</span></> : "Recommended for you"}
+             </p>
 
-{loading ? (
-                 <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                     {[1, 2, 3, 4, 5].map(i => (
-                         <div key={i} className="space-y-3">
-                             <Skeleton className="w-full aspect-square rounded-md" />
-                             <Skeleton className="h-4 w-3/4" />
-                             <Skeleton className="h-3 w-1/2" />
+             {loading ? (
+                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                     {[1, 2, 3, 4].map(i => (
+                         <div key={i} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
+                             <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
+                             <Skeleton className="h-4 w-3/4 animate-pulse" />
+                             <Skeleton className="h-3 w-1/2 animate-pulse" />
                          </div>
                      ))}
                  </div>
-             ) : (
-<div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-2">
-                     {recommendations.slice(0, 10).map((track, i) => (
+              ) : (
+                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                     {recommendations.slice(0, 8).map((track, i) => (
                          <div key={i} onClick={() => {
                              playTrack(track, recommendations);
-                         }} className="bg-transparent md:bg-spotify-card p-0 md:p-4 rounded-xl hover:bg-spotify-card-hover transition duration-300 group cursor-pointer relative h-full flex flex-col">
-                             <div className="relative mb-2 md:mb-4">
+                         }} className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative h-full flex flex-col border border-white/5">
+                             <div className="relative mb-3">
                                  <CoverImage
                                      src={track.cover_url}
                                      alt={track.title}
-                                     className="w-full aspect-square rounded-2xl shadow-lg"
+                                     className="w-full aspect-square rounded-xl shadow-lg"
                                      fallbackText={track.title?.substring(0, 2).toUpperCase()}
                                  />
-                                 <div className="absolute bottom-1 right-1 md:bottom-2 md:right-2 translate-y-4 opacity-0 group-hover:translate-y-0 group-hover:opacity-100 transition duration-300 shadow-xl">
-                                     <div className="w-8 h-8 md:w-12 md:h-12 bg-[#1DB954] rounded-full flex items-center justify-center hover:scale-105">
-                                         <Play className="fill-black text-black ml-0.5 w-4 h-4 md:w-6 md:h-6" />
+                                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
+                                     <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                         <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                      </div>
                                  </div>
                              </div>
-                             <h3 className="font-bold mb-0.5 truncate text-[11px] md:text-base">{track.title}</h3>
-                             <p className="text-[10px] md:text-sm text-[#a7a7a7] line-clamp-2">{track.artist}</p>
+                             <h3 className="font-bold text-white text-sm mb-0.5 truncate">{track.title}</h3>
+                             <p className="text-xs text-neutral-400 line-clamp-2">{track.artist}</p>
                          </div>
                      ))}
                  </div>
              )}
-        </div>
+         </div>
     );
 }
 
@@ -466,8 +537,8 @@ function ArtistVietnamSection() {
 
         // 2. Load Photos (Cache First Strategy)
         const loadPhotos = async () => {
-            // v5: Force refresh for authentic channel avatars
-            const cacheKey = 'artist_photos_cache_v6';
+            // v7: Force refresh for authentic channel avatars
+            const cacheKey = 'artist_photos_cache_v7';
             const cached = JSON.parse(localStorage.getItem(cacheKey) || '{}');
 
             // Apply cache to state first
@@ -482,7 +553,7 @@ function ArtistVietnamSection() {
                     try {
                         const data = await libraryService.getArtistInfo(name);
                         if (data.photo) {
-                            return { name, photo: data.photo };
+                            return { name, photo: data.photo, isPlaceholder: data.isPlaceholder };
                         }
                     } catch { /* ignore */ }
                     return null;
@@ -493,16 +564,22 @@ function ArtistVietnamSection() {
                 
                 // Update state with all results at once
                 const updates: Record<string, string> = {};
+                const cacheUpdates: Record<string, string> = {};
                 results.forEach(result => {
                     if (result) {
                         updates[result.name] = result.photo;
+                        if (!result.isPlaceholder) {
+                            cacheUpdates[result.name] = result.photo;
+                        }
                     }
                 });
 
                 if (Object.keys(updates).length > 0) {
                     setArtistPhotos(prev => {
                         const next: Record<string, string> = { ...prev, ...updates };
-                        localStorage.setItem(cacheKey, JSON.stringify(next));
+                        // Only save non-placeholders to long-term cache
+                        const nextCache: Record<string, string> = { ...prev, ...cacheUpdates };
+                        localStorage.setItem(cacheKey, JSON.stringify(nextCache));
                         return next;
                     });
                 }
@@ -518,7 +595,7 @@ function ArtistVietnamSection() {
     return (
         <div className="mb-8 animate-in">
             <div className="flex items-center gap-2 mb-4">
-                <User className="w-5 h-5 text-[#1DB954]" />
+                <User className="w-5 h-5 text-[#FF0000]" />
                 <h2 className="text-2xl font-bold">Suggested Artists</h2>
             </div>
             <p className="text-sm text-[#a7a7a7] mb-4">Based on your recent listening</p>
@@ -527,8 +604,8 @@ function ArtistVietnamSection() {
                 {artists.length === 0 && loading ? (
                     [1, 2, 3, 4, 5, 6].map(i => (
                         <div key={i} className="flex-shrink-0 w-36 text-center space-y-3">
-                            <Skeleton className="w-36 h-36 rounded-full" />
-                            <Skeleton className="h-4 w-3/4 mx-auto" />
+                            <Skeleton className="w-36 h-36 rounded-full animate-pulse" />
+                            <Skeleton className="h-4 w-3/4 mx-auto animate-pulse" />
                         </div>
                     ))
                 ) : (
@@ -542,14 +619,14 @@ function ArtistVietnamSection() {
                                         className="w-36 h-36 rounded-full shadow-lg group-hover:shadow-xl transition object-cover"
                                         fallbackText={name.substring(0, 2).toUpperCase()}
                                     />
-                                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition rounded-full flex items-center justify-center">
-                                        <div className="w-10 h-10 bg-[#1DB954] rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
-                                            <Play className="fill-black text-black ml-0.5 w-4 h-4" />
+                                    <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition rounded-full flex items-center justify-center">
+                                        <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                                         </div>
                                     </div>
                                 </div>
-                                <h3 className="font-bold text-sm truncate px-2">{name}</h3>
-                                <p className="text-xs text-[#a7a7a7]">Artist</p>
+                                <h3 className="font-bold text-white text-sm truncate px-2">{name}</h3>
+                                <p className="text-xs text-neutral-400">Artist</p>
                             </div>
                         </Link>
                     ))

@@ -153,7 +153,7 @@ export default function VideoPlayer({
             <div ref={containerRef} className="w-full h-full plyr__video-embed" />
             {!isReady && (
                 <div className="absolute inset-0 flex items-center justify-center bg-black">
-                    <div className="w-12 h-12 border-4 border-white/30 border-t-[#1DB954] rounded-full animate-spin" />
+                    <div className="w-12 h-12 border-4 border-white/30 border-t-[#FF0000] rounded-full animate-spin" />
                 </div>
             )}
         </div>

@@ -1,4 +1,4 @@
-// Shared type definitions for the Spotify Clone application
+// Shared type definitions for KV Music
 
 export interface Track {
     id: string;

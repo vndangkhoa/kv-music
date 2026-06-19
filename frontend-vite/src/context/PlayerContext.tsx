@@ -29,6 +29,14 @@ interface PlayerContextType {
     isFullScreenOpen: boolean;
     setIsFullScreenOpen: (open: boolean) => void;
     queue: Track[];
+    isRightPanelOpen: boolean;
+    rightPanelTab: 'queue' | 'related';
+    setRightPanelTab: (tab: 'queue' | 'related') => void;
+    toggleRightPanel: (tab: 'queue' | 'related') => void;
+    closeRightPanel: () => void;
+    isSettingsOpen: boolean;
+    setIsSettingsOpen: (open: boolean) => void;
+    addToQueue: (tracks: Track | Track[]) => void;
 }
 
 const PlayerContext = createContext<PlayerContextType | undefined>(undefined);
@@ -59,7 +67,22 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     // History State
     const [playHistory, setPlayHistory] = useState<Track[]>([]);
 
-    // Lyrics Panel State
+    // Right Side Panel State
+    const [isRightPanelOpen, setIsRightPanelOpen] = useState(false);
+    const [rightPanelTab, setRightPanelTab] = useState<'queue' | 'related'>('queue');
+
+    const toggleRightPanel = (tab: 'queue' | 'related') => {
+        if (isRightPanelOpen && rightPanelTab === tab) {
+            setIsRightPanelOpen(false);
+        } else {
+            setRightPanelTab(tab);
+            setIsRightPanelOpen(true);
+        }
+    };
+
+    const closeRightPanel = () => setIsRightPanelOpen(false);
+
+    // Lyrics Panel State (independent overlay)
     const [isLyricsOpen, setIsLyricsOpen] = useState(false);
     const toggleLyrics = () => setIsLyricsOpen(prev => !prev);
     const closeLyrics = () => setIsLyricsOpen(false);
@@ -67,6 +90,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
 
     // Full Screen Player State
     const [isFullScreenOpen, setIsFullScreenOpen] = useState(false);
+
+    // Settings Modal State
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
+    // Add to Queue helper
+    const addToQueue = (newTracks: Track | Track[]) => {
+        setQueue(prev => {
+            const tracksToAdd = Array.isArray(newTracks) ? newTracks : [newTracks];
+            const filtered = tracksToAdd.filter(t => !prev.some(existing => existing.id === t.id));
+            return [...prev, ...filtered];
+        });
+    };
 
     // Load Likes from DB
     useEffect(() => {
@@ -222,7 +257,15 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
             openLyrics,
             isFullScreenOpen,
             setIsFullScreenOpen,
-            queue
+            queue,
+            isRightPanelOpen,
+            rightPanelTab,
+            setRightPanelTab,
+            toggleRightPanel,
+            closeRightPanel,
+            isSettingsOpen,
+            setIsSettingsOpen,
+            addToQueue
         }}>
             {children}
         </PlayerContext.Provider>

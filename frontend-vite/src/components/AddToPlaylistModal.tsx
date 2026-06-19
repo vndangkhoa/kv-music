@@ -83,13 +83,13 @@ export default function AddToPlaylistModal({ track, isOpen, onClose }: AddToPlay
                                 value={newPlaylistName}
                                 onChange={(e) => setNewPlaylistName(e.target.value)}
                                 placeholder="Playlist name"
-                                className="flex-1 px-3 py-2 bg-neutral-700 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#1DB954]"
+                                className="flex-1 px-3 py-2 bg-neutral-700 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
                                 autoFocus
                                 onKeyDown={(e) => e.key === 'Enter' && handleCreateAndAdd()}
                             />
                             <button
                                 onClick={handleCreateAndAdd}
-                                className="px-4 py-2 bg-[#1DB954] text-black font-bold rounded hover:scale-105 transition"
+                                className="px-4 py-2 bg-[#FF0000] text-white font-bold rounded-full hover:scale-105 transition"
                             >
                                 Create
                             </button>

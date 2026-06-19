@@ -19,7 +19,7 @@ pub struct CacheItem {
 pub struct SpotdlService {
     download_dir: PathBuf,
     pub search_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
-    pub browse_cache: Arc<RwLock<HashMap<String, Vec<StaticPlaylist>>>>,
+    pub browse_cache: Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>,
 }
 
 impl SpotdlService {
@@ -60,10 +60,57 @@ impl SpotdlService {
         
         // Windows: Check user Scripts folder
         if cfg!(windows) {
-            if let Ok(home) = env::var("APPDATA") {
-                let win_path = Path::new(&home).join("Python").join("Python312").join("Scripts").join("yt-dlp.exe");
-                if win_path.exists() {
-                    return win_path.to_string_lossy().into_owned();
+            // 1. Check LOCALAPPDATA (for Windows Store python and local installs)
+            if let Ok(local_appdata) = env::var("LOCALAPPDATA") {
+                let local_path = Path::new(&local_appdata);
+                
+                // Try scanning Packages for Windows Store python
+                let packages_dir = local_path.join("Packages");
+                if let Ok(entries) = fs::read_dir(&packages_dir) {
+                    for entry in entries.flatten() {
+                        let name = entry.file_name().to_string_lossy().into_owned();
+                        if name.starts_with("PythonSoftwareFoundation.Python.") {
+                            let local_pkgs = entry.path().join("LocalCache").join("local-packages");
+                            if let Ok(subentries) = fs::read_dir(&local_pkgs) {
+                                for subentry in subentries.flatten() {
+                                    let subname = subentry.file_name().to_string_lossy().into_owned();
+                                    if subname.starts_with("Python") {
+                                        let candidate = subentry.path().join("Scripts").join("yt-dlp.exe");
+                                        if candidate.exists() {
+                                            println!("Dynamic Path Resolution: Found yt-dlp.exe at {:?}", candidate);
+                                            return candidate.to_string_lossy().into_owned();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Check classic Local AppData Programs path
+                let programs_path = local_path.join("Programs").join("Python");
+                if let Ok(entries) = fs::read_dir(&programs_path) {
+                    for entry in entries.flatten() {
+                        let candidate = entry.path().join("Scripts").join("yt-dlp.exe");
+                        if candidate.exists() {
+                            println!("Dynamic Path Resolution: Found local programs yt-dlp.exe at {:?}", candidate);
+                            return candidate.to_string_lossy().into_owned();
+                        }
+                    }
+                }
+            }
+
+            // 2. Check APPDATA (Roaming) scripts folder
+            if let Ok(appdata) = env::var("APPDATA") {
+                let roaming_path = Path::new(&appdata).join("Python");
+                if let Ok(entries) = fs::read_dir(&roaming_path) {
+                    for entry in entries.flatten() {
+                        let candidate = entry.path().join("Scripts").join("yt-dlp.exe");
+                        if candidate.exists() {
+                            println!("Dynamic Path Resolution: Found roaming yt-dlp.exe at {:?}", candidate);
+                            return candidate.to_string_lossy().into_owned();
+                        }
+                    }
                 }
             }
         }
@@ -77,123 +124,209 @@ impl SpotdlService {
 
     pub fn start_background_preload(&self) {
         let cache_arc = self.browse_cache.clone();
-        let refresh_cache = self.browse_cache.clone();
         
         tokio::spawn(async move {
-            println!("Background preloader started... fetching Top Albums & Playlists");
-            Self::fetch_browse_content(&cache_arc).await;
+            println!("Background preloader started... fetching default VN content");
+            Self::fetch_browse_content("VN", &cache_arc).await;
         });
 
+        let refresh_cache = self.browse_cache.clone();
         tokio::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(300)).await;
-                println!("Periodic refresh: updating browse content...");
-                Self::fetch_browse_content(&refresh_cache).await;
+                
+                let countries: Vec<String> = {
+                    let map = refresh_cache.read().await;
+                    map.keys().cloned().collect()
+                };
+
+                for country in countries {
+                    println!("Periodic refresh: updating browse content for country {}...", country);
+                    Self::fetch_browse_content(&country, &refresh_cache).await;
+                }
             }
         });
     }
 
-    async fn fetch_browse_content(cache_arc: &Arc<RwLock<HashMap<String, Vec<StaticPlaylist>>>>) {
-        let queries = vec![
-            ("Top Albums", "ytsearch50:Top Albums Vietnam audio"),
-            ("Viral Hits Vietnam", "ytsearch30:Viral Hits Vietnam audio"),
-            ("Lofi Chill Vietnam", "ytsearch30:Lofi Chill Vietnam audio"),
-            ("US UK Top Hits", "ytsearch30:US UK Billboard Hot 100 audio"),
-            ("K-Pop ON!", "ytsearch30:K-Pop Top Hits audio"),
-            ("Rap Viet", "ytsearch30:Rap Viet Mix audio"),
-            ("Indie Vietnam", "ytsearch30:Indie Vietnam audio"),
-            ("V-Pop Rising", "ytsearch30:V-Pop Rising audio"),
-            ("Trending Music", "ytsearch30:Trending Music 2024 audio"),
-            ("Acoustic Thu Gian", "ytsearch30:Acoustic Thu Gian audio"),
-            ("Workout Energy", "ytsearch30:Workout Energy Mix audio"),
-            ("Sleep Sounds", "ytsearch30:Sleep Sounds music audio"),
-            ("Party Anthems", "ytsearch30:Party Anthems Mix audio"),
-            ("Piano Focus", "ytsearch30:Piano Focus music audio"),
-            ("Gaming Music", "ytsearch30:Gaming Music Mix audio"),
-        ];
+    pub async fn ensure_country_cached(&self, country: &str) {
+        let country = country.to_uppercase();
+        let needs_fetch = {
+            let cache = self.browse_cache.read().await;
+            !cache.contains_key(&country)
+        };
 
-            let path = Self::yt_dlp_path();
-            let mut all_data: HashMap<String, Vec<StaticPlaylist>> = HashMap::new();
+        if needs_fetch {
+            println!("Country {} not cached. Triggering lazy preload.", country);
+            
+            // Check if we have VN cached to use as temporary placeholder
+            let placeholder = {
+                let cache = self.browse_cache.read().await;
+                cache.get("VN").cloned()
+            };
 
-            for (category, search_query) in queries {
-                let output = Command::new(&path)
-                    .args(&["--js-runtimes", "node", &search_query, "--dump-json", "--no-playlist", "--flat-playlist"])
-                    .output();
-                
-                if let Ok(o) = output {
-                    let stdout = String::from_utf8_lossy(&o.stdout);
-                    let mut items = Vec::new();
-                    
-                    for line in stdout.lines() {
-                        if let Ok(res) = serde_json::from_str::<YTResult>(line) {
-                            let duration = res.duration.unwrap_or(0.0);
-                            if res.id.starts_with("UC") || duration < 60.0 { continue; }
-                            
-                            let cover_url = if let Some(t) = res.thumbnails.last() { t.url.clone() } else { format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id) };
-                            
-                            let artist = res.uploader.replace(" - Topic", "");
-                            
-                            // Decide if it's treated as Album or Playlist
-                            let is_album = category == "Top Albums";
-                            let p_type = if is_album { "Album" } else { "Playlist" };
-                            let title = if is_album { 
-                                // Synthesize an album name or just use the title
-                                res.title.clone()
-                            } else {
-                                format!("{} Mix", res.title.clone())
-                            };
-                            
-                            let id_slug = res.title.replace(|c: char| !c.is_alphanumeric() && c != ' ', "").replace(' ', "-");
-                            items.push(StaticPlaylist {
-                                id: format!("discovery-{}-{}-{}", p_type.to_lowercase(), id_slug, res.id),
-                                title,
-                                description: Some(if is_album { "Album".to_string() } else { format!("Made for you • {}", artist) }),
-                                cover_url: Some(cover_url),
-                                creator: Some(artist),
-                                tracks: Vec::new(),
-                                playlist_type: p_type.to_string(),
-                            });
-                        }
-                    }
-                    
-                    if !items.is_empty() {
-                        all_data.insert(category.to_string(), items);
-                    }
-                }
+            if let Some(data) = placeholder {
+                let mut cache = self.browse_cache.write().await;
+                cache.insert(country.clone(), data);
             }
 
-            // Also load artists
-             let artists_query = "ytmusicsearch30:V-Pop Official Channel";
-            if let Ok(o) = Command::new(&path)
-                .args(&["--js-runtimes", "node", &artists_query, "--dump-json", "--flat-playlist"])
-                .output() {
+            // Spawn dynamic preload
+            let cache_arc = self.browse_cache.clone();
+            let country_task = country.clone();
+            tokio::spawn(async move {
+                Self::fetch_browse_content(&country_task, &cache_arc).await;
+            });
+        }
+    }
+
+    fn get_queries_for_country(country: &str) -> Vec<(&'static str, String)> {
+        match country {
+            "VN" => vec![
+                ("Top Albums", "ytsearch50:Top Albums Vietnam audio".to_string()),
+                ("Viral Hits Vietnam", "ytsearch30:Viral Hits Vietnam audio".to_string()),
+                ("Lofi Chill Vietnam", "ytsearch30:Lofi Chill Vietnam audio".to_string()),
+                ("US UK Top Hits", "ytsearch30:US UK Billboard Hot 100 audio".to_string()),
+                ("K-Pop ON!", "ytsearch30:K-Pop Top Hits audio".to_string()),
+                ("Rap Viet", "ytsearch30:Rap Viet Mix audio".to_string()),
+                ("Indie Vietnam", "ytsearch30:Indie Vietnam audio".to_string()),
+                ("V-Pop Rising", "ytsearch30:V-Pop Rising audio".to_string()),
+                ("Trending Music", "ytsearch30:Trending Music Vietnam audio".to_string()),
+                ("Acoustic Thu Gian", "ytsearch30:Acoustic Thu Gian audio".to_string()),
+                ("Workout Energy", "ytsearch30:Workout Energy Mix audio".to_string()),
+                ("Sleep Sounds", "ytsearch30:Sleep Sounds music audio".to_string()),
+                ("Party Anthems", "ytsearch30:Party Anthems Mix audio".to_string()),
+                ("Piano Focus", "ytsearch30:Piano Focus music audio".to_string()),
+                ("Gaming Music", "ytsearch30:Gaming Music Mix audio".to_string()),
+            ],
+            "US" | "GB" | "CA" | "AU" => vec![
+                ("Top Albums", "ytsearch50:Top Albums USA Billboard audio".to_string()),
+                ("Viral Hits", "ytsearch30:Viral Hits USA audio".to_string()),
+                ("Lofi Chill", "ytsearch30:Lofi Chill Beats audio".to_string()),
+                ("US UK Top Hits", "ytsearch30:US UK Billboard Hot 100 audio".to_string()),
+                ("K-Pop ON!", "ytsearch30:K-Pop Top Hits audio".to_string()),
+                ("Trending Music", "ytsearch30:Trending Music USA audio".to_string()),
+                ("Workout Energy", "ytsearch30:Workout Energy Mix audio".to_string()),
+                ("Sleep Sounds", "ytsearch30:Sleep Sounds music audio".to_string()),
+                ("Party Anthems", "ytsearch30:Party Anthems Mix audio".to_string()),
+                ("Piano Focus", "ytsearch30:Piano Focus music audio".to_string()),
+                ("Gaming Music", "ytsearch30:Gaming Music Mix audio".to_string()),
+            ],
+            _ => {
+                let search_query = format!("ytsearch30:Trending Music {} audio", country);
+                vec![
+                    ("Top Albums", format!("ytsearch50:Top Albums {} audio", country)),
+                    ("Viral Hits", format!("ytsearch30:Viral Hits {} audio", country)),
+                    ("Lofi Chill", "ytsearch30:Lofi Chill Beats audio".to_string()),
+                    ("US UK Top Hits", "ytsearch30:US UK Billboard Hot 100 audio".to_string()),
+                    ("K-Pop ON!", "ytsearch30:K-Pop Top Hits audio".to_string()),
+                    ("Trending Music", search_query),
+                    ("Workout Energy", "ytsearch30:Workout Energy Mix audio".to_string()),
+                    ("Sleep Sounds", "ytsearch30:Sleep Sounds music audio".to_string()),
+                    ("Party Anthems", "ytsearch30:Party Anthems Mix audio".to_string()),
+                    ("Piano Focus", "ytsearch30:Piano Focus music audio".to_string()),
+                    ("Gaming Music", "ytsearch30:Gaming Music Mix audio".to_string()),
+                ]
+            }
+        }
+    }
+
+    async fn fetch_browse_content(country: &str, cache_arc: &Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>) {
+        let country = country.to_uppercase();
+        let queries = Self::get_queries_for_country(&country);
+
+        let path = Self::yt_dlp_path();
+        let mut all_data: HashMap<String, Vec<StaticPlaylist>> = HashMap::new();
+
+        for (category, search_query) in queries {
+            let mut cmd_args = Self::build_yt_dlp_base_args();
+            let extra = vec![&search_query as &str, "--dump-json", "--no-playlist", "--flat-playlist"];
+            cmd_args.extend(extra);
+            
+            let output = Command::new(&path)
+                .args(&cmd_args)
+                .output();
+            
+            if let Ok(o) = output {
+                let stdout = String::from_utf8_lossy(&o.stdout);
                 let mut items = Vec::new();
-                for line in String::from_utf8_lossy(&o.stdout).lines() {
-                     if let Ok(res) = serde_json::from_str::<YTResult>(line) {
-                         if res.id.starts_with("UC") {
-                             let cover_url = res.thumbnails.last().map(|t| t.url.clone()).unwrap_or_default();
-                             let artist = res.title.replace(" - Topic", "");
-                              let id_slug = artist.replace(|c: char| !c.is_alphanumeric() && c != ' ', "").replace(' ', "-");
-                              items.push(StaticPlaylist {
-                                 id: format!("discovery-artist-{}-{}", id_slug, res.id),
-                                title: artist.clone(),
-                                description: Some("Artist".to_string()),
-                                cover_url: Some(cover_url),
-                                creator: Some("Artist".to_string()),
-                                tracks: Vec::new(),
-                                playlist_type: "Artist".to_string(),
-                            });
-                         }
-                     }
+                
+                for line in stdout.lines() {
+                    if let Ok(res) = serde_json::from_str::<YTResult>(line) {
+                        let duration = res.duration.unwrap_or(0.0);
+                        if res.id.starts_with("UC") || duration < 60.0 { continue; }
+                        
+                        let cover_url = if let Some(t) = res.thumbnails.last() { t.url.clone() } else { format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id) };
+                        
+                        let artist = res.uploader.replace(" - Topic", "");
+                        
+                        // Decide if it's treated as Album or Playlist
+                        let is_album = category == "Top Albums";
+                        let p_type = if is_album { "Album" } else { "Playlist" };
+                        let title = if is_album { 
+                            res.title.clone()
+                        } else {
+                            format!("{} Mix", res.title.clone())
+                        };
+                        
+                        let id_slug = res.title.replace(|c: char| !c.is_alphanumeric() && c != ' ', "").replace(' ', "-");
+                        items.push(StaticPlaylist {
+                            id: format!("discovery-{}-{}-{}", p_type.to_lowercase(), id_slug, res.id),
+                            title,
+                            description: Some(if is_album { "Album".to_string() } else { format!("Made for you • {}", artist) }),
+                            cover_url: Some(cover_url),
+                            creator: Some(artist),
+                            tracks: Vec::new(),
+                            playlist_type: p_type.to_string(),
+                        });
+                    }
                 }
+                
                 if !items.is_empty() {
-                    all_data.insert("Popular Artists".to_string(), items);
+                    all_data.insert(category.to_string(), items);
                 }
             }
+        }
 
-            println!("Background preloader finished loading {} categories!", all_data.len());
-            let mut cache = cache_arc.write().await;
-            *cache = all_data;
+        // Also load artists
+        let artists_query = match country.as_str() {
+            "VN" => "ytmusicsearch30:V-Pop Official Channel",
+            "US" | "GB" | "CA" | "AU" => "ytmusicsearch30:Pop Official Channel",
+            _ => "ytmusicsearch30:Official Channel",
+        };
+        
+        let mut artist_cmd_args = Self::build_yt_dlp_base_args();
+        let artist_extra: Vec<&str> = vec![&artists_query, "--dump-json", "--flat-playlist"];
+        artist_cmd_args.extend(artist_extra);
+        
+        if let Ok(o) = Command::new(&path)
+            .args(&artist_cmd_args)
+            .output() {
+            let mut items = Vec::new();
+            for line in String::from_utf8_lossy(&o.stdout).lines() {
+                 if let Ok(res) = serde_json::from_str::<YTResult>(line) {
+                     if res.id.starts_with("UC") {
+                         let cover_url = res.thumbnails.last().map(|t| t.url.clone()).unwrap_or_default();
+                         let artist = res.title.replace(" - Topic", "");
+                          let id_slug = artist.replace(|c: char| !c.is_alphanumeric() && c != ' ', "").replace(' ', "-");
+                          items.push(StaticPlaylist {
+                             id: format!("discovery-artist-{}-{}", id_slug, res.id),
+                            title: artist.clone(),
+                            description: Some("Artist".to_string()),
+                            cover_url: Some(cover_url),
+                            creator: Some("Artist".to_string()),
+                            tracks: Vec::new(),
+                            playlist_type: "Artist".to_string(),
+                        });
+                     }
+                 }
+            }
+            if !items.is_empty() {
+                all_data.insert("Popular Artists".to_string(), items);
+            }
+        }
+
+        println!("Background preloader finished loading {} categories for country {}!", all_data.len(), country);
+        let mut cache = cache_arc.write().await;
+        cache.insert(country.to_string(), all_data);
     }
 
     pub async fn search_tracks(&self, query: &str) -> Result<Vec<Track>, String> {
@@ -211,8 +344,13 @@ impl SpotdlService {
         let path = Self::yt_dlp_path();
         let search_query = format!("ytsearch20:{} audio", query);
 
+        let output_args = vec![
+            &search_query, "--dump-json", "--no-playlist", "--flat-playlist",
+        ];
+        let all_args = self.yt_dlp_args_with_cookies(output_args);
+
         let output = match Command::new(&path)
-            .args(&["--js-runtimes", "node", &search_query, "--dump-json", "--no-playlist", "--flat-playlist"])
+            .args(&all_args)
             .output() {
             Ok(o) => o,
             Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
@@ -296,6 +434,27 @@ impl SpotdlService {
         Ok(tracks)
     }
 
+    fn cookies_file_path() -> PathBuf {
+        PathBuf::from("cookies.txt")
+    }
+
+    fn build_yt_dlp_base_args() -> Vec<&'static str> {
+        let mut args = vec!["--js-runtimes", "node"];
+
+        if Self::cookies_file_path().exists() {
+            args.push("--cookies");
+            args.push("cookies.txt");
+        }
+
+        args
+    }
+
+    fn yt_dlp_args_with_cookies<'a>(&self, extra_args: Vec<&'a str>) -> Vec<&'a str> {
+        let mut args = Self::build_yt_dlp_base_args();
+        args.extend(extra_args);
+        args
+    }
+
     pub fn get_stream_url(&self, video_url: &str) -> Result<String, String> {
         let target_url = if video_url.starts_with("http") {
             video_url.to_string()
@@ -315,10 +474,19 @@ impl SpotdlService {
                 }
             }
         }
+
+        let output_pattern = format!("{}.%(ext)s", video_id);
+        let output_args = vec![
+            "--extractor-args", "youtube:player_client=web",
+            "-f", "bestaudio/best",
+            "--output", &output_pattern,
+            &target_url,
+        ];
+        let all_args = self.yt_dlp_args_with_cookies(output_args);
         
         let output = match Command::new(Self::yt_dlp_path())
             .current_dir(&self.download_dir)
-            .args(&["--js-runtimes", "node", "-f", "bestaudio/best", "--output", &format!("{}.%(ext)s", video_id), &target_url])
+            .args(&all_args)
             .output() {
             Ok(o) => o,
             Err(e) => {
@@ -364,8 +532,12 @@ impl SpotdlService {
         let path = Self::yt_dlp_path();
         let search_query = format!("ytsearch5:{} artist", query);
         
+        let mut artist_search_args = Self::build_yt_dlp_base_args();
+        let artist_search_extra: Vec<&str> = vec![&search_query, "--dump-json", "--flat-playlist"];
+        artist_search_args.extend(artist_search_extra);
+        
         let output = Command::new(&path)
-            .args(&[&search_query, "--dump-json", "--flat-playlist"])
+            .args(&artist_search_args)
             .output();
         
         if let Ok(o) = output {
@@ -585,23 +757,31 @@ impl SpotdlService {
             }
         }
 
-        // Generate artist suggestions from track data
-        // Use placeholder images directly - YouTube thumbnails are video covers, not artist photos
+        // Generate artist suggestions from track data with real photos
         let mut seen_artists = std::collections::HashSet::new();
+        let mut unique_artist_names = Vec::new();
         for track in &tracks {
-            if artists.len() >= 10 {
+            if unique_artist_names.len() >= 10 {
                 break;
             }
             if !seen_artists.contains(&track.artist) && !track.artist.is_empty() {
                 seen_artists.insert(track.artist.clone());
-                // Use placeholder image - instant and always works
-                let photo_url = self.get_placeholder_image(&track.artist);
-                artists.push(crate::api::ArtistSuggestion {
-                    id: format!("artist-{}", track.artist.replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")),
-                    name: track.artist.clone(),
-                    photo_url,
-                });
+                unique_artist_names.push(track.artist.clone());
             }
+        }
+
+        // Fetch real artist photos concurrently
+        let photo_results = join_all(
+            unique_artist_names.iter().map(|name| self.search_artist(name))
+        ).await;
+
+        for (name, photo_result) in unique_artist_names.iter().zip(photo_results) {
+            let photo_url = photo_result.unwrap_or_else(|_| self.get_placeholder_image(name));
+            artists.push(crate::api::ArtistSuggestion {
+                id: format!("artist-{}", name.replace(|c: char| !c.is_alphanumeric() && c != ' ', "-")),
+                name: name.clone(),
+                photo_url,
+            });
         }
 
         Ok(crate::api::Recommendations {

@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Download, PlusCircle, Mic2, Heart, Loader2, ListMusic, MonitorSpeaker, Maximize2, MoreHorizontal, Info, ChevronUp } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Download, PlusCircle, Mic2, Heart, Loader2, ListMusic, MonitorSpeaker, Maximize2, MoreHorizontal, Info, ChevronUp, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { usePlayer } from "../context/PlayerContext";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -10,13 +10,14 @@ import QueueModal from './QueueModal';
 import Recommendations from './Recommendations';
 import { useDominantColor } from '../hooks/useDominantColor';
 import { useLyrics } from '../hooks/useLyrics';
+import CoverImage from './CoverImage';
 
 export default function PlayerBar() {
     const {
         currentTrack, isPlaying, isBuffering, togglePlay, setBuffering,
         likedTracks, toggleLike, nextTrack, prevTrack, shuffle, toggleShuffle,
         repeatMode, toggleRepeat, audioQuality, isLyricsOpen, toggleLyrics, closeLyrics, openLyrics,
-        isFullScreenOpen, setIsFullScreenOpen
+        isFullScreenOpen, setIsFullScreenOpen, queue, isRightPanelOpen, rightPanelTab, toggleRightPanel, closeRightPanel
     } = usePlayer();
 
     const dominantColor = useDominantColor(currentTrack?.cover_url);
@@ -64,7 +65,7 @@ export default function PlayerBar() {
     const [isAddToPlaylistOpen, setIsAddToPlaylistOpen] = useState(false);
     const [isTechSpecsOpen, setIsTechSpecsOpen] = useState(false);
 
-    const [isQueueOpen, setIsQueueOpen] = useState(false);
+    // Removed isQueueOpen since queue is handled by RightPanel
     const [isInfoOpen, setIsInfoOpen] = useState(false);
     const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
     const [isIdle, setIsIdle] = useState(false);
@@ -141,6 +142,8 @@ export default function PlayerBar() {
     const isDragging = useRef(false);
 
     // Audio source effect
+    const streamFailCount = useRef(0);
+
     useEffect(() => {
         if (currentTrack && audioRef.current && currentTrack.url) {
             const isSameUrl = audioRef.current.src === currentTrack.url ||
@@ -150,6 +153,7 @@ export default function PlayerBar() {
             if (isSameUrl) return;
 
             audioRef.current.src = currentTrack.url;
+            streamFailCount.current = 0;
             if (isPlaying) {
                 audioRef.current.play().catch(e => {
                     if (e.name !== 'AbortError') console.error("Play error:", e);
@@ -157,6 +161,16 @@ export default function PlayerBar() {
             }
         }
     }, [currentTrack?.url]);
+
+    // Handle audio stream errors - auto-fallback to YouTube embed
+    const handleAudioError = () => {
+        if (!currentTrack) return;
+        streamFailCount.current += 1;
+        if (streamFailCount.current <= 2 && playerMode === 'audio') {
+            console.warn(`[PlayerBar] Stream failed for ${currentTrack.id}, falling back to YouTube embed`);
+            setPlayerMode('video');
+        }
+    };
 
     // Play/Pause effect - skip when in video mode (YouTube controls playback)
     useEffect(() => {
@@ -248,7 +262,7 @@ export default function PlayerBar() {
     return (
         <>
             <footer
-                className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-2 right-2 fold:left-0 fold:right-0 fold:bottom-0 h-16 fold:h-[90px] bg-spotify-player border-t-0 fold:border-t border-white/5 flex items-center justify-between z-[60] rounded-lg fold:rounded-none shadow-xl fold:shadow-none transition-all duration-300 backdrop-blur-xl"
+                className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-2 right-2 fold:left-0 fold:right-0 fold:bottom-0 h-16 fold:h-[90px] bg-[#0f0f0f] border-t border-white/5 flex items-center justify-between z-[60] rounded-lg fold:rounded-none shadow-xl fold:shadow-none transition-all duration-300 relative select-none"
                 onClick={() => {
                     if (window.innerWidth < 1024) {
                         setIsFullScreenOpen(true);
@@ -263,176 +277,161 @@ export default function PlayerBar() {
                     onPlaying={() => setBuffering(false)}
                     onTimeUpdate={handleTimeUpdate}
                     onLoadedMetadata={handleTimeUpdate}
+                    onError={handleAudioError}
                 />
 
-                {/* Mobile Progress Bar */}
-                <div className="absolute bottom-0 left-1 right-1 h-[2px] fold:hidden">
-                    <div className="absolute inset-0 bg-white/20 rounded-full overflow-hidden pointer-events-none">
-                        <div
-                            className="h-full bg-white rounded-full transition-all duration-300 ease-linear"
-                            style={{ width: `${(progress / (duration || 1)) * 100}%` }}
-                        />
-                    </div>
+                {/* YTM Scrubber / Progress Bar (Full width across top of bottom player bar) */}
+                <div 
+                    className="absolute top-[-3px] left-0 right-0 h-[6px] group cursor-pointer z-50 select-none"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    {/* Background track */}
+                    <div className="absolute inset-0 bg-neutral-800 rounded-full" />
+                    {/* Active track progress */}
+                    <div 
+                        className="absolute top-0 bottom-0 left-0 bg-[#FF0000] rounded-full transition-all duration-100" 
+                        style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+                    />
+                    {/* Hover thumb */}
+                    <div 
+                        className="absolute top-1/2 w-3.5 h-3.5 rounded-full bg-[#FF0000] -translate-y-1/2 -translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-150 pointer-events-none" 
+                        style={{ left: `${(progress / (duration || 1)) * 100}%` }}
+                    />
+                    {/* Invisible HTML range input for interactions */}
                     <input
                         type="range"
                         min={0}
                         max={duration || 100}
                         value={progress}
-                        onChange={(e) => { e.stopPropagation(); handleSeek(e); }}
-                        onMouseUp={(e) => { e.stopPropagation(); handleSeekCommit(); }}
-                        onTouchEnd={(e) => { e.stopPropagation(); handleSeekCommit(); }}
-                        onClick={(e) => e.stopPropagation()}
-                        className="absolute -bottom-1 -left-1 -right-1 h-4 w-[calc(100%+8px)] opacity-0 cursor-pointer z-10"
+                        onChange={handleSeek}
+                        onMouseUp={handleSeekCommit}
+                        onTouchEnd={handleSeekCommit}
+                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                 </div>
 
-                {/* Left: Now Playing */}
-                <div className="flex items-center gap-3 fold:gap-4 flex-1 min-w-0 fold:w-[30%] text-white fold:pl-4">
-                    <img
-                        src={currentTrack.cover_url}
-                        alt="Cover"
-                        className="h-14 w-14 fold:h-14 fold:w-14 rounded-xl object-cover ml-1 fold:ml-0 cursor-pointer"
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            setIsFullScreenOpen(true);
-                        }}
-                    />
-
-                    <div className="flex flex-col justify-center overflow-hidden min-w-0">
-                        <span className="text-[11px] fold:text-xs font-bold truncate leading-tight hover:underline cursor-pointer">{currentTrack.title}</span>
-                        <div className="flex items-center gap-2">
-                            <span className="text-[10px] fold:text-xs text-neutral-400 truncate leading-tight hover:underline cursor-pointer">{currentTrack.artist}</span>
-                            {audioQuality && (
-                                <button
-                                    onClick={(e) => { e.stopPropagation(); setIsTechSpecsOpen(true); }}
-                                    className="text-[10px] bg-white/10 px-1 rounded text-green-400 font-bold hover:bg-white/20 transition border border-green-400/20"
-                                >
-                                    HI-RES
-                                </button>
-                            )}
-                        </div>
+                {/* Mobile Layout (Only visible when screen is small) */}
+                <div className="flex items-center gap-3 flex-grow fold:hidden min-w-0 pr-4 pl-4 select-none">
+                    <CoverImage src={currentTrack.cover_url} alt="Cover" className="h-10 w-10 rounded-lg object-cover flex-shrink-0" />
+                    <div className="flex flex-col justify-center min-w-0">
+                        <span className="text-xs font-bold text-white truncate leading-tight">{currentTrack.title}</span>
+                        <span className="text-[10px] text-neutral-400 truncate leading-tight mt-0.5">{currentTrack.artist}</span>
                     </div>
+                </div>
 
-                    {/* Mobile Heart */}
+                <div className="flex items-center gap-3 pr-4 fold:hidden" onClick={(e) => e.stopPropagation()}>
                     <button
-                        onClick={(e) => { e.stopPropagation(); toggleLike(currentTrack); }}
-                        className={`fold:hidden ml-2 ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-neutral-400'}`}
+                        onClick={togglePlay}
+                        className="text-white active:scale-90 transition"
                     >
-                        <Heart size={20} fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
+                        {isBuffering ? <Loader2 className="w-5 h-5 animate-spin text-white" /> : (isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />)}
                     </button>
-
-                    {/* Desktop Heart */}
                     <button
-                        onClick={(e) => { e.stopPropagation(); toggleLike(currentTrack); }}
-                        className={`hidden fold:block hover:scale-110 transition ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
+                        onClick={nextTrack}
+                        className="text-neutral-400 hover:text-white transition active:scale-95"
                     >
-                        <Heart className={`w-5 h-5 ${likedTracks.has(currentTrack.id) ? 'fill-green-500' : ''}`} />
-                    </button>
-
-                    {/* Add to Playlist (Desktop) */}
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setIsAddToPlaylistOpen(true); }}
-                        className="hidden fold:block text-neutral-400 hover:text-white hover:scale-110 transition"
-                        title="Add to Playlist"
-                    >
-                        <PlusCircle className="w-5 h-5" />
+                        <SkipForward className="w-5 h-5 fill-current" />
                     </button>
                 </div>
 
-                {/* Center: Controls */}
-                <div className="flex fold:flex-col items-center justify-end fold:justify-center fold:max-w-[40%] w-auto fold:w-full gap-2 pr-3 fold:pr-0">
-                    {/* Mobile: Play/Pause + Lyrics */}
-                    <div className="flex items-center gap-3 fold:hidden">
-                        <button
-                            className={`transition ${isLyricsOpen ? 'text-green-500' : 'text-neutral-300'}`}
-                            onClick={(e) => { e.stopPropagation(); toggleLyrics(); }}
-                        >
-                            <Mic2 size={22} />
-                        </button>
+                <div className="absolute bottom-0 left-0 right-0 h-[2px] fold:hidden bg-white/10">
+                    <div 
+                        className="h-full bg-[#FF0000] transition-all duration-100" 
+                        style={{ width: `${(progress / (duration || 1)) * 100}%` }}
+                    />
+                </div>
 
-                        <button
-                            onClick={(e) => { e.stopPropagation(); togglePlay(); }}
-                            className="text-white"
-                        >
-                            {isBuffering ? <Loader2 size={24} className="animate-spin" /> : (isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />)}
+                {/* Desktop Layout - Left Section: Playback Controls & Timer */}
+                <div className="hidden fold:flex items-center gap-4 fold:w-[30%] text-white pl-6" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex items-center gap-5">
+                        <button onClick={prevTrack} className="text-neutral-400 hover:text-white active:scale-95 transition-all">
+                            <SkipBack className="w-5 h-5 fill-current" />
                         </button>
-                    </div>
-
-                    {/* Desktop: Full Controls */}
-                    <div className="hidden fold:flex items-center gap-6">
-                        <button
-                            onClick={toggleShuffle}
-                            className={`transition ${shuffle ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}>
-                            <Shuffle className="w-4 h-4" />
-                        </button>
-                        <button onClick={prevTrack} className="text-neutral-400 hover:text-white transition"><SkipBack className="w-5 h-5 fill-current" /></button>
-
                         <button
                             onClick={togglePlay}
-                            className="w-8 h-8 bg-white rounded-full flex items-center justify-center hover:scale-105 transition">
+                            className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center hover:scale-105 active:scale-90 transition-all shadow-md animate-in duration-300"
+                        >
                             {isBuffering ? (
-                                <Loader2 className="w-4 h-4 text-black animate-spin" />
+                                <Loader2 className="w-4 h-4 animate-spin text-black" />
                             ) : isPlaying ? (
-                                <Pause className="w-4 h-4 text-black fill-black" />
+                                <Pause className="w-4 h-4 fill-black text-black" />
                             ) : (
-                                <Play className="w-4 h-4 text-black fill-black ml-0.5" />
+                                <Play className="w-4 h-4 fill-black text-black ml-0.5" />
                             )}
                         </button>
-
-                        <button onClick={nextTrack} className="text-neutral-400 hover:text-white transition"><SkipForward className="w-5 h-5 fill-current" /></button>
-                        <button
-                            onClick={toggleRepeat}
-                            className={`transition ${repeatMode !== 'none' ? 'text-green-500' : 'text-neutral-400 hover:text-white'} relative`}>
-                            <Repeat className="w-4 h-4" />
-                            {repeatMode === 'one' && <span className="absolute -top-1 -right-1 text-[8px] font-bold text-black bg-green-500 rounded-full w-3 h-3 flex items-center justify-center">1</span>}
+                        <button onClick={nextTrack} className="text-neutral-400 hover:text-white active:scale-95 transition-all">
+                            <SkipForward className="w-5 h-5 fill-current" />
                         </button>
                     </div>
 
-                    {/* Desktop: Seek Bar */}
-                    <div className="hidden fold:flex items-center gap-2 w-full text-xs text-neutral-400">
+                    <div className="text-xs text-neutral-400 font-bold ml-2">
                         <span>{formatTime(progress)}</span>
-                        <input
-                            type="range"
-                            min={0}
-                            max={duration || 100}
-                            value={progress}
-                            onChange={handleSeek}
-                            onMouseUp={handleSeekCommit}
-                            onTouchEnd={handleSeekCommit}
-                            className="w-full h-1 bg-[#4d4d4d] rounded-lg appearance-none cursor-pointer accent-white hover:accent-green-500"
-                        />
+                        <span className="mx-1 text-neutral-600">/</span>
                         <span>{formatTime(duration)}</span>
                     </div>
                 </div>
 
+                {/* Desktop Layout - Center Section: Album Art & Track Info & Likes */}
+                <div className="hidden fold:flex flex-1 min-w-0 items-center justify-center gap-6">
+                    <div className="flex items-center gap-4 min-w-0 select-text">
+                        <CoverImage
+                            src={currentTrack.cover_url}
+                            alt="Cover"
+                            className="h-11 w-11 rounded-lg object-cover shadow flex-shrink-0 cursor-pointer"
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setIsFullScreenOpen(true);
+                            }}
+                        />
 
+                        <div className="flex flex-col justify-center min-w-0 text-left">
+                            <span 
+                                className="text-sm font-bold truncate text-white hover:underline cursor-pointer leading-normal"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsFullScreenOpen(true);
+                                }}
+                            >
+                                {currentTrack.title}
+                            </span>
+                            <div className="flex items-center gap-2 leading-none mt-0.5">
+                                <span className="text-xs text-neutral-400 truncate hover:underline cursor-pointer">{currentTrack.artist}</span>
+                                {audioQuality && (
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); setIsTechSpecsOpen(true); }}
+                                        className="text-[9px] bg-white/10 px-1 rounded text-red-500 font-bold hover:bg-white/20 transition border border-red-500/20"
+                                    >
+                                        HI-RES
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
 
-                {/* Right: Volume & Extras (Desktop) */}
-                <div className="hidden fold:flex items-center justify-end gap-3 w-[30%] text-neutral-400 pr-4">
-                    <button
-                        className={`transition ${isLyricsOpen ? 'text-green-500' : 'text-zinc-400 hover:text-white'}`}
-                        onClick={toggleLyrics}
-                        title="Lyrics"
-                    >
-                        <Mic2 size={20} />
-                    </button>
-                    <button
-                        className="text-zinc-400 hover:text-white transition"
-                        onClick={handleDownload}
-                        title="Download MP3"
-                    >
-                        <Download size={20} />
-                    </button>
-                    <button
-                        className={`transition ${isQueueOpen ? 'text-green-500' : 'text-zinc-400 hover:text-white'}`}
-                        onClick={() => setIsQueueOpen(true)}
-                        title="Queue"
-                    >
-                        <ListMusic className="w-4 h-4" />
-                    </button>
-                    <MonitorSpeaker className="w-4 h-4 hover:text-white cursor-pointer" onClick={() => setIsTechSpecsOpen(true)} />
-                    <div className="flex items-center gap-2 w-24 group">
-                        <Volume2 className="w-4 h-4 group-hover:text-white" />
+                    <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                            onClick={() => toggleLike(currentTrack)}
+                            className={`p-2 rounded-full hover:bg-white/5 transition active:scale-90 ${
+                                likedTracks.has(currentTrack.id) ? 'text-[#FF0000]' : 'text-neutral-400 hover:text-white'
+                            }`}
+                            title={likedTracks.has(currentTrack.id) ? "Liked" : "Like"}
+                        >
+                            <ThumbsUp className="w-4 h-4 fill-current" />
+                        </button>
+                        <button
+                            className="p-2 rounded-full hover:bg-white/5 text-neutral-400 hover:text-white transition active:scale-90"
+                            title="Dislike"
+                        >
+                            <ThumbsDown className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Desktop Layout - Right Section: Volume & Sidebar Toggles */}
+                <div className="hidden fold:flex items-center justify-end gap-2 fold:w-[30%] text-neutral-400 pr-6" onClick={(e) => e.stopPropagation()}>
+                    {/* Volume Bar */}
+                    <div className="flex items-center gap-2 w-24 group mr-2">
+                        <Volume2 className="w-4.5 h-4.5 group-hover:text-white transition" />
                         <input
                             type="range"
                             min={0}
@@ -440,14 +439,61 @@ export default function PlayerBar() {
                             step={0.01}
                             value={volume}
                             onChange={handleVolume}
-                            className="w-full h-1 bg-[#4d4d4d] rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-green-500"
+                            className="w-full h-1 bg-neutral-800 rounded-lg appearance-none cursor-pointer accent-white group-hover:accent-[#FF0000] transition"
                         />
                     </div>
-                    <button onClick={() => setIsFullScreenOpen(true)} title="Full Screen" className="text-zinc-400 hover:text-white">
-                        <Maximize2 className="w-4 h-4" />
+
+                    <button
+                        onClick={toggleShuffle}
+                        className={`p-2 rounded-full hover:bg-white/5 transition active:scale-90 ${shuffle ? 'text-[#FF0000]' : 'text-neutral-400 hover:text-white'}`}
+                        title="Shuffle"
+                    >
+                        <Shuffle className="w-4 h-4" />
+                    </button>
+                    <button
+                        onClick={toggleRepeat}
+                        className={`p-2 rounded-full hover:bg-white/5 transition active:scale-90 ${repeatMode !== 'none' ? 'text-[#FF0000]' : 'text-neutral-400 hover:text-white'} relative`}
+                        title="Repeat"
+                    >
+                        <Repeat className="w-4 h-4" />
+                        {repeatMode === 'one' && <span className="absolute top-1 right-1 text-[7px] font-black text-black bg-[#FF0000] rounded-full w-2.5 h-2.5 flex items-center justify-center">1</span>}
+                    </button>
+
+                    <button
+                        className={`p-2 rounded-full hover:bg-white/5 transition active:scale-90 ${
+                            isLyricsOpen ? 'text-[#FF0000]' : 'text-neutral-400 hover:text-white'
+                        }`}
+                        onClick={toggleLyrics}
+                        title="Lyrics"
+                    >
+                        <Mic2 className="w-4.5 h-4.5" />
+                    </button>
+                    <button
+                        className={`p-2 rounded-full hover:bg-white/5 transition active:scale-90 ${
+                            isRightPanelOpen && rightPanelTab === 'queue' ? 'text-[#FF0000]' : 'text-neutral-400 hover:text-white'
+                        }`}
+                        onClick={() => toggleRightPanel('queue')}
+                        title="Queue"
+                    >
+                        <ListMusic className="w-4.5 h-4.5" />
+                    </button>
+
+                    <button
+                        className="p-2 rounded-full hover:bg-white/5 text-neutral-400 hover:text-white transition active:scale-90"
+                        onClick={() => setIsTechSpecsOpen(true)}
+                        title="Technical Details"
+                    >
+                        <MonitorSpeaker className="w-4.5 h-4.5" />
+                    </button>
+
+                    <button
+                        onClick={() => setIsFullScreenOpen(true)}
+                        title="Expand Video player"
+                        className="p-2 rounded-full hover:bg-white/5 text-neutral-400 hover:text-white transition active:scale-90"
+                    >
+                        <Maximize2 className="w-4.5 h-4.5" />
                     </button>
                 </div>
-
             </footer>
 
             {/* Mobile Full Screen Player Overlay */}
@@ -668,11 +714,6 @@ export default function PlayerBar() {
                 )}
 
                 {/* Modals */}
-            <QueueModal
-                isOpen={isQueueOpen}
-                onClose={() => setIsQueueOpen(false)}
-            />
-
             <TechSpecs
                 isOpen={isTechSpecsOpen}
                 onClose={() => setIsTechSpecsOpen(false)}
@@ -688,10 +729,11 @@ export default function PlayerBar() {
                 />
             )}
 
-            {isLyricsOpen && (
+            {/* Lyrics Overlay */}
+            {currentTrack && (
                 <Lyrics
                     trackTitle={currentTrack.title}
-                    artistName={currentTrack.artist}
+                    artistName={currentTrack.artist || ''}
                     currentTime={progress}
                     isOpen={isLyricsOpen}
                     onClose={closeLyrics}
