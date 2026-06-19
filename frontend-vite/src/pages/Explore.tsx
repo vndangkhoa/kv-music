@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Play, Calendar, Flame, Music, Sparkles, Clock, ChevronRight, Plus, Heart, HeartOff, Check, Disc } from 'lucide-react';
+import { Play, Calendar, Flame, Music, Sparkles, Clock, Disc, Heart } from 'lucide-react';
 import { usePlayer } from '../context/PlayerContext';
 import { libraryService } from '../services/library';
 import { Track } from '../types';

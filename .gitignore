@@ -1,77 +1,40 @@
-# System Files
+# System
 .DS_Store
 Thumbs.db
 
-# Environment Variables
+# Environment
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 
-# Node.js
+# Node
 node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-.next/
-out/
-build/
 dist/
+build/
+out/
+*.log
 
 # Python
 venv/
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# IDEs
-.idea/
-.vscode/
-
-# Rust
-backend-rust/target/
-backend-go/target/
-
-# Project Specific
-backend/data/*.json
-!backend/data/browse_playlists.json
-!backend/data/data.json
-backend/cache/
-backend/data_seed/
-
-# Build Logs
-*.log
-build_log*.txt
+*.pyc
 
 # Rust
 target/
+backend-rust/target/
+backend-rust/cookies.txt
 
-# Backup Files
+# IDE
+.idea/
+.vscode/
+
+# Project
+data/
+cache/
+
+# Debug/Test
 *_backup.*
 nul
 *.pid
-frontend.pid
-backend.pid
-
-# Sensitive / Temp Files
-backend-rust/cookies.txt
-backend-rust/test.webm
+scripts/debug_*.py
+scripts/debug_*.ps1
+scripts/ngrok_*.ps1

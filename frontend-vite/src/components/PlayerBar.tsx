@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Download, PlusCircle, Mic2, Heart, Loader2, ListMusic, MonitorSpeaker, Maximize2, MoreHorizontal, Info, ChevronUp, ThumbsUp, ThumbsDown } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Volume2, Mic2, Heart, Loader2, ListMusic, MonitorSpeaker, Maximize2, Info, ChevronUp, ThumbsUp, ThumbsDown } from 'lucide-react';
 import { usePlayer } from "../context/PlayerContext";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
@@ -6,10 +6,7 @@ import TechSpecs from './TechSpecs';
 import AddToPlaylistModal from "./AddToPlaylistModal";
 import Lyrics from './Lyrics';
 import VideoPlayer from './VideoPlayer';
-import QueueModal from './QueueModal';
-import Recommendations from './Recommendations';
 import { useDominantColor } from '../hooks/useDominantColor';
-import { useLyrics } from '../hooks/useLyrics';
 import CoverImage from './CoverImage';
 
 export default function PlayerBar() {
@@ -22,18 +19,10 @@ export default function PlayerBar() {
 
     const dominantColor = useDominantColor(currentTrack?.cover_url);
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const [progress, setProgress] = useState(0);
     const [duration, setDuration] = useState(0);
 
     const [hasInteractedWithLyrics, setHasInteractedWithLyrics] = useState(false);
-    const { currentLine } = useLyrics(
-        currentTrack?.title || '',
-        currentTrack?.artist || '',
-        progress,
-        isLyricsOpen || hasInteractedWithLyrics, // Only fetch if opened or previously interacted
-        currentTrack?.id || undefined // Pass video ID for better lyrics search
-    );
 
     // Swipe Logic
     const touchStartY = useRef<number | null>(null);

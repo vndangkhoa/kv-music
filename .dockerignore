@@ -6,8 +6,6 @@ dist/
 .DS_Store
 *.log
 *.pid
-frontend.pid
-backend.pid
 nul
 backend-go/
 data/

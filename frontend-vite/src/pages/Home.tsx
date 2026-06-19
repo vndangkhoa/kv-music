@@ -16,7 +16,7 @@ export default function Home() {
     const [sortBy, setSortBy] = useState<SortOption>('recent');
     const [showSortMenu, setShowSortMenu] = useState(false);
     const [heroPlaylist, setHeroPlaylist] = useState<StaticPlaylist | null>(null);
-    const { playTrack, playHistory, setIsFullScreenOpen, currentTrack } = usePlayer();
+    const { playTrack, playHistory } = usePlayer();
     const [activeChip, setActiveChip] = useState<'all' | string>('all');
 
     const playCollection = async (id: string, isAlbum: boolean) => {
@@ -380,7 +380,6 @@ export default function Home() {
 
 // Recently Listened Section
 function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Track[], playTrack: (track: Track, queue?: Track[]) => void }) {
-    const { setIsFullScreenOpen, currentTrack } = usePlayer();
     if (playHistory.length === 0) return null;
 
     return (
@@ -425,7 +424,7 @@ function RecentlyListenedSection({ playHistory, playTrack }: { playHistory: Trac
 
 // Made For You Section
 function MadeForYouSection() {
-    const { playHistory, playTrack, setIsFullScreenOpen, currentTrack } = usePlayer();
+    const { playHistory, playTrack } = usePlayer();
     const [recommendations, setRecommendations] = useState<Track[]>([]);
     const [seedTrack, setSeedTrack] = useState<Track | null>(null);
     const [loading, setLoading] = useState(false);

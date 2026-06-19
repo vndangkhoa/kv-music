@@ -8,7 +8,7 @@ import Recommendations from '../components/Recommendations';
 
 export default function Album() {
     const { id } = useParams();
-    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, currentTrack, shuffle, toggleShuffle, addToQueue } = usePlayer();
+    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, shuffle, toggleShuffle, addToQueue } = usePlayer();
     const [tracks, setTracks] = useState<Track[]>([]);
     const [albumInfo, setAlbumInfo] = useState<{ title: string, artist: string, cover?: string, year?: string } | null>(null);
     const [moreByArtist, setMoreByArtist] = useState<Track[]>([]);
