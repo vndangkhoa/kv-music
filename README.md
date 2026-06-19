@@ -8,14 +8,14 @@ A modern music streaming web app built with **React (Vite)**, **Rust (Axum)**, a
 
 ### Option 1: Pull from Registry
 ```bash
-docker run -p 3110:8080 git.khoavo.myds.me/vndangkhoa/kv-music:v1
+docker run -p 3110:8080 git.khoavo.myds.me/vndangkhoa/kv-music:latest
 ```
 Open **[http://localhost:3110](http://localhost:3110)**.
 
 ### Option 2: Build Locally
 ```bash
-docker build -t kv-music:v1 .
-docker run -p 3110:8080 kv-music:v1
+docker build -t kv-music:latest .
+docker run -p 3110:8080 kv-music:latest
 ```
 
 ### Option 3: Docker Compose
@@ -29,14 +29,14 @@ docker compose up -d
 
 ### Image Details
 - **Registry**: `git.khoavo.myds.me/vndangkhoa/kv-music`
-- **Tag**: `v1`
+- **Tag**: `latest`
 - **Ports**: `8080` (Backend API)
 
 ### docker-compose.yml
 ```yaml
 services:
   kv-music:
-    image: git.khoavo.myds.me/vndangkhoa/kv-music:v1
+    image: git.khoavo.myds.me/vndangkhoa/kv-music:latest
     container_name: kv-music
     restart: unless-stopped
     ports:
@@ -44,6 +44,7 @@ services:
     environment:
       - PORT=8080
       - RUST_LOG=info
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./data:/tmp/kv-music-downloads
       - ./cache:/tmp/kv-music-cache
@@ -83,7 +84,7 @@ services:
 ## Local Development
 
 ### Prerequisites
-- Node.js 20+
+- Node.js 22+
 - Rust 1.75+
 - Python 3.11+
 - ffmpeg
