@@ -15,11 +15,10 @@ RUN cargo fetch
 COPY backend-rust/ ./
 RUN cargo build --release --bin backend-rust
 
-# Layer 3: Final Runtime (Unified Debian Bookworm)
+# Layer 3: Final Runtime
 FROM debian:bookworm-slim
 WORKDIR /app
 
-# Install all runtimes for maximum compatibility
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -44,7 +43,7 @@ COPY --from=backend-builder /app/backend/target/release/backend-rust /app/server
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
 # Permissions and Directories
-RUN mkdir -p /tmp/spotify-clone-cache /tmp/spotify-clone-downloads && chmod 777 /tmp/spotify-clone-cache /tmp/spotify-clone-downloads
+RUN mkdir -p /tmp/kv-music-cache /tmp/kv-music-downloads && chmod 777 /tmp/kv-music-cache /tmp/kv-music-downloads
 RUN chmod +x /app/server
 
 ENV PORT=8080
@@ -54,5 +53,4 @@ EXPOSE 8080
 
 USER 0
 
-# Final startup sequence with GUARANTEED logs
-CMD ["sh", "-c", "echo 'CRITICAL: STARTING SPOTIFY CLONE...' && /app/server 2>&1"]
+CMD ["sh", "-c", "echo 'Starting KV Music...' && /app/server 2>&1"]

@@ -1,6 +1,20 @@
 version: "3"
 services:
-  spotify-clone:
-    image: git.khoavo.myds.me/vndangkhoa/spotify-clone:v5
+  kv-music:
+    image: git.khoavo.myds.me/vndangkhoa/kv-music:v1
+    container_name: kv-music
+    restart: unless-stopped
     ports:
-      - 3110:8080
+      - "3110:8080"
+    environment:
+      - PORT=8080
+      - RUST_LOG=info
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./data:/tmp/kv-music-downloads
+      - ./cache:/tmp/kv-music-cache
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
