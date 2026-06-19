@@ -71,3 +71,7 @@ nul
 *.pid
 frontend.pid
 backend.pid
+
+# Sensitive / Temp Files
+backend-rust/cookies.txt
+backend-rust/test.webm
