@@ -1,13 +1,16 @@
 import { Link } from 'react-router-dom';
-import { Play, Plus, Music, Disc3, Users, Clock } from 'lucide-react';
-import { useState, useEffect, useMemo } from 'react';
-import { useLibrary } from '../context/LibraryContext';
-import { usePlayer } from '../context/PlayerContext';
-import { useAuth } from '../context/AuthContext';
+import { Play, Plus, Music, Disc3, Users, Clock, Sparkles, Flame } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useLibraryStore } from '../stores/libraryStore';
+import { usePlayerStore } from '../stores/playerStore';
+import { useAuthStore } from '../stores/authStore';
 import CoverImage from '../components/CoverImage';
 import CreatePlaylistModal from '../components/CreatePlaylistModal';
 import { dbService } from '../services/db';
 import LoginModal from '../components/LoginModal';
+import { libraryService, getArtistCoverUrl } from '../services/library';
+import { StaticPlaylist } from '../types';
+import Skeleton from '../components/Skeleton';
 
 interface GradientColor {
     from: string;
@@ -24,21 +27,46 @@ function getAvatarGradient(avatarColor: string): string {
 }
 
 export default function Library() {
-    const { userPlaylists, followedArtists, savedAlbums, refreshLibrary, activeFilter, setActiveFilter, deriveSavedAlbums } = useLibrary();
-    const { likedTracks, playHistory } = usePlayer();
-    const { user, isLoggedIn } = useAuth();
+    const userPlaylists = useLibraryStore(s => s.userPlaylists);
+    const followedArtists = useLibraryStore(s => s.followedArtists);
+    const savedAlbums = useLibraryStore(s => s.savedAlbums);
+    const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
+    const activeFilter = useLibraryStore(s => s.activeFilter);
+    const setActiveFilter = useLibraryStore(s => s.setActiveFilter);
+    const likedTracks = usePlayerStore(s => s.likedTracks);
+    const playHistory = usePlayerStore(s => s.playHistory);
+    const user = useAuthStore(s => s.user);
+    const isLoggedIn = useAuthStore(s => s.isLoggedIn);
     const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
     const [isLoginOpen, setIsLoginOpen] = useState(false);
-
-    // Derive saved albums from play history on change
-    useEffect(() => {
-        deriveSavedAlbums(playHistory);
-    }, [playHistory, deriveSavedAlbums]);
+    const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
+    const [browseLoading, setBrowseLoading] = useState(false);
 
     const handleCreatePlaylist = async (name: string) => {
         await dbService.createPlaylist(name);
         refreshLibrary();
     };
+
+    useEffect(() => {
+        refreshLibrary();
+        deriveSavedAlbums(playHistory);
+    }, []);
+
+    const userLibraryItems = userPlaylists.length + followedArtists.length + savedAlbums.length;
+
+    useEffect(() => {
+        if (Object.keys(browseData).length === 0) {
+            setBrowseLoading(true);
+            libraryService.getBrowseContent()
+                .then(data => {
+                    setBrowseData(data);
+                    setBrowseLoading(false);
+                })
+                .catch(() => setBrowseLoading(false));
+        }
+    }, []);
+
+    const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
 
     const filters = [
         { key: 'all', label: 'All' },
@@ -192,7 +220,7 @@ export default function Library() {
                                 <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer border border-white/5 relative h-full flex flex-col justify-between">
                                     <div className="relative mb-3">
                                         <CoverImage
-                                            src={`https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=random&color=fff&size=128&rounded=true&bold=true&font-size=0.33`}
+                                            src={getArtistCoverUrl(artistName)}
                                             alt={artistName}
                                             className="w-full aspect-square rounded-full shadow-lg"
                                             fallbackText={artistName?.substring(0, 2).toUpperCase()}
@@ -267,8 +295,52 @@ export default function Library() {
                 </div>
             )}
 
-            {/* Empty State */}
-            {totalItems === 0 && playHistory.length === 0 && (
+            {/* Browse Content (always shown) */}
+            {browseLoading ? (
+                <div className="space-y-8">
+                    {[1, 2].map(i => (
+                        <div key={i}>
+                            <Skeleton className="h-8 w-48 mb-4" />
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {[1, 2, 3, 4].map(j => (
+                                    <div key={j} className="space-y-3">
+                                        <Skeleton className="w-full aspect-square rounded-2xl" />
+                                        <Skeleton className="h-4 w-3/4" />
+                                        <Skeleton className="h-3 w-1/2" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : Object.keys(browseData).length > 0 ? (
+                Object.entries(browseData)
+                    .filter(([, items]) => items.length > 0)
+                    .slice(0, 4)
+                    .map(([category, items]) => (
+                        <div key={category} className="mb-8">
+                            <div className="flex items-center gap-2 mb-4">
+                                {category.toLowerCase().includes('playlist') ? <Flame className="w-5 h-5 text-orange-400" /> :
+                                 category.toLowerCase().includes('album') ? <Disc3 className="w-5 h-5 text-blue-400" /> :
+                                 <Sparkles className="w-5 h-5 text-purple-400" />}
+                                <h2 className="text-xl font-bold">{category}</h2>
+                            </div>
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                {items.slice(0, 8).map((item: any) => (
+                                    <Link to={`/playlist/${item.id}`} key={item.id}>
+                                        <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer h-full flex flex-col border border-white/5">
+                                            <div className="relative mb-3">
+                                                <CoverImage src={item.cover_url} alt={item.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={item.title?.substring(0, 2).toUpperCase()} />
+                                            </div>
+                                            <h3 className="font-bold text-white text-sm mb-0.5 truncate">{item.title}</h3>
+                                            <p className="text-xs text-neutral-400 line-clamp-2">{item.description}</p>
+                                        </div>
+                                    </Link>
+                                ))}
+                            </div>
+                        </div>
+                    ))
+            ) : userLibraryItems === 0 ? (
                 <div className="text-center py-20">
                     <div className="w-20 h-20 mx-auto mb-4 bg-[#282828] rounded-full flex items-center justify-center">
                         <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-500">
@@ -286,7 +358,7 @@ export default function Library() {
                         Create Playlist
                     </button>
                 </div>
-            )}
+            ) : null}
 
             <CreatePlaylistModal
                 isOpen={isCreateModalOpen}

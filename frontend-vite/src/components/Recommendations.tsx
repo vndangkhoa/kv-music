@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { libraryService } from '../services/library';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayerStore } from '../stores/playerStore';
 import { Play } from 'lucide-react';
 import { Track } from '../types';
 import CoverImage from './CoverImage';
@@ -35,7 +35,7 @@ export default function Recommendations({
     showArtists = true
 }: RecommendationsProps) {
     const navigate = useNavigate();
-    const { playTrack } = usePlayer();
+    const playTrack = usePlayerStore(s => s.playTrack);
     const [data, setData] = useState<RecommendationData>({
         tracks: [],
         albums: [],

@@ -1,76 +1,71 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Search as SearchIcon, Play, Heart, PlusCircle, Loader2, Music2, Disc, User } from 'lucide-react';
-import { useSearchParams, Link } from 'react-router-dom';
-import { usePlayer } from '../context/PlayerContext';
+import { Search as SearchIcon, Play, Heart, PlusCircle, Music2, Clock, Sparkles } from 'lucide-react';
+import { useSearchParams, Link, useNavigate } from 'react-router-dom';
+import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
-import { Track } from '../types';
+import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
 import Skeleton from '../components/Skeleton';
 import { useInfiniteScroll } from '../hooks/useInfiniteScroll';
 
-// Helper to extract unique items
 function extractUniqueItems(tracks: Track[], key: 'artist' | 'album') {
     const seen = new Set();
     const items: { name: string, image?: string, id: string }[] = [];
-
     tracks.forEach(t => {
         const val = t[key];
         if (val && !seen.has(val)) {
             seen.add(val);
             items.push({
                 name: val,
-                image: t.cover_url, // Use track cover as proxy for now
-                id: `${key}-${val}` // robust id
+                image: t.cover_url,
+                id: `${key}-${val}`
             });
         }
     });
-    return items.slice(0, 5); // Limit to top 5
+    return items.slice(0, 5);
 }
 
 export default function Search() {
     const [searchParams, setSearchParams] = useSearchParams();
     const routerQuery = searchParams.get('q') || '';
+    const navigate = useNavigate();
 
-    // Initialize state from local storage or router
-    const [query, setQuery] = useState(() => {
-        return routerQuery || localStorage.getItem('last_search_query') || '';
-    });
-
+    const [query, setQuery] = useState(routerQuery);
     const [results, setResults] = useState<Track[]>(() => {
         const cached = localStorage.getItem('last_search_results');
         return cached ? JSON.parse(cached) : [];
     });
-
     const [loading, setLoading] = useState(false);
     const [hasMore, setHasMore] = useState(true);
     const [selectedTrack, setSelectedTrack] = useState<Track | null>(null);
-    const { playTrack, likedTracks, toggleLike } = usePlayer();
-    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    // Derived State for Categories
+    const playTrack = usePlayerStore(s => s.playTrack);
+    const likedTracks = usePlayerStore(s => s.likedTracks);
+    const toggleLike = usePlayerStore(s => s.toggleLike);
+    const recentSearches = usePlayerStore(s => s.recentSearches);
+    const playHistory = usePlayerStore(s => s.playHistory);
+    const addRecentSearch = usePlayerStore(s => s.addRecentSearch);
+
+    const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
+    const [browseLoading, setBrowseLoading] = useState(false);
+
     const relatedArtists = extractUniqueItems(results, 'artist');
     const relatedAlbums = extractUniqueItems(results, 'album');
 
-    // Persistence Effect
     useEffect(() => {
         if (query) localStorage.setItem('last_search_query', query);
         if (results.length > 0) localStorage.setItem('last_search_results', JSON.stringify(results));
     }, [query, results]);
 
-    // Perform Search
     const performSearch = useCallback(async (searchQuery: string, isLoadMore = false) => {
         if (!searchQuery.trim()) {
             if (!isLoadMore) setResults([]);
             return;
         }
-
         if (!isLoadMore) setLoading(true);
-
         try {
-            // "Smart Crawling" - fetching data
             const tracks = await libraryService.search(searchQuery);
-
             if (isLoadMore) {
                 setResults(prev => {
                     const existingIds = new Set(prev.map(t => t.id));
@@ -97,56 +92,37 @@ export default function Search() {
 
     const lastElementRef = useInfiniteScroll(loadMore, loading);
 
-    // Sync URL with State
     useEffect(() => {
-        if (routerQuery && routerQuery !== query) {
+        if (routerQuery !== query) {
             setQuery(routerQuery);
-            performSearch(routerQuery);
-        } else if (!routerQuery && query && results.length === 0) {
-            // If nothing in URL but we have a stored query + no results, fetch
-            // But if we have results from storage, maybe don't fetch immediately?
-            // Let's refetch to be fresh if nothing in URL strictly (or just rely on storage)
-            // For now, if we have results, we show them.
-            if (!results.length) performSearch(query);
-            // Update URL to match restored query
-            setSearchParams({ q: query }, { replace: true });
+            if (routerQuery.trim()) {
+                performSearch(routerQuery);
+            }
+        } else if (!routerQuery && !query) {
+            setResults([]);
         }
     }, [routerQuery]);
 
-    const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        setQuery(value);
+    useEffect(() => {
+        if (!routerQuery && !query) {
+            setBrowseLoading(true);
+            libraryService.getBrowseContent()
+                .then(data => {
+                    setBrowseData(data);
+                    setBrowseLoading(false);
+                })
+                .catch(() => setBrowseLoading(false));
+        }
+    }, [routerQuery, query]);
 
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        debounceRef.current = setTimeout(() => {
-            if (value.trim()) setSearchParams({ q: value });
-            performSearch(value);
-        }, 500);
-    };
-
-    const handleSubmit = (e: React.FormEvent) => {
-        e.preventDefault();
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-        setSearchParams({ q: query });
-        performSearch(query);
+    const handleRecentSearchClick = (q: string) => {
+        addRecentSearch(q);
+        navigate(`/search?q=${encodeURIComponent(q)}`);
     };
 
     return (
         <div className="h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-24">
-            {/* Search Bar */}
-            <form onSubmit={handleSubmit} className="mb-6 sticky top-0 z-20 bg-gradient-to-b from-[#1e1e1e] to-transparent pb-4">
-                <div className="relative max-w-xl">
-                    <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-neutral-400" />
-                    <input
-                        type="text"
-                        value={query}
-                        onChange={handleInputChange}
-                        placeholder="What do you want to listen to?"
-                        className="w-full pl-12 pr-4 py-3 bg-white text-black rounded-full font-medium placeholder-neutral-500 focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
-                    />
-                </div>
-            </form>
-
+            {/* Results */}
             {loading && results.length === 0 ? (
                 <div className="space-y-8 animate-pulse">
                     <Skeleton className="h-8 w-48 mb-4 animate-pulse" />
@@ -156,8 +132,6 @@ export default function Search() {
                 </div>
             ) : results.length > 0 ? (
                 <div className="space-y-8 fade-in">
-
-                    {/* Top Result - Related Artists */}
                     {relatedArtists.length > 0 && (
                         <div>
                             <h2 className="text-2xl font-bold mb-4">Artists</h2>
@@ -175,7 +149,6 @@ export default function Search() {
                         </div>
                     )}
 
-                    {/* Related Albums */}
                     {relatedAlbums.length > 0 && (
                         <div>
                             <h2 className="text-2xl font-bold mb-4">Albums</h2>
@@ -193,7 +166,6 @@ export default function Search() {
                         </div>
                     )}
 
-                    {/* Songs List */}
                     <div>
                         <h2 className="text-2xl font-bold mb-4">Songs</h2>
                         <div className="space-y-2">
@@ -229,7 +201,6 @@ export default function Search() {
                         </div>
                     </div>
 
-                    {/* Infinite Scroll & Skeleton */}
                     <div ref={lastElementRef} className="py-8">
                         {loading && (
                             <div className="space-y-4 animate-pulse">
@@ -250,11 +221,116 @@ export default function Search() {
                         )}
                     </div>
                 </div>
+            ) : !query ? (
+                /* Pre-search content */
+                <div className="space-y-8 fade-in">
+                    {/* Recent Searches */}
+                    {recentSearches.length > 0 && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Clock className="w-5 h-5 text-neutral-400" />
+                                <h2 className="text-xl font-bold">Recent Searches</h2>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {recentSearches.map((q, i) => (
+                                    <button
+                                        key={i}
+                                        onClick={() => handleRecentSearchClick(q)}
+                                        className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-full text-sm font-medium transition group"
+                                    >
+                                        <SearchIcon className="w-3.5 h-3.5 text-neutral-500 group-hover:text-white" />
+                                        <span>{q}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Recently Played */}
+                    {playHistory.length > 0 && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Music2 className="w-5 h-5 text-green-500" />
+                                <h2 className="text-xl font-bold">Recently Played</h2>
+                            </div>
+                            <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+                                {playHistory.slice(0, 10).map((track, i) => (
+                                    <div key={`${track.id}-${i}`}
+                                        onClick={() => { playTrack(track, playHistory); }}
+                                        className="flex-shrink-0 w-40 bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer border border-white/5"
+                                    >
+                                        <div className="relative mb-3">
+                                            <CoverImage src={track.cover_url} alt={track.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={track.title?.substring(0, 2).toUpperCase()} />
+                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center">
+                                                <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                                                    <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <h3 className="font-bold text-white text-sm mb-0.5 truncate">{track.title}</h3>
+                                        <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Browse Content */}
+                    {browseLoading ? (
+                        <div className="space-y-8">
+                            {[1, 2].map(i => (
+                                <div key={i}>
+                                    <Skeleton className="h-8 w-48 mb-4" />
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {[1, 2, 3, 4].map(j => (
+                                            <div key={j} className="space-y-3">
+                                                <Skeleton className="w-full aspect-square rounded-2xl" />
+                                                <Skeleton className="h-4 w-3/4" />
+                                                <Skeleton className="h-3 w-1/2" />
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    ) : Object.keys(browseData).length > 0 ? (
+                        Object.entries(browseData)
+                            .filter(([, items]) => items.length > 0)
+                            .slice(0, 3)
+                            .map(([category, items]) => (
+                                <div key={category}>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <Sparkles className="w-5 h-5 text-purple-400" />
+                                        <h2 className="text-xl font-bold">{category}</h2>
+                                    </div>
+                                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                        {items.slice(0, 8).map((item: any) => (
+                                            <Link to={`/playlist/${item.id}`} key={item.id}>
+                                                <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer h-full flex flex-col border border-white/5">
+                                                    <div className="relative mb-3">
+                                                        <CoverImage src={item.cover_url} alt={item.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={item.title?.substring(0, 2).toUpperCase()} />
+                                                    </div>
+                                                    <h3 className="font-bold text-white text-sm mb-0.5 truncate">{item.title}</h3>
+                                                    <p className="text-xs text-neutral-400 line-clamp-2">{item.description}</p>
+                                                </div>
+                                            </Link>
+                                        ))}
+                                    </div>
+                                </div>
+                            ))
+                    ) : (
+                        <div className="text-center py-20">
+                            <SearchIcon className="w-16 h-16 mx-auto text-neutral-600 mb-4" />
+                            <h2 className="text-xl font-bold mb-2">Search for music</h2>
+                            <p className="text-neutral-400">Find your favorite songs, artists, and albums.</p>
+                        </div>
+                    )}
+                </div>
             ) : (
                 <div className="text-center py-20">
                     <SearchIcon className="w-16 h-16 mx-auto text-neutral-600 mb-4" />
-                    <h2 className="text-xl font-bold mb-2">Search for music</h2>
-                    <p className="text-neutral-400">Find your favorite songs, artists, and albums.</p>
+                    <h2 className="text-xl font-bold mb-2">No results found</h2>
+                    <p className="text-neutral-400">Try a different search term.</p>
                 </div>
             )}
 

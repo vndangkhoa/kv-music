@@ -1,6 +1,17 @@
 import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
 
+const artistCoverMap = new Map<string, string>();
+for (const entry of Object.values(GENERATED_CONTENT)) {
+  if (entry.type === 'Artist' && entry.cover_url) {
+    artistCoverMap.set(entry.title.toLowerCase(), entry.cover_url);
+  }
+}
+
+export function getArtistCoverUrl(name: string): string | undefined {
+  return artistCoverMap.get(name.toLowerCase()) || artistCoverMap.get(decodeURIComponent(name).toLowerCase());
+}
+
 function getUserCountry(): string {
     const cached = localStorage.getItem('user_country');
     if (cached && cached.length === 2) {

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Layer 1: Frontend
-FROM node:20-slim AS frontend-builder
+FROM node:22-slim AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend-vite/package*.json ./
 RUN npm ci

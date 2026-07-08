@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useLibrary } from '../context/LibraryContext';
+import { useLibraryStore } from '../stores/libraryStore';
 import { dbService } from '../services/db';
 import { Track, Playlist } from '../types';
 
@@ -10,7 +10,8 @@ interface AddToPlaylistModalProps {
 }
 
 export default function AddToPlaylistModal({ track, isOpen, onClose }: AddToPlaylistModalProps) {
-    const { userPlaylists, refreshLibrary } = useLibrary();
+    const userPlaylists = useLibraryStore(s => s.userPlaylists);
+    const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
     const [newPlaylistName, setNewPlaylistName] = useState('');
     const [showCreate, setShowCreate] = useState(false);
 

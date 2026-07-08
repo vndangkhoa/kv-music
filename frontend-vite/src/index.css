@@ -77,6 +77,14 @@ body,
 #root {
     height: 100%;
     width: 100%;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar,
+#root::-webkit-scrollbar {
+    display: none;
 }
 
 body {
@@ -184,6 +192,22 @@ body {
 
 .slide-in-from-bottom {
     animation: slideInBottom 0.3s ease-out forwards;
+}
+
+/* Slide in from right */
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
+
+.slide-in-from-right {
+    animation: slideInRight 0.3s ease-out forwards;
 }
 
 /* Pulse animation for loading */

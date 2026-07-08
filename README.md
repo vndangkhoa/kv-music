@@ -36,9 +36,10 @@ KV Music is a self-hosted music streaming web application that pulls content fro
 
 ### Playback & Discovery
 - **YouTube Music Integration** - Search and stream millions of songs via YouTube
+- **Video Mode** - Toggle between audio and video playback with a single tap
 - **Smart Recommendations** - Get similar tracks based on what you're playing
 - **Trending Content** - 15+ auto-refreshing categories (pop, hip-hop, rock, etc.)
-- **Queue Management** - Full queue with drag-to-reorder and add-to-queue
+- **Queue Management** - Full queue with bottom sheet UI and add-to-queue
 
 ### Library & Personalization
 - **Liked Songs** - Heart tracks to save them to your personal collection
@@ -46,20 +47,29 @@ KV Music is a self-hosted music streaming web application that pulls content fro
 - **Follow Artists** - Track your favorite artists with photos and info
 - **Saved Albums** - Save full albums from YouTube Music
 - **Recently Played** - Auto-tracked listening history
+- **Pre-populated Library** - Ships with 95 seed items (20 playlists, 55 artists, 20 albums)
 
 ### Lyrics
 - **Real-Time Synced Lyrics** - Time-synced lyrics that highlight as songs play
 - **Multiple Sources** - LRCLIB, SimpMusic, lyrics.ovh for maximum coverage
-- **Full-Screen Mode** - Dedicated lyrics overlay with blur background
+- **Bottom Sheet Panel** - Slide-up lyrics panel with drag-to-dismiss gesture
 - **Auto-Scroll** - Lyrics follow the current playback position
 
 ### Interface
 - **Responsive Layout** - Beautiful on desktop, tablet, and mobile
 - **Collapsible Sidebar** - Desktop sidebar with quick navigation (toggle via hamburger)
-- **Right Panel** - Now Playing card, queue list, and similar content
+- **Right Panel** - Now Playing card with toggle button in header
 - **Dark Glassmorphism UI** - Modern translucent design with blur effects
 - **PWA Support** - Install as a standalone app on any device
 - **Mobile Bottom Nav** - Quick access to Home, Explore, and Library on mobile
+- **FullPlayer** - Immersive player with Song/Video toggle, action row, and playback controls
+- **MiniPlayer** - Compact bottom bar with progress indicator, skip, and play controls
+
+### Player Features
+- **Audio/Video Overlap Prevention** - Smart switching between audio and video modes
+- **Synced Lyrics** - Time-aligned lyrics that scroll with playback
+- **Volume Control** - Desktop volume slider (hidden on mobile)
+- **Shuffle & Repeat** - Full playback mode controls
 
 ---
 
@@ -145,7 +155,7 @@ docker run -d -p 3110:8080 kv-music:latest
 
 | Layer | Technology | Purpose |
 |-------|-----------|---------|
-| **Frontend** | React 18, TypeScript | UI framework |
+| **Frontend** | React 18, TypeScript, Zustand | UI framework & state management |
 | **Build** | Vite 5, PWA | Fast bundling & offline support |
 | **Styling** | TailwindCSS + animate | Utility-first CSS with animations |
 | **Backend** | Rust, Axum | High-performance HTTP server |
@@ -192,23 +202,34 @@ Dev server at `http://localhost:5173` with API proxy to `localhost:8080`.
 
 ```
 kv-music/
-├── frontend-vite/          # React frontend
+├── frontend-vite/              # React frontend
 │   ├── src/
-│   │   ├── components/     # UI components (PlayerBar, Sidebar, Lyrics, etc.)
-│   │   ├── context/        # React contexts (Player, Auth, Library, Layout)
-│   │   ├── pages/          # Route pages (Home, Explore, Library, etc.)
-│   │   └── services/       # API calls and helpers (library.ts)
-│   ├── public/             # Static assets and PWA manifest
-│   └── tailwind.config.js  # TailwindCSS configuration
-├── backend-rust/           # Rust backend
+│   │   ├── components/         # UI components
+│   │   │   ├── player/         # MiniPlayer, FullPlayer, ProgressBar
+│   │   │   ├── layout/         # AppLayout, NowPlayingBar, Header
+│   │   │   ├── BottomSheet.tsx # Reusable bottom sheet with drag-to-dismiss
+│   │   │   ├── CoverImage.tsx  # Image with fallback
+│   │   │   ├── Lyrics.tsx      # Synced lyrics display
+│   │   │   └── ...
+│   │   ├── stores/             # Zustand state management
+│   │   │   ├── playerStore.ts  # Playback, queue, liked tracks
+│   │   │   ├── libraryStore.ts # Library, playlists, artists, albums
+│   │   │   └── uiStore.ts      # UI state (sidebar, panels)
+│   │   ├── pages/              # Route pages
+│   │   ├── hooks/              # Custom React hooks
+│   │   ├── services/           # API calls (library.ts)
+│   │   └── types/              # TypeScript interfaces
+│   ├── public/                 # Static assets and PWA manifest
+│   └── tailwind.config.js      # TailwindCSS configuration
+├── backend-rust/               # Rust backend
 │   └── src/
-│       ├── main.rs         # Entry point and server setup
-│       ├── api.rs          # HTTP route handlers
-│       ├── spotdl.rs       # yt-dlp integration and search
-│       └── types.rs        # Data models and serialization
-├── Dockerfile              # Multi-stage Docker build
-├── docker-compose.yml      # Docker Compose config
-└── .dockerignore           # Build context exclusions
+│       ├── main.rs             # Entry point and server setup
+│       ├── api.rs              # HTTP route handlers
+│       ├── spotdl.rs           # yt-dlp integration and search
+│       └── types.rs            # Data models and serialization
+├── Dockerfile                  # Multi-stage Docker build
+├── docker-compose.yml          # Docker Compose config
+└── .dockerignore               # Build context exclusions
 ```
 
 ---
@@ -238,6 +259,12 @@ kv-music/
 | Edge 90+ | Supported |
 | Mobile Chrome | Supported |
 | Mobile Safari | Supported |
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 

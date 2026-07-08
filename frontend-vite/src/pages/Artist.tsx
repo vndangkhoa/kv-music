@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { libraryService } from '../services/library';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayerStore } from '../stores/playerStore';
 import { Play, Shuffle, Heart, Disc, Music } from 'lucide-react';
 import { Track } from '../types';
 import Recommendations from '../components/Recommendations';
@@ -18,7 +18,12 @@ interface ArtistData {
 export default function Artist() {
     const { id } = useParams(); // Start with name or id
     const navigate = useNavigate();
-    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, shuffle, toggleShuffle } = usePlayer();
+    const playTrack = usePlayerStore(s => s.playTrack);
+    const toggleLike = usePlayerStore(s => s.toggleLike);
+    const likedTracks = usePlayerStore(s => s.likedTracks);
+    const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
+    const shuffle = usePlayerStore(s => s.shuffle);
+    const toggleShuffle = usePlayerStore(s => s.toggleShuffle);
 
     const [artist, setArtist] = useState<ArtistData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -113,7 +118,7 @@ export default function Artist() {
     if (!artist) return <div>Artist not found</div>;
 
     return (
-        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#1e1e1e] to-black pb-32">
+        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#1e1e1e] to-black pb-32 no-scrollbar">
             {/* Header / Banner */}
             <div className="relative h-[40vh] min-h-[300px] w-full group">
                 {artist.photo && (

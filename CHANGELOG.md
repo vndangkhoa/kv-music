@@ -1,0 +1,53 @@
+# Changelog
+
+All notable changes to KV Music will be documented in this file.
+
+## [Unreleased]
+
+### Added
+- **BottomSheet component** - Reusable slide-up panel with drag handle and swipe-to-dismiss gesture
+- **FullPlayer redesign** - Song/Video toggle, action row (heart, lyrics, queue, related), clean layout
+- **MiniPlayer redesign** - Edge-to-edge bar with thin progress indicator, skip/play controls, tablet layout
+- **Library pre-population** - Ships with 95 seed items (20 playlists, 55 artists, 20 albums)
+- **Artist cover lookup** - Artist thumbnails from `GENERATED_CONTENT` instead of generic avatars
+- **Queue/Related bottom sheets** - Slide-up panels replacing inline compact lists
+- **Lyrics bottom sheet** - Slide-up panel replacing fullscreen overlay
+- **Video mode toggle** - Switch between audio and video playback in FullPlayer
+
+### Changed
+- **State management** - Migrated from React Context to Zustand stores (playerStore, libraryStore, uiStore)
+- **Title overlap fix** - FullPlayer title now 1 line on mobile, 2 lines on desktop
+- **Action row separated** - Heart, lyrics, queue, related icons in their own row below track info
+- **Volume slider** - Hidden on mobile, shown on desktop only in FullPlayer
+- **Library page** - Browse content always visible (not just when library is empty)
+- **Right panel** - NowPlayingBar toggleable via header button; hidden by default on first load
+- **Mobile MiniPlayer** - Removed duplicate progress bar, fixed title/button overlap
+
+### Fixed
+- **Stream 500 error** - Removed `--extractor-args "youtube:player_client=web"` and `--js-runtimes node` from yt-dlp args
+- **Audio/video overlap** - Added `isVideoMode` to playerStore; MiniPlayer skips audio play when video active
+- **Mobile MiniPlayer overlap** - Fixed title/button spacing with `flex-[3]` text, `flex-shrink-0` controls
+- **Scrollbars** - Hidden everywhere with `no-scrollbar` class (Sidebar, Artist page)
+
+### Removed
+- **Info button** - Removed from FullPlayer action row
+- **Song Info modal** - Removed from FullPlayer
+- **Volume slider on mobile** - Hidden (users use hardware volume buttons)
+- **Unused React contexts** - PlayerContext, AuthContext, LibraryContext, LayoutContext, ThemeContext
+
+---
+
+## [1.0.0] - 2025-01-01
+
+### Added
+- Initial release
+- YouTube Music search and streaming
+- Real-time synced lyrics (LRCLIB, SimpMusic, lyrics.ovh)
+- Library management (playlists, artists, albums, liked songs)
+- Queue management
+- PWA support
+- Docker deployment
+- Responsive design (desktop, tablet, mobile)
+- Dark glassmorphism UI
+- Right panel with NowPlayingBar
+- Collapsible sidebar

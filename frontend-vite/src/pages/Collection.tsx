@@ -1,10 +1,14 @@
 import { Play, Pause, Heart, Clock, Shuffle, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayerStore } from '../stores/playerStore';
 import CoverImage from '../components/CoverImage';
 
 export default function Collection() {
-    const { likedTracksData, playTrack, currentTrack, isPlaying, togglePlay } = usePlayer();
+    const likedTracksData = usePlayerStore(s => s.likedTracksData);
+    const playTrack = usePlayerStore(s => s.playTrack);
+    const currentTrack = usePlayerStore(s => s.currentTrack);
+    const isPlaying = usePlayerStore(s => s.isPlaying);
+    const togglePlay = usePlayerStore(s => s.togglePlay);
 
     const handlePlayAll = () => {
         if (likedTracksData.length > 0) {

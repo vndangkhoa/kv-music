@@ -1,8 +1,8 @@
 
 import { useState } from 'react';
 import { X, RefreshCcw, Check, CheckCircle2, Trash2, Database, Volume2, Activity, PlayCircle } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
-import { usePlayer } from '../context/PlayerContext';
+import { useUIStore } from '../stores/uiStore';
+import { usePlayerStore } from '../stores/playerStore';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -10,8 +10,10 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-    const { theme, toggleTheme } = useTheme();
-    const { qualityPreference, setQualityPreference } = usePlayer();
+    const theme = useUIStore(s => s.theme);
+    const toggleTheme = useUIStore(s => s.toggleTheme);
+    const qualityPreference = usePlayerStore(s => s.qualityPreference);
+    const setQualityPreference = usePlayerStore(s => s.setQualityPreference);
     const [isUpdating, setIsUpdating] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [updateLog, setUpdateLog] = useState<string>('');

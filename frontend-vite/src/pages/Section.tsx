@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Play, ArrowLeft } from 'lucide-react';
-import { useLibrary } from '../context/LibraryContext';
-import { usePlayer } from '../context/PlayerContext';
+import { useLibraryStore } from '../stores/libraryStore';
+import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
@@ -10,9 +10,9 @@ import Skeleton from '../components/Skeleton';
 export default function Section() {
     const [searchParams] = useSearchParams();
     const category = searchParams.get('category');
-    const { userPlaylists } = useLibrary();
+    const userPlaylists = useLibraryStore(s => s.userPlaylists);
     const [loading, setLoading] = useState(true);
-    const { playTrack } = usePlayer();
+    const playTrack = usePlayerStore(s => s.playTrack);
 
     useEffect(() => {
         // Simulate loading

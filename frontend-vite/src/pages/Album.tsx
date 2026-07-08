@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { libraryService } from '../services/library';
-import { usePlayer } from '../context/PlayerContext';
+import { usePlayerStore } from '../stores/playerStore';
 import { Play, Shuffle, Heart, Clock, ListPlus, Download } from 'lucide-react';
 import { Track } from '../types';
 import Recommendations from '../components/Recommendations';
 
 export default function Album() {
     const { id } = useParams();
-    const { playTrack, toggleLike, likedTracks, setIsFullScreenOpen, shuffle, toggleShuffle, addToQueue } = usePlayer();
+    const playTrack = usePlayerStore(s => s.playTrack);
+    const toggleLike = usePlayerStore(s => s.toggleLike);
+    const likedTracks = usePlayerStore(s => s.likedTracks);
+    const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
+    const shuffle = usePlayerStore(s => s.shuffle);
+    const toggleShuffle = usePlayerStore(s => s.toggleShuffle);
+    const addToQueue = usePlayerStore(s => s.addToQueue);
     const [tracks, setTracks] = useState<Track[]>([]);
     const [albumInfo, setAlbumInfo] = useState<{ title: string, artist: string, cover?: string, year?: string } | null>(null);
     const [moreByArtist, setMoreByArtist] = useState<Track[]>([]);

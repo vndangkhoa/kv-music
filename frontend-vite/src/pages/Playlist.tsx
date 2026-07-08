@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
 import { Play, Pause, Clock, Heart, PlusCircle, Shuffle, Trash2, ArrowLeft } from 'lucide-react';
-import { usePlayer } from '../context/PlayerContext';
-import { useLibrary } from '../context/LibraryContext';
+import { usePlayerStore } from '../stores/playerStore';
+import { useLibraryStore } from '../stores/libraryStore';
 import { dbService, Playlist as PlaylistType } from '../services/db';
 import { libraryService } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
@@ -24,8 +24,17 @@ export default function Playlist() {
     const [isUserPlaylist, setIsUserPlaylist] = useState(false);
     const [moreLikeThis, setMoreLikeThis] = useState<Track[]>([]);
 
-    const { playTrack, currentTrack, isPlaying, togglePlay, likedTracks, toggleLike, setIsFullScreenOpen, shuffle, toggleShuffle } = usePlayer();
-    const { userPlaylists, refreshLibrary } = useLibrary();
+    const playTrack = usePlayerStore(s => s.playTrack);
+    const currentTrack = usePlayerStore(s => s.currentTrack);
+    const isPlaying = usePlayerStore(s => s.isPlaying);
+    const togglePlay = usePlayerStore(s => s.togglePlay);
+    const likedTracks = usePlayerStore(s => s.likedTracks);
+    const toggleLike = usePlayerStore(s => s.toggleLike);
+    const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
+    const shuffle = usePlayerStore(s => s.shuffle);
+    const toggleShuffle = usePlayerStore(s => s.toggleShuffle);
+    const userPlaylists = useLibraryStore(s => s.userPlaylists);
+    const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
 
     useEffect(() => {
         if (!playlistId) return;

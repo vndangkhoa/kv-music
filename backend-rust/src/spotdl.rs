@@ -439,7 +439,7 @@ impl SpotdlService {
     }
 
     fn build_yt_dlp_base_args() -> Vec<&'static str> {
-        let mut args = vec!["--js-runtimes", "node"];
+        let mut args = vec![];
 
         if Self::cookies_file_path().exists() {
             args.push("--cookies");
@@ -477,7 +477,6 @@ impl SpotdlService {
 
         let output_pattern = format!("{}.%(ext)s", video_id);
         let output_args = vec![
-            "--extractor-args", "youtube:player_client=web",
             "-f", "bestaudio/best",
             "--output", &output_pattern,
             &target_url,

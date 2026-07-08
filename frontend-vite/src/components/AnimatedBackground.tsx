@@ -1,9 +1,9 @@
 
 import { useEffect, useRef } from 'react';
-import { useTheme } from '../context/ThemeContext';
+import { useUIStore } from '../stores/uiStore';
 
 export default function AnimatedBackground() {
-    const { theme } = useTheme();
+    const theme = useUIStore(s => s.theme);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {

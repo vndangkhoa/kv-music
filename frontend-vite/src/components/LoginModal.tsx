@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../context/AuthContext';
+import { useAuthStore } from '../stores/authStore';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -23,7 +23,7 @@ const AVATAR_COLORS: GradientColor[] = [
 ];
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
-  const { login } = useAuth();
+  const login = useAuthStore(s => s.login);
   const [name, setName] = useState('');
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
 
