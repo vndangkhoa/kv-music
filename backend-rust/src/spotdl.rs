@@ -127,29 +127,9 @@ impl SpotdlService {
     }
 
     pub fn start_background_preload(&self) {
-        let cache_arc = self.browse_cache.clone();
-        
-        tokio::spawn(async move {
-            println!("Background preloader started... fetching default VN content");
-            Self::fetch_browse_content("VN", &cache_arc).await;
-        });
-
-        let refresh_cache = self.browse_cache.clone();
-        tokio::spawn(async move {
-            loop {
-                tokio::time::sleep(Duration::from_secs(300)).await;
-                
-                let countries: Vec<String> = {
-                    let map = refresh_cache.read().await;
-                    map.keys().cloned().collect()
-                };
-
-                for country in countries {
-                    println!("Periodic refresh: updating browse content for country {}...", country);
-                    Self::fetch_browse_content(&country, &refresh_cache).await;
-                }
-            }
-        });
+        // Preload is disabled to avoid blocking the server.
+        // Browse content will be loaded on demand when first requested.
+        println!("Background preload disabled. Content will load on demand.");
     }
 
     pub async fn ensure_country_cached(&self, country: &str) {
@@ -346,7 +326,7 @@ impl SpotdlService {
         }
 
         let path = Self::yt_dlp_path();
-        let search_query = format!("ytsearch20:{} audio", query);
+        let search_query = format!("ytsearch30:{} audio", query);
 
         let output_args = vec![
             &search_query, "--dump-json", "--no-playlist", "--flat-playlist",

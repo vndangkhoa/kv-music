@@ -32,6 +32,8 @@ export default function Search() {
     const navigate = useNavigate();
 
     const [query, setQuery] = useState(routerQuery);
+    const [inputValue, setInputValue] = useState(routerQuery);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const [results, setResults] = useState<Track[]>(() => {
         const cached = localStorage.getItem('last_search_results');
         return cached ? JSON.parse(cached) : [];
@@ -95,6 +97,7 @@ export default function Search() {
     useEffect(() => {
         if (routerQuery !== query) {
             setQuery(routerQuery);
+            setInputValue(routerQuery);
             if (routerQuery.trim()) {
                 performSearch(routerQuery);
             }
@@ -115,6 +118,10 @@ export default function Search() {
         }
     }, [routerQuery, query]);
 
+    useEffect(() => {
+        return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+    }, []);
+
     const handleRecentSearchClick = (q: string) => {
         addRecentSearch(q);
         navigate(`/search?q=${encodeURIComponent(q)}`);
@@ -122,6 +129,31 @@ export default function Search() {
 
     return (
         <div className="h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-24">
+            {/* Search Input */}
+            <div className="relative mb-6">
+                <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
+                <input
+                    type="text"
+                    value={inputValue}
+                    onChange={(e) => {
+                        const val = e.target.value;
+                        setInputValue(val);
+                        if (debounceRef.current) clearTimeout(debounceRef.current);
+                        debounceRef.current = setTimeout(() => {
+                            if (val.trim()) {
+                                navigate(`/search?q=${encodeURIComponent(val)}`, { replace: true });
+                            } else {
+                                navigate('/search', { replace: true });
+                                setResults([]);
+                            }
+                        }, 300);
+                    }}
+                    placeholder="Search songs, albums, artists"
+                    autoFocus
+                    className="w-full bg-white/10 text-white placeholder-neutral-400 rounded-full pl-11 pr-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-white/20 transition"
+                />
+            </div>
+
             {/* Results */}
             {loading && results.length === 0 ? (
                 <div className="space-y-8 animate-pulse">

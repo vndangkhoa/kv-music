@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import { dbService, Playlist } from '../services/db';
 import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
+import { libraryService } from '../services/library';
 
 type FilterType = 'all' | 'playlists' | 'artists' | 'albums';
 
@@ -20,6 +21,7 @@ interface LibraryState {
   activeFilter: FilterType;
   setActiveFilter: (filter: FilterType) => void;
   refreshLibrary: () => Promise<void>;
+  hydrateSeedTracks: () => Promise<void>;
   deriveSavedAlbums: (playHistory: Track[]) => void;
 }
 
@@ -55,7 +57,7 @@ function buildSeedArtists(): string[] {
 
 export const useLibraryStore = create<LibraryState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       userPlaylists: buildSeedPlaylists(),
       followedArtists: buildSeedArtists(),
       savedAlbums: buildSeedAlbums(),
@@ -69,11 +71,47 @@ export const useLibraryStore = create<LibraryState>()(
           const likedArtists = JSON.parse(localStorage.getItem('likedArtists') || '[]') as string[];
           const seedPlaylists = buildSeedPlaylists();
           const seedArtists = buildSeedArtists();
-          const mergedPlaylists = [...seedPlaylists, ...userPlaylists.filter(p => !seedPlaylists.some(s => s.id === p.id))];
+          const { userPlaylists: currentPlaylists } = get();
+          const mergedPlaylists = [...seedPlaylists.map(sp => {
+            const existing = currentPlaylists.find(p => p.id === sp.id);
+            return existing && existing.tracks.length > 0 ? { ...sp, tracks: existing.tracks } : sp;
+          }), ...userPlaylists.filter(p => !seedPlaylists.some(s => s.id === p.id))];
           const mergedArtists = [...seedArtists, ...likedArtists.filter((a: string) => !seedArtists.includes(a))];
           set({ userPlaylists: mergedPlaylists, followedArtists: mergedArtists });
         } catch (err) {
           console.error(err);
+        }
+      },
+
+      hydrateSeedTracks: async () => {
+        const { userPlaylists } = get();
+        const emptyPlaylists = userPlaylists.filter(p => p.tracks.length === 0);
+        if (emptyPlaylists.length === 0) return;
+
+        const BATCH_SIZE = 3;
+        for (let i = 0; i < emptyPlaylists.length; i += BATCH_SIZE) {
+          const batch = emptyPlaylists.slice(i, i + BATCH_SIZE);
+          const results = await Promise.allSettled(
+            batch.map(async (p) => {
+              const full = await libraryService.getPlaylist(p.id);
+              return { id: p.id, tracks: full?.tracks ?? [] };
+            })
+          );
+
+          const updated = new Map<string, Track[]>();
+          results.forEach((r) => {
+            if (r.status === 'fulfilled' && r.value.tracks.length > 0) {
+              updated.set(r.value.id, r.value.tracks);
+            }
+          });
+
+          if (updated.size > 0) {
+            set((state) => ({
+              userPlaylists: state.userPlaylists.map(p =>
+                updated.has(p.id) ? { ...p, tracks: updated.get(p.id)! } : p
+              ),
+            }));
+          }
         }
       },
 
@@ -98,6 +136,7 @@ export const useLibraryStore = create<LibraryState>()(
       name: 'library-storage',
       partialize: (state) => ({
         followedArtists: state.followedArtists,
+        userPlaylists: state.userPlaylists,
       }),
     }
   )

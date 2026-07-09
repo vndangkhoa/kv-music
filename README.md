@@ -247,6 +247,7 @@ kv-music/
 | `GET` | `/api/video-stats/{id}` | Get video stats (views, likes) |
 | `GET` | `/api/artist/{id}` | Get artist info & top tracks |
 | `GET` | `/api/recommendations/{id}` | Get similar songs |
+| `GET` | `/api/charts` | Get curated charts (top hits, trending, albums) |
 | `GET` | `/api/related/{id}` | Get related content (albums, artists) |
 | `GET` | `/static/*` | Serve frontend build |
 

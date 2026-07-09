@@ -56,7 +56,7 @@ export function useLyrics(trackTitle: string, artistName: string, currentTime: n
         // Add timeout to prevent hanging requests
         const timeoutId = setTimeout(() => {
             setLoading(false);
-        }, 5000);
+        }, 20000);
 
 libraryService.getLyrics(trackTitle, artistName, videoId)
                 .then(data => {

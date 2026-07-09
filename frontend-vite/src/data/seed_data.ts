@@ -835,5 +835,30 @@ export const GENERATED_CONTENT: Record<string, StaticPlaylist> = {
         "cover_url": "https://i.ytimg.com/vi/okD3pw2t59Y/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAPTN96Wl14jH7STJdRyMoVjqWIZg",
         "type": "Playlist",
         "tracks": []
+    },
+    "TikTok Viral Hits 2024": {
+        "id": "album-TikTok-Viral-Hits-2024",
+        "title": "TikTok Viral Hits 2024",
+        "description": "Album • Various Artists",
+        "cover_url": "https://i.ytimg.com/vi/cLyUcAUMmMY/hq720.jpg",
+        "type": "Album",
+        "creator": "Various Artists",
+        "tracks": []
+    },
+    "TikTok Trending Now": {
+        "id": "playlist-TikTok-Trending-Now",
+        "title": "TikTok Trending Now",
+        "description": "Playlist • Trending",
+        "cover_url": "https://i.ytimg.com/vi/pq90tsQmjys/hq720.jpg",
+        "type": "Playlist",
+        "tracks": []
+    },
+    "TikTok Việt Nam": {
+        "id": "playlist-TikTok-Việt-Nam",
+        "title": "TikTok Việt Nam",
+        "description": "Playlist • Trending",
+        "cover_url": "https://i.ytimg.com/vi/gJHSDZfJrRY/hq720.jpg",
+        "type": "Playlist",
+        "tracks": []
     }
 };

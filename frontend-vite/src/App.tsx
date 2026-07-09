@@ -8,6 +8,7 @@ import Artist from './pages/Artist';
 import Album from './pages/Album';
 import Collection from './pages/Collection';
 import Section from './pages/Section';
+import ChartsSection from './pages/ChartsSection';
 import { useEffect } from 'react';
 import { useLibraryStore } from './stores/libraryStore';
 import { usePlayerStore } from './stores/playerStore';
@@ -38,6 +39,7 @@ function App() {
           <Route path="artist/:id" element={<Artist />} />
           <Route path="collection/tracks" element={<Collection />} />
           <Route path="section" element={<Section />} />
+          <Route path="charts" element={<ChartsSection />} />
         </Route>
       </Routes>
     </BrowserRouter>

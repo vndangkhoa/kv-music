@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import { Outlet } from 'react-router-dom';
 import Header from '../Header';
 import BottomNav from '../BottomNav';
 import Sidebar from '../Sidebar';
@@ -26,19 +26,17 @@ function useMediaQuery(query: string) {
 
 export default function AppLayout() {
   const isMobile = useMediaQuery('(max-width: 768px)');
-  const location = useLocation();
   const isSettingsOpen = usePlayerStore(s => s.isSettingsOpen);
   const setIsSettingsOpen = usePlayerStore(s => s.setIsSettingsOpen);
   const closeRightPanel = usePlayerStore(s => s.closeRightPanel);
   const currentTrack = usePlayerStore(s => s.currentTrack);
   const loadTrack = usePlayerStore(s => s.loadTrack);
 
-  const isFullScreenOpen = usePlayerStore(s => s.isFullScreenOpen);
-
   useEffect(() => {
     closeRightPanel();
   }, []);
 
+  // Load initial trending tracks on mobile
   useEffect(() => {
     if (isMobile && !currentTrack) {
       libraryService.getInitialTrendingTracks().then(tracks => {
@@ -49,7 +47,13 @@ export default function AppLayout() {
     }
   }, [isMobile]);
 
-  const hideMiniPlayer = isMobile && (location.pathname === '/' || location.pathname === '/library');
+  // Auto-refresh trending tracks every 30 minutes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      libraryService.getInitialTrendingTracks().catch(() => {});
+    }, 30 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-spotify-base text-spotify-text-main transition-colors duration-500 relative">
@@ -67,7 +71,7 @@ export default function AppLayout() {
         {!isMobile && <NowPlayingBar />}
       </div>
 
-      <MiniPlayer hideUI={hideMiniPlayer} />
+      <MiniPlayer />
 
       {isMobile ? <MobileFullPlayer /> : <FullPlayer />}
 

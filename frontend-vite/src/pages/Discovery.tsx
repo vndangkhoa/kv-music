@@ -1,20 +1,17 @@
 import { useEffect, useState } from 'react';
-import { Play, Clock, Music2, User, Sparkles, Flame, Disc } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Play, Music2, Sparkles, Flame, Disc, Search, User, Clock, TrendingUp, Star } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
 
-type SortOption = 'recent' | 'alpha-asc' | 'alpha-desc' | 'artist';
-
 export default function Discovery() {
+  const navigate = useNavigate();
   const [timeOfDay, setTimeOfDay] = useState("Good evening");
   const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
   const [loading, setLoading] = useState(true);
-  const [sortBy, setSortBy] = useState<SortOption>('recent');
-  const [showSortMenu, setShowSortMenu] = useState(false);
   const [heroPlaylist, setHeroPlaylist] = useState<StaticPlaylist | null>(null);
   const playTrack = usePlayerStore(s => s.playTrack);
   const playHistory = usePlayerStore(s => s.playHistory);
@@ -74,44 +71,14 @@ export default function Discovery() {
     return () => clearInterval(refreshInterval);
   }, []);
 
-  const sortPlaylists = (playlists: StaticPlaylist[]) => {
-    const sorted = [...playlists];
-    switch (sortBy) {
-      case 'alpha-asc': return sorted.sort((a, b) => (a.title || '').localeCompare(b.title || ''));
-      case 'alpha-desc': return sorted.sort((a, b) => (b.title || '').localeCompare(a.title || ''));
-      case 'artist': return sorted.sort((a, b) => (a.creator || '').localeCompare(b.creator || ''));
-      default: return sorted;
-    }
-  };
-
-  const sortOptions = [
-    { value: 'recent', label: 'Recently Added', icon: Clock },
-    { value: 'alpha-asc', label: 'Alphabetical (A-Z)', icon: Clock },
-    { value: 'alpha-desc', label: 'Alphabetical (Z-A)', icon: Clock },
-    { value: 'artist', label: 'Artist Name', icon: User },
-  ];
-
   return (
     <div className="h-full overflow-y-auto p-6 no-scrollbar pb-24">
       <div className="flex items-center justify-between mb-6 select-none">
         <h1 className="text-3xl font-extrabold tracking-tight text-white">{timeOfDay}</h1>
-        <div className="relative">
-          <button onClick={() => setShowSortMenu(!showSortMenu)} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-full text-sm font-bold transition select-none">
-            <Clock className="w-4 h-4" />
-            Sort
+        <div className="flex items-center gap-2">
+          <button onClick={() => navigate('/search')} className="flex items-center justify-center w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full transition">
+            <Search className="w-5 h-5 text-white/70" />
           </button>
-          {showSortMenu && (
-            <div className="absolute right-0 mt-2 w-48 bg-[#212121] rounded-xl shadow-xl z-50 py-1 border border-white/5">
-              {sortOptions.map(option => (
-                <button key={option.value} onClick={() => { setSortBy(option.value as SortOption); setShowSortMenu(false); }}
-                  className={`w-full px-4 py-2.5 text-left text-sm flex items-center gap-2 hover:bg-white/5 transition ${sortBy === option.value ? 'text-green-500 font-bold' : 'text-white'}`}>
-                  <option.icon className="w-4 h-4" />
-                  {option.label}
-                  {sortBy === option.value && <span className="ml-auto text-green-500">✓</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </div>
       </div>
 
@@ -196,16 +163,39 @@ export default function Discovery() {
       {activeChip === 'all' && <ArtistSpotlightSection />}
 
       {/* Charts / Trending */}
-      {activeChip === 'all' && <TrendingSection />}
+      {activeChip === 'all' && (
+        <>
+          <ChartSection 
+            title="Top Hits" 
+            icon={<Flame className="w-5 h-5 text-orange-500" />} 
+            chartType="top-hits" 
+          />
+          <ChartSection 
+            title="Trending Now" 
+            icon={<TrendingUp className="w-5 h-5 text-green-500" />} 
+            chartType="trending" 
+          />
+          <ChartSection 
+            title="Top Albums" 
+            icon={<Disc className="w-5 h-5 text-blue-500" />} 
+            chartType="top-albums" 
+          />
+          <ChartSection 
+            title="Hits Collection" 
+            icon={<Star className="w-5 h-5 text-yellow-500" />} 
+            chartType="hits-collection" 
+          />
+        </>
+      )}
 
       {/* Browse Content */}
       {loading ? (
         <div className="space-y-8">
-          {[1, 2].map(i => (
+          {[1, 2, 3].map(i => (
             <div key={i}>
               <Skeleton className="h-8 w-48 mb-4" />
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map(j => (
+                <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                {[1, 2, 3, 4, 5, 6].map(j => (
                   <div key={j} className="space-y-3">
                     <Skeleton className="w-full aspect-square rounded-2xl" />
                     <Skeleton className="h-4 w-3/4" />
@@ -236,23 +226,20 @@ export default function Discovery() {
                     <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider hover:text-white cursor-pointer">Show all</span>
                   </Link>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {sortPlaylists(uniquePlaylists).slice(0, 12).map(playlist => (
-                    <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
-                      <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
-                        <div className="relative mb-3">
-                          <CoverImage src={playlist.cover_url} alt={playlist.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={playlist.title?.substring(0, 2).toUpperCase()} />
-                          <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); playCollection(playlist.id, false); }}
-                            className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center">
-                            <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                              <Play className="fill-current text-black ml-0.5 w-5 h-5" />
-                            </div>
+              <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                  {uniquePlaylists.slice(0, 16).map(playlist => (
+                    <div onClick={() => playCollection(playlist.id, false)} key={playlist.id} className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
+                      <div className="relative mb-3">
+                        <CoverImage src={playlist.cover_url} alt={playlist.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={playlist.title?.substring(0, 2).toUpperCase()} />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center pointer-events-none">
+                          <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                           </div>
                         </div>
-                        <h3 className="font-bold text-white text-sm mb-0.5 truncate">{playlist.title}</h3>
-                        <p className="text-xs text-neutral-400 line-clamp-2">{playlist.description}</p>
                       </div>
-                    </Link>
+                      <h3 className="font-bold text-white text-sm mb-0.5 truncate">{playlist.title}</h3>
+                      <p className="text-xs text-neutral-400 line-clamp-2">{playlist.description}</p>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -273,23 +260,20 @@ export default function Discovery() {
               <Disc className="w-5 h-5 text-green-500" /> Top Albums
             </h2>
           </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {(browseData["Top Albums"] as any[]).filter((a, i, self) => self.findIndex(x => x.id === a.id) === i).slice(0, 12).map(album => (
-              <Link to={`/album/${album.id}`} key={album.id}>
-                <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
-                  <div className="relative mb-3">
-                    <CoverImage src={album.cover_url} alt={album.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={album.title?.substring(0, 2).toUpperCase()} />
-                    <div onClick={(e) => { e.preventDefault(); e.stopPropagation(); playCollection(album.id, true); }}
-                      className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center">
-                      <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                        <Play className="fill-current text-black ml-0.5 w-5 h-5" />
-                      </div>
+          <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
+            {(browseData["Top Albums"] as any[]).filter((a, i, self) => self.findIndex(x => x.id === a.id) === i).slice(0, 16).map(album => (
+              <div onClick={() => playCollection(album.id, true)} key={album.id} className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
+                <div className="relative mb-3">
+                  <CoverImage src={album.cover_url} alt={album.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={album.title?.substring(0, 2).toUpperCase()} />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center pointer-events-none">
+                    <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                      <Play className="fill-current text-black ml-0.5 w-5 h-5" />
                     </div>
                   </div>
-                  <h3 className="font-bold text-white text-sm mb-0.5 truncate">{album.title}</h3>
-                  <p className="text-xs text-neutral-400 line-clamp-1">{album.description}</p>
                 </div>
-              </Link>
+                <h3 className="font-bold text-white text-sm mb-0.5 truncate">{album.title}</h3>
+                <p className="text-xs text-neutral-400 line-clamp-1">{album.description}</p>
+              </div>
             ))}
           </div>
         </div>
@@ -329,8 +313,8 @@ function MadeForYouSection() {
         {seedTrack ? <>Because you listened to <span className="text-white font-medium">{seedTrack.artist}</span></> : "Recommended for you"}
       </p>
       {loading ? (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map(i => (
+        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
             <div key={i} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
               <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
               <Skeleton className="h-4 w-3/4 animate-pulse" />
@@ -339,8 +323,8 @@ function MadeForYouSection() {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {recommendations.slice(0, 8).map((track, i) => (
+        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {recommendations.slice(0, 16).map((track, i) => (
             <div key={i} onClick={() => { playTrack(track, recommendations); }}
               className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
               <div className="relative mb-3">
@@ -453,53 +437,64 @@ function ArtistSpotlightSection() {
   );
 }
 
-function TrendingSection() {
+function ChartSection({ title, icon, chartType }: { title: string; icon: React.ReactNode; chartType: string }) {
   const playTrack = usePlayerStore(s => s.playTrack);
-  const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
+  const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchTrending = async () => {
+    const fetchCharts = async () => {
       try {
-        const results = await libraryService.search('vietnamese billboard top 100');
-        if (results && results.length > 0) setTrendingTracks(results.slice(0, 12));
+        const results = await libraryService.getCharts(chartType);
+        if (results && results.length > 0) setTracks(results.slice(0, 24));
       } catch (err) { console.error(err); }
       setLoading(false);
     };
-    fetchTrending();
-  }, []);
+    fetchCharts();
+  }, [chartType]);
 
-  if (loading && trendingTracks.length === 0) return null;
-  if (!loading && trendingTracks.length === 0) return null;
+  if (loading && tracks.length === 0) return null;
+  if (!loading && tracks.length === 0) return null;
 
   return (
     <div className="mb-8 animate-in">
-      <div className="flex items-center gap-2 mb-4">
-        <Flame className="w-5 h-5 text-green-500" />
-        <h2 className="text-2xl font-bold">Charts / Trending</h2>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          {icon}
+          <h2 className="text-xl font-bold text-white">{title}</h2>
+        </div>
+        <Link to={`/charts?chart_type=${chartType}`}>
+          <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider cursor-pointer hover:text-white">See all</span>
+        </Link>
       </div>
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} className="flex gap-4 p-3 bg-white/5 rounded-2xl items-center animate-pulse">
-              <Skeleton className="w-16 h-16 rounded-xl" />
-              <div className="flex-1 space-y-2"><Skeleton className="h-4 w-3/4" /><Skeleton className="h-3 w-1/2" /></div>
+        <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
+            <div key={i} className="flex-shrink-0 w-36 space-y-3">
+              <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
+              <Skeleton className="h-4 w-3/4 animate-pulse" />
+              <Skeleton className="h-3 w-1/2 animate-pulse" />
             </div>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {trendingTracks.map((track, idx) => (
-            <div key={track.id} onClick={() => playTrack(track, trendingTracks)}
-              className="flex items-center gap-4 bg-[#1f1f1f]/20 hover:bg-[#1f1f1f]/60 p-3 rounded-2xl cursor-pointer group transition border border-white/5 hover:border-white/10">
-              <div className="font-mono text-xl font-extrabold text-neutral-500 w-8 text-center group-hover:text-green-500 transition-colors">
-                {(idx + 1).toString().padStart(2, '0')}
+        <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
+          {tracks.map((track, idx) => (
+            <div key={track.id} onClick={() => playTrack(track, tracks)}
+              className="flex-shrink-0 w-36 bg-[#1f1f1f]/30 p-2 rounded-xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer border border-white/5">
+              <div className="relative mb-2">
+                <div className="absolute top-1 left-1 z-10 w-6 h-6 bg-black/70 rounded-full flex items-center justify-center">
+                  <span className="text-[10px] font-bold text-white">{(idx + 1).toString().padStart(2, '0')}</span>
+                </div>
+                <CoverImage src={track.cover_url} alt={track.title} className="w-full aspect-square rounded-lg shadow-lg" />
+                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-lg flex items-center justify-center">
+                  <div className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
+                    <Play className="fill-current text-black ml-0.5 w-4 h-4" />
+                  </div>
+                </div>
               </div>
-              <CoverImage src={track.cover_url} alt={track.title} className="w-16 h-16 rounded-xl object-cover flex-shrink-0 shadow" />
-              <div className="flex-1 min-w-0">
-                <h4 className="font-bold text-white text-sm truncate group-hover:text-green-500 transition-colors">{track.title}</h4>
-                <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
-              </div>
+              <h4 className="font-bold text-white text-xs truncate">{track.title}</h4>
+              <p className="text-[10px] text-neutral-400 truncate">{track.artist}</p>
             </div>
           ))}
         </div>

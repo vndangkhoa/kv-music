@@ -29,7 +29,7 @@ interface PlayerState {
   isVideoMode: boolean;
 
   // Actions
-  playTrack: (track: Track, queue?: Track[]) => void;
+  playTrack: (track: Track, queue?: Track[], openFullPlayer?: boolean) => void;
   loadTrack: (track: Track, queue?: Track[]) => void;
   togglePlay: () => void;
   nextTrack: () => void;
@@ -72,7 +72,7 @@ export const usePlayerStore = create<PlayerState>()(
       audioQuality: null,
       qualityPreference: 'auto',
       isLyricsOpen: false,
-      isFullScreenOpen: true,
+      isFullScreenOpen: false,
       isSettingsOpen: false,
       isRightPanelOpen: false,
       rightPanelTab: 'queue' as const,
@@ -83,7 +83,7 @@ export const usePlayerStore = create<PlayerState>()(
       recentSearches: [],
       isVideoMode: false,
 
-      playTrack: (track, newQueue) => {
+      playTrack: (track, newQueue, openFullPlayer = true) => {
         const state = get();
         if (state.currentTrack?.id !== track.id) {
           set({ isBuffering: true });
@@ -91,6 +91,7 @@ export const usePlayerStore = create<PlayerState>()(
           const playHistory = [track, ...filtered].slice(0, 20);
           set({ playHistory });
         }
+        const isFullScreen = openFullPlayer === true || (openFullPlayer !== false && state.isFullScreenOpen);
         const updates: Partial<PlayerState> = {
           currentTrack: {
             ...track,
@@ -100,6 +101,7 @@ export const usePlayerStore = create<PlayerState>()(
           },
           isPlaying: true,
           isRightPanelOpen: true,
+          isFullScreenOpen: isFullScreen,
         };
         if (newQueue) {
           const index = newQueue.findIndex(t => t.id === track.id);
@@ -156,7 +158,7 @@ export const usePlayerStore = create<PlayerState>()(
         if (queue.length === 0) return;
         let prevIndex = currentIndex - 1;
         if (prevIndex < 0) prevIndex = 0;
-        get().playTrack(queue[prevIndex]);
+        get().playTrack(queue[prevIndex], undefined, false);
         set({ currentIndex: prevIndex });
       },
 

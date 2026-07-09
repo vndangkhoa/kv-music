@@ -1,37 +1,43 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import { Play, ArrowLeft } from 'lucide-react';
-import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
+import type { StaticPlaylist } from '../types';
 
 export default function Section() {
     const [searchParams] = useSearchParams();
     const category = searchParams.get('category');
-    const userPlaylists = useLibraryStore(s => s.userPlaylists);
+    const [playlists, setPlaylists] = useState<StaticPlaylist[]>([]);
     const [loading, setLoading] = useState(true);
     const playTrack = usePlayerStore(s => s.playTrack);
 
     useEffect(() => {
-        // Simulate loading
-        const timer = setTimeout(() => setLoading(false), 300);
-        return () => clearTimeout(timer);
-    }, [category]);
-
-    const playCollection = async (playlistId: string) => {
-        try {
-            const playlist = await libraryService.getPlaylist(playlistId);
-            if (playlist && playlist.tracks.length > 0) {
-                playTrack(playlist.tracks[0], playlist.tracks);
-            }
-        } catch (e) {
-            console.error("Failed to play playlist from section", e);
+        if (!category) {
+            setLoading(false);
+            return;
         }
-    };
-
-    const playlists = userPlaylists;
+        setLoading(true);
+        const cached = localStorage.getItem('ytm_browse_cache_v8');
+        if (cached) {
+            const data = JSON.parse(cached);
+            const items = data[category] || [];
+            if (items.length > 0) {
+                setPlaylists(items);
+                setLoading(false);
+                return;
+            }
+        }
+        libraryService.getBrowseContent()
+            .then(data => {
+                const items = data[category] || [];
+                setPlaylists(items);
+                setLoading(false);
+            })
+            .catch(() => setLoading(false));
+    }, [category]);
 
     if (!category) {
         return (
@@ -76,10 +82,13 @@ export default function Section() {
                                             fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
                                         />
                                         <div
-                                            onClick={(e) => {
+                                            onClick={async (e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                playCollection(playlist.id);
+                                                const pl = await libraryService.getPlaylist(playlist.id);
+                                                if (pl && pl.tracks.length > 0) {
+                                                    playTrack(pl.tracks[0], pl.tracks);
+                                                }
                                             }}
                                             className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center"
                                         >

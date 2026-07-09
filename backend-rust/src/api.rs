@@ -288,9 +288,19 @@ pub async fn lyrics_handler(
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Track and artist required"}))).into_response();
     }
 
+    // Clean track/artist for better lyrics search
+    let clean_track = track
+        .split('|').next().unwrap_or(track)
+        .trim();
+    let clean_artist = artist
+        .trim_end_matches(" Official")
+        .trim_end_matches(" VEVO")
+        .trim_end_matches(" Topic")
+        .trim();
+
     let client = reqwest::Client::builder()
         .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(5))
+        .timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap_or_default();
 
@@ -325,27 +335,29 @@ pub async fn lyrics_handler(
     }
 
     // 2. Try LRCLIB for synced + plain lyrics
-    let lrclib_url = format!(
-        "https://lrclib.net/api/search?artist_name={}&track_name={}",
-        urlencoding::encode(artist),
-        urlencoding::encode(track)
-    );
-    if let Ok(res) = client.get(&lrclib_url).send().await {
-        if res.status().is_success() {
-            if let Ok(results) = res.json::<Vec<serde_json::Value>>().await {
-                if let Some(first) = results.first() {
-                    let plain = first.get("plainLyrics").and_then(|l| l.as_str());
-                    let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
-                    
-                    let has_lyrics = plain.is_some() || synced.is_some();
-                    let plain_restricted = plain.map(is_restricted_lyrics).unwrap_or(false);
-                    let synced_restricted = synced.map(is_restricted_lyrics).unwrap_or(false);
-                    
-                    if has_lyrics && !plain_restricted && !synced_restricted {
-                        return (StatusCode::OK, Json(serde_json::json!({
-                            "plainLyrics": plain,
-                            "syncedLyrics": synced
-                        }))).into_response();
+    {
+        let lrclib_url = format!(
+            "https://lrclib.net/api/search?artist_name={}&track_name={}",
+            clean_artist.replace(' ', "+"),
+            clean_track.replace(' ', "+")
+        );
+        if let Ok(res) = client.get(&lrclib_url).send().await {
+            if res.status().is_success() {
+                if let Ok(results) = res.json::<Vec<serde_json::Value>>().await {
+                    if let Some(first) = results.first() {
+                        let plain = first.get("plainLyrics").and_then(|l| l.as_str());
+                        let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
+                        
+                        let has_lyrics = plain.is_some() || synced.is_some();
+                        let plain_restricted = plain.map(is_restricted_lyrics).unwrap_or(false);
+                        let synced_restricted = synced.map(is_restricted_lyrics).unwrap_or(false);
+                        
+                        if has_lyrics && !plain_restricted && !synced_restricted {
+                            return (StatusCode::OK, Json(serde_json::json!({
+                                "plainLyrics": plain,
+                                "syncedLyrics": synced
+                            }))).into_response();
+                        }
                     }
                 }
             }
@@ -353,28 +365,30 @@ pub async fn lyrics_handler(
     }
 
     // 3. Try SimpMusic Search by Title
-    let simpmusic_search_url = format!(
-        "https://api-lyrics.simpmusic.org/v1/search/title?title={}",
-        urlencoding::encode(track)
-    );
-    if let Ok(res) = client.get(&simpmusic_search_url).send().await {
-        if res.status().is_success() {
-            if let Ok(json) = res.json::<serde_json::Value>().await {
-                if json.get("type").and_then(|t| t.as_str()) == Some("success") {
-                    if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
-                        if let Some(first) = data.first() {
-                            let plain = first.get("lyrics").and_then(|l| l.as_str());
-                            let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
-                            
-                            let has_lyrics = plain.is_some() || synced.is_some();
-                            let plain_restricted = plain.map(is_restricted_lyrics).unwrap_or(false);
-                            let synced_restricted = synced.map(is_restricted_lyrics).unwrap_or(false);
-                            
-                            if has_lyrics && !plain_restricted && !synced_restricted {
-                                return (StatusCode::OK, Json(serde_json::json!({
-                                    "plainLyrics": plain,
-                                    "syncedLyrics": synced
-                                }))).into_response();
+    {
+        let simpmusic_search_url = format!(
+            "https://api-lyrics.simpmusic.org/v1/search/title?title={}",
+            clean_track.replace(' ', "+")
+        );
+        if let Ok(res) = client.get(&simpmusic_search_url).send().await {
+            if res.status().is_success() {
+                if let Ok(json) = res.json::<serde_json::Value>().await {
+                    if json.get("type").and_then(|t| t.as_str()) == Some("success") {
+                        if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
+                            if let Some(first) = data.first() {
+                                let plain = first.get("lyrics").and_then(|l| l.as_str());
+                                let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
+                                
+                                let has_lyrics = plain.is_some() || synced.is_some();
+                                let plain_restricted = plain.map(is_restricted_lyrics).unwrap_or(false);
+                                let synced_restricted = synced.map(is_restricted_lyrics).unwrap_or(false);
+                                
+                                if has_lyrics && !plain_restricted && !synced_restricted {
+                                    return (StatusCode::OK, Json(serde_json::json!({
+                                        "plainLyrics": plain,
+                                        "syncedLyrics": synced
+                                    }))).into_response();
+                                }
                             }
                         }
                     }
@@ -386,8 +400,8 @@ pub async fn lyrics_handler(
     // 4. Try lyrics.ovh for plain lyrics (free API)
     let lyrics_ovh_url = format!(
         "https://api.lyrics.ovh/v1/{}/{}",
-        urlencoding::encode(artist),
-        urlencoding::encode(track)
+        urlencoding::encode(clean_artist),
+        urlencoding::encode(clean_track)
     );
     if let Ok(res) = client.get(&lyrics_ovh_url).send().await {
         if res.status().is_success() {
@@ -404,7 +418,7 @@ pub async fn lyrics_handler(
     }
 
     // 5. Try ZingMP3 for Vietnamese songs (free fallback)
-    if let Some(lyrics) = get_zingmp3_lyrics(&client, artist, track).await {
+    if let Some(lyrics) = get_zingmp3_lyrics(&client, clean_artist, clean_track).await {
         return (StatusCode::OK, Json(serde_json::json!({
             "plainLyrics": lyrics
         }))).into_response();
@@ -481,5 +495,37 @@ pub async fn zingmp3_lyrics_handler(
         }))).into_response()
     } else {
         (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Lyrics not found on ZingMP3"}))).into_response()
+    }
+}
+
+// Charts/Trending Handlers
+
+#[derive(Deserialize)]
+pub struct ChartsQuery {
+    pub chart_type: String, // "top-hits", "trending", "top-albums", "hits-collection"
+}
+
+pub async fn charts_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<ChartsQuery>,
+) -> impl IntoResponse {
+    let chart_type = params.chart_type.trim();
+    
+    let query = match chart_type {
+        "top-hits" => "Son Tung M-TP HIEUTHUHAI Den Vau MONO Tlinh Binz",
+        "trending" => "Rap Viet V-Pop 2024 Nhạc trẻ Amee Erik",
+        "top-albums" => "Vũ Tlinh Binz JustaTee Suboi Low G",
+        "hits-collection" => "Vietnamese pop hits Nhạc Việt MONO Son Tung Tlinh Binz Den Vau HIEUTHUHAI V-pop",
+        _ => {
+            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid chart_type"})));
+        }
+    };
+
+    match state.spotdl.search_tracks(query).await {
+        Ok(tracks) => {
+            let results: Vec<_> = tracks.into_iter().take(20).collect();
+            (StatusCode::OK, Json(serde_json::json!({"tracks": results})))
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
     }
 }

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate, useParams, Link } from 'react-router-dom';
+import { useParams, Link } from 'react-router-dom';
 import { Play, Pause, Clock, Heart, PlusCircle, Shuffle, Trash2, ArrowLeft } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useLibraryStore } from '../stores/libraryStore';
@@ -16,7 +16,6 @@ type PlaylistData = PlaylistType | StaticPlaylist;
 
 export default function Playlist() {
     const { id: playlistId } = useParams<{ id: string }>();
-    const navigate = useNavigate();
     const [playlist, setPlaylist] = useState<PlaylistData | null>(null);
     const [loading, setLoading] = useState(true); // Full page loading
     const [loadingTracks, setLoadingTracks] = useState(false); // background track loading
@@ -78,64 +77,92 @@ export default function Playlist() {
             }
 
             // 3. SLOW PATH: DB or API Fetch
+            await hydrateTracks(playlistId);
+        };
+
+        const hydrateTracks = async (id: string, attempt = 0) => {
             try {
                 // Check DB
-                const dbPlaylist = await dbService.getPlaylist(playlistId);
+                const dbPlaylist = await dbService.getPlaylist(id);
                 if (dbPlaylist) {
                     setPlaylist(dbPlaylist);
                     setIsUserPlaylist(true);
                     setLoading(false);
                     setLoadingTracks(false);
-
-                    // Fetch suggestions for user playlists too
                     try {
                         const recs = await libraryService.search(dbPlaylist.title);
                         setMoreLikeThis(recs.slice(0, 10));
                     } catch (e) { }
-                } else {
-                    // Check API / Library Service (Hydration happens here)
-                    console.log("Fetching from Library Service (Hydrating)...");
-                    const apiPlaylist = await libraryService.getPlaylist(playlistId);
-                    if (apiPlaylist && apiPlaylist.tracks.length > 0) {
-                        // Normalize track IDs - extract YouTube video ID from discovery-* IDs
-                        const normalizedTracks = apiPlaylist.tracks.map((track: Track) => {
-                            let videoId = track.id;
-                            // If ID contains "discovery-" or "artist-", extract the YouTube video ID
-                            if (track.id.includes('discovery-') || track.id.includes('artist-')) {
-                                const parts = track.id.split('-');
-                                // Find 11-char YouTube ID
-                                for (const part of parts) {
-                                    if (part.length === 11 && /^[a-zA-Z0-9_-]+$/.test(part)) {
-                                        videoId = part;
-                                        break;
-                                    }
+                    return;
+                }
+
+                // Check API / Library Service (Hydration happens here)
+                console.log("Fetching from Library Service (Hydrating)...");
+                const apiPlaylist = await libraryService.getPlaylist(id);
+                if (apiPlaylist && apiPlaylist.tracks.length > 0) {
+                    // Normalize track IDs - extract YouTube video ID from discovery-* IDs
+                    const normalizedTracks = apiPlaylist.tracks.map((track: Track) => {
+                        let videoId = track.id;
+                        if (track.id.includes('discovery-') || track.id.includes('artist-')) {
+                            const parts = track.id.split('-');
+                            for (const part of parts) {
+                                if (part.length === 11 && /^[a-zA-Z0-9_-]+$/.test(part)) {
+                                    videoId = part;
+                                    break;
                                 }
                             }
-                            return { ...track, id: videoId, url: `/api/stream/${videoId}` };
-                        });
-                        const normalizedPlaylist = { ...apiPlaylist, tracks: normalizedTracks };
-                        setPlaylist(normalizedPlaylist);
-                        setIsUserPlaylist(false);
-                        setLoading(false);
+                        }
+                        return { ...track, id: videoId, url: `/api/stream/${videoId}` };
+                    });
+                    const normalizedPlaylist = { ...apiPlaylist, tracks: normalizedTracks };
+                    setPlaylist(normalizedPlaylist);
+                    setIsUserPlaylist(false);
+                    setLoading(false);
 
-                        // Fetch suggestions
-                        try {
-                            const query = apiPlaylist.title.replace(' Mix', '');
-                            const recs = await libraryService.search(query);
-                            const currentIds = new Set(normalizedTracks.map((t: Track) => t.id));
-                            setMoreLikeThis(recs.filter(t => !currentIds.has(t.id)).slice(0, 10));
-                        } catch (e) { }
-                    } else {
-                        // Hydration failed or found no tracks - redirect home to avoid broken page
-                        console.warn("Hydration failed for", playlistId);
-                        navigate('/', { replace: true });
-                    }
-                    setLoadingTracks(false);
+                    try {
+                        const query = apiPlaylist.title.replace(' Mix', '');
+                        const recs = await libraryService.search(query);
+                        const currentIds = new Set(normalizedTracks.map((t: Track) => t.id));
+                        setMoreLikeThis(recs.filter(t => !currentIds.has(t.id)).slice(0, 10));
+                    } catch (e) { }
+                } else if (attempt < 3) {
+                    // Retry with delay if no tracks found (browse data may need time)
+                    console.log(`Hydration attempt ${attempt + 1} failed, retrying...`);
+                    await new Promise(r => setTimeout(r, 1500));
+                    await hydrateTracks(id, attempt + 1);
+                } else {
+                    // Final fallback: try searching by the title directly
+                    const seedItem = Object.values(GENERATED_CONTENT).find(p => p.id === id);
+                    const searchQuery = seedItem?.title || apiPlaylist?.title || id.replace(/^discovery-(playlist|album|artist)-/, '').replace(/-/g, ' ');
+                    try {
+                        const fallbackTracks = await libraryService.search(searchQuery);
+                        if (fallbackTracks.length > 0) {
+                            const normalizedTracks = fallbackTracks.map((track: Track) => ({
+                                ...track,
+                                id: track.id.replace(/^discovery-(playlist|album|artist)-/, ''),
+                                url: `/api/stream/${track.id}`
+                            }));
+                            setPlaylist({
+                                id,
+                                title: searchQuery.charAt(0).toUpperCase() + searchQuery.slice(1).replace(/(.{40}).*/, '$1...'),
+                                tracks: normalizedTracks,
+                                cover_url: apiPlaylist?.cover_url || normalizedTracks[0]?.cover_url,
+                                type: 'Playlist'
+                            } as StaticPlaylist);
+                        }
+                    } catch (e) {}
+                    setLoading(false);
                 }
+                setLoadingTracks(false);
             } catch (e) {
                 console.error("Error loading playlist", e);
-                setLoading(false);
-                setLoadingTracks(false);
+                if (attempt < 3) {
+                    await new Promise(r => setTimeout(r, 1500));
+                    await hydrateTracks(id, attempt + 1);
+                } else {
+                    setLoading(false);
+                    setLoadingTracks(false);
+                }
             }
         };
 

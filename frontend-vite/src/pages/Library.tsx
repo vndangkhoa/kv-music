@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
-import { Play, Plus, Music, Disc3, Users, Clock, Sparkles, Flame } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Play, Plus, Music, Disc3, Users, Clock, Sparkles, Flame, Search } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
@@ -27,12 +27,15 @@ function getAvatarGradient(avatarColor: string): string {
 }
 
 export default function Library() {
+    const navigate = useNavigate();
     const userPlaylists = useLibraryStore(s => s.userPlaylists);
     const followedArtists = useLibraryStore(s => s.followedArtists);
     const savedAlbums = useLibraryStore(s => s.savedAlbums);
     const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
+    const hydrateSeedTracks = useLibraryStore(s => s.hydrateSeedTracks);
     const activeFilter = useLibraryStore(s => s.activeFilter);
     const setActiveFilter = useLibraryStore(s => s.setActiveFilter);
+    const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
     const likedTracks = usePlayerStore(s => s.likedTracks);
     const playHistory = usePlayerStore(s => s.playHistory);
     const user = useAuthStore(s => s.user);
@@ -49,7 +52,17 @@ export default function Library() {
 
     useEffect(() => {
         refreshLibrary();
+        hydrateSeedTracks();
         deriveSavedAlbums(playHistory);
+    }, []);
+
+    // Auto-refresh library every 15 minutes
+    useEffect(() => {
+        const interval = setInterval(() => {
+            refreshLibrary();
+            deriveSavedAlbums(playHistory);
+        }, 15 * 60 * 1000);
+        return () => clearInterval(interval);
     }, []);
 
     const userLibraryItems = userPlaylists.length + followedArtists.length + savedAlbums.length;
@@ -65,8 +78,6 @@ export default function Library() {
                 .catch(() => setBrowseLoading(false));
         }
     }, []);
-
-    const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
 
     const filters = [
         { key: 'all', label: 'All' },
@@ -86,7 +97,12 @@ export default function Library() {
         <div className="h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-24">
             {/* Header */}
             <div className="mb-6">
-                <h1 className="text-2xl md:text-3xl font-bold mb-4">Your Library</h1>
+                <div className="flex items-center justify-between mb-4">
+                    <h1 className="text-2xl md:text-3xl font-bold">Your Library</h1>
+                    <button onClick={() => navigate('/search')} className="flex items-center justify-center w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full transition">
+                        <Search className="w-5 h-5 text-white/70" />
+                    </button>
+                </div>
 
                 {/* Filters */}
                 <div className="flex gap-2 flex-wrap">
@@ -202,7 +218,12 @@ export default function Library() {
                                         </div>
                                     </div>
                                     <h3 className="font-bold text-white truncate text-[11px] md:text-base">{playlist.title}</h3>
-                                    <p className="text-[10px] md:text-xs text-neutral-400 line-clamp-1">{playlist.tracks.length} songs</p>
+                                    <p className="text-[10px] md:text-xs text-neutral-400 line-clamp-1">
+                                        {playlist.tracks.length > 0
+                                            ? `${playlist.tracks.length} songs`
+                                            : playlist.id.startsWith('discovery-') ? 'Playlist' : `${playlist.tracks.length} songs`
+                                        }
+                                    </p>
                                 </div>
                             </Link>
                         ))}
@@ -301,7 +322,7 @@ export default function Library() {
                     {[1, 2].map(i => (
                         <div key={i}>
                             <Skeleton className="h-8 w-48 mb-4" />
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {[1, 2, 3, 4].map(j => (
                                     <div key={j} className="space-y-3">
                                         <Skeleton className="w-full aspect-square rounded-2xl" />
@@ -325,7 +346,7 @@ export default function Library() {
                                  <Sparkles className="w-5 h-5 text-purple-400" />}
                                 <h2 className="text-xl font-bold">{category}</h2>
                             </div>
-                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
                                 {items.slice(0, 8).map((item: any) => (
                                     <Link to={`/playlist/${item.id}`} key={item.id}>
                                         <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer h-full flex flex-col border border-white/5">

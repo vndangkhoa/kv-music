@@ -5,6 +5,10 @@ All notable changes to KV Music will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Charts section** - New `/api/charts` backend endpoint and `ChartsSection` page (Top Hits, Trending Now, Top Albums, etc.)
+- **Seed playlist hydration** - Empty seed playlists auto-filled with real tracks on demand
+- **Discovery redesign** - ChartSection-based layout with curated Vietnamese artist queries
+- **Database persistence** - New IndexedDB helpers for library data
 - **MobileFullPlayer** - Dedicated mobile full-screen player with framer-motion drag-to-dismiss, swipe between queue/lyrics
 - **BottomSheet component** - Reusable slide-up panel with drag handle and swipe-to-dismiss gesture
 - **FullPlayer redesign** - Song/Video toggle, action row (heart, lyrics, queue, related), clean layout
@@ -20,6 +24,9 @@ All notable changes to KV Music will be documented in this file.
 
 ### Changed
 - **Lyrics priority** - SimpMusic tried first (better Vietnamese coverage), then LRCLIB, then lyrics.ovh
+- **Browse preload** - Backend preload disabled; content loads on-demand when first requested
+- **MiniPlayer** - Simplified; playback logic consolidated into MobileFullPlayer
+- **MobileFullPlayer** - Major rewrite: improved drag gestures, queue/lyrics swipe panels, share/download
 - **State management** - Migrated from React Context to Zustand stores (playerStore, libraryStore, uiStore)
 - **Title overlap fix** - FullPlayer title now 1 line on mobile, 2 lines on desktop
 - **Action row separated** - Heart, lyrics, queue, related icons in their own row below track info

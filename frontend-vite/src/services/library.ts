@@ -53,6 +53,12 @@ function getUserCountry(): string {
     return 'VN';
 }
 
+// Extract YouTube video ID from a discovery-{type}-{slug}-{video_id} ID
+function extractVideoIdFromDiscoveryId(id: string): string | null {
+    const match = id.match(/discovery-(?:playlist|album|artist)-.*?-([a-zA-Z0-9_-]{11})$/);
+    return match ? match[1] : null;
+}
+
 // Background geo-resolver
 setTimeout(async () => {
     if (!localStorage.getItem('user_country_resolved')) {
@@ -124,15 +130,19 @@ export const libraryService = {
 
     async getInitialTrendingTracks(): Promise<Track[]> {
         const cached = localStorage.getItem(CACHE_KEY_INITIAL);
-        if (cached) {
-            try {
-                const tracks = JSON.parse(cached) as Track[];
-                if (tracks.length > 0) {
-                    // Shuffle cached tracks for randomness
-                    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
-                    return shuffled;
-                }
-            } catch {}
+        const cacheTime = localStorage.getItem(`${CACHE_KEY_INITIAL}_time`);
+        
+        // Use cache if less than 30 minutes old
+        if (cached && cacheTime) {
+            const age = Date.now() - parseInt(cacheTime);
+            if (age < 30 * 60 * 1000) {
+                try {
+                    const tracks = JSON.parse(cached) as Track[];
+                    if (tracks.length > 0) {
+                        return [...tracks].sort(() => Math.random() - 0.5);
+                    }
+                } catch {}
+            }
         }
 
         const queries = [
@@ -166,6 +176,7 @@ export const libraryService = {
 
         if (allTracks.length > 0) {
             localStorage.setItem(CACHE_KEY_INITIAL, JSON.stringify(allTracks.slice(0, 30)));
+            localStorage.setItem(`${CACHE_KEY_INITIAL}_time`, Date.now().toString());
             preFetchAudio(allTracks);
         }
 
@@ -285,6 +296,14 @@ export const libraryService = {
                 if (plist) {
                     if (!plist.tracks || plist.tracks.length === 0) {
                         try {
+                            const videoId = extractVideoIdFromDiscoveryId(id);
+                            if (videoId) {
+                                const tracks = await this.search(videoId);
+                                if (tracks.length > 0) {
+                                    plist.tracks = tracks;
+                                    return { ...plist, tracks };
+                                }
+                            }
                             const tracks = await this.search(`${plist.title} playlist`);
                             plist.tracks = tracks.length > 0 ? tracks : await this.search(plist.title);
                             return { ...plist, tracks: plist.tracks };
@@ -299,6 +318,21 @@ export const libraryService = {
 
         // 3. Fallback: Search by ID string parsing (Slow/Legacy)
         const cleanId = id.replace(/^discovery-(playlist|album|artist)-/, '');
+        // Try to extract video ID first
+        const videoId = extractVideoIdFromDiscoveryId(id);
+        if (videoId) {
+            const tracks = await this.search(videoId);
+            if (tracks.length > 0) {
+                return {
+                    id,
+                    title: cleanId.replace(/-/g, ' ').replace(/(.{40}).*/, '$1...'),
+                    description: `${tracks.length} songs`,
+                    cover_url: tracks[0]?.cover_url,
+                    tracks,
+                    type: 'Playlist'
+                };
+            }
+        }
         const query = cleanId.replace(/-/g, ' ');
         const tracks = await this.search(query);
         if (tracks.length > 0) {
@@ -398,7 +432,7 @@ export const libraryService = {
 async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plainLyrics?: string; syncedLyrics?: string; } | null> {
         try {
             // More aggressive track name cleaning for better search results
-            const cleanTrack = track
+            let cleanTrack = track
                 .replace(/\(.*?\)/g, '') // Remove parentheses content
                 .replace(/\[.*?\]/g, '') // Remove brackets content
                 .replace(/ feat\..*/gi, '') // Remove "feat." and everything after
@@ -418,22 +452,30 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 .replace(/ - version/gi, '') // Remove "version" suffix
                 .replace(/\s+/g, ' ') // Normalize whitespace
                 .trim();
+            // Split on | and take the first meaningful part (handles "TITLE | OFFICIAL VIDEO | ARTIST")
+            const pipeParts = cleanTrack.split('|').map(s => s.trim()).filter(Boolean);
+            if (pipeParts.length > 1) {
+                cleanTrack = pipeParts[0];
+            }
             
             const cleanArtist = artist
                 .replace(/ \(.*?\)/g, '') // Remove parentheses content
                 .replace(/ \[.*?\]/g, '') // Remove brackets content
                 .replace(/ - official/gi, '') // Remove "official" suffix
                 .replace(/ - topic/gi, '') // Remove "topic" suffix
+                .replace(/\s+Official\s*$/gi, '') // Remove trailing " Official"
+                .replace(/\s+VEVO\s*$/gi, '') // Remove trailing " VEVO"
+                .replace(/\s+Topic\s*$/gi, '') // Remove trailing " Topic"
                 .replace(/\s+/g, ' ') // Normalize whitespace
                 .trim();
 
             console.log(`Searching lyrics for: "${cleanTrack}" by "${cleanArtist}"`);
 
-            // Helper function to try fetching lyrics from a URL
+            // Helper function to try fetching lyrics from a URL with shorter timeout
             const tryFetch = async (url: string, parser: (data: any) => { plainLyrics?: string; syncedLyrics?: string } | null): Promise<{ plainLyrics?: string; syncedLyrics?: string } | null> => {
                 try {
                     const controller = new AbortController();
-                    const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+                    const timeoutId = setTimeout(() => controller.abort(), 3000); // 3 second timeout per API
                     
                     const response = await fetch(url, { 
                         signal: controller.signal,
@@ -627,6 +669,45 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
             console.error("Discovery failed", e);
             return [];
         }
+    },
+
+    async getCharts(chartType: string): Promise<Track[]> {
+        try {
+            const data = await apiFetch(`/charts?chart_type=${encodeURIComponent(chartType)}`);
+            if (data?.tracks && data.tracks.length > 0) {
+                return data.tracks.map((track: Track) => ({
+                    ...track,
+                    url: `/api/stream/${track.id}`
+                }));
+            }
+        } catch (e) {
+            console.error(`Failed to fetch ${chartType} charts:`, e);
+        }
+        
+        // Fallback to search-based results using artist names
+        const fallbackQueries: Record<string, string[]> = {
+            'top-hits': ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'MONO', 'Binz'],
+            'trending': ['Rap Viet', 'V-Pop', 'Nhạc trẻ', 'Amee', 'Erik'],
+            'top-albums': ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'Hoang Dung', 'Vũ'],
+            'hits-collection': ['Nhạc Việt hay nhất', 'Vietnamese hits', 'V-Pop hits', 'Nhạc Trẻ']
+        };
+        
+        const queries = fallbackQueries[chartType] || ['Son Tung M-TP'];
+        const allTracks: Track[] = [];
+        const seenIds = new Set<string>();
+        
+        for (const query of queries) {
+            const tracks = await this.search(query);
+            for (const track of tracks) {
+                if (!seenIds.has(track.id)) {
+                    seenIds.add(track.id);
+                    allTracks.push(track);
+                }
+            }
+            if (allTracks.length >= 20) break;
+        }
+        
+        return allTracks.slice(0, 20);
     }
 };
 

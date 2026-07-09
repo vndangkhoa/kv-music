@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Search, Share2, Download, ListMusic, ChevronLeft, ChevronUp, ChevronDown, Check } from 'lucide-react';
+import { Search, Share2, Download, ListMusic, ChevronLeft, ChevronUp, ChevronDown, Check, Music, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, PanInfo, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useLyrics } from '../../hooks/useLyrics';
 import { libraryService } from '../../services/library';
 import CoverImage from '../CoverImage';
+import VideoPlayer from '../VideoPlayer';
 import type { Track } from '../../types';
 
 function formatTime(t: number) {
@@ -28,9 +29,13 @@ export default function MobileFullPlayer() {
     const playTrack = usePlayerStore(s => s.playTrack);
     const queue = usePlayerStore(s => s.queue);
     const currentIndex = usePlayerStore(s => s.currentIndex);
+    const setIsVideoMode = usePlayerStore(s => s.setIsVideoMode);
+    const seekTo = usePlayerStore(s => s.seekTo);
+    const setProgress = usePlayerStore(s => s.setProgress);
 
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState<'foryou' | 'similar'>('foryou');
+    const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
     const [followingArtists, setFollowingArtists] = useState<Set<string>>(new Set());
     const [relatedTracks, setRelatedTracks] = useState<Track[]>([]);
     const [loadingRelated, setLoadingRelated] = useState(false);
@@ -41,6 +46,16 @@ export default function MobileFullPlayer() {
     const nextTracks = useMemo(() => {
         if (queue.length === 0 || currentIndex < 0) return [];
         return queue.slice(currentIndex + 1, currentIndex + 11);
+    }, [queue, currentIndex]);
+
+    const prevTrackData = useMemo(() => {
+        if (queue.length === 0 || currentIndex <= 0) return null;
+        return queue[currentIndex - 1];
+    }, [queue, currentIndex]);
+
+    const nextTrackData = useMemo(() => {
+        if (queue.length === 0 || currentIndex < 0 || currentIndex >= queue.length - 1) return null;
+        return queue[currentIndex + 1];
     }, [queue, currentIndex]);
 
     const {
@@ -102,6 +117,22 @@ export default function MobileFullPlayer() {
             prevTrack();
         }
     }, [nextTrack, prevTrack]);
+
+    const handleModeSwitch = useCallback((mode: 'audio' | 'video') => {
+        if (mode === 'video') {
+            if (isPlaying) togglePlay();
+            setIsVideoMode(true);
+        } else {
+            seekTo(progress);
+            if (!isPlaying) togglePlay();
+            setIsVideoMode(false);
+        }
+        setPlayerMode(mode);
+    }, [isPlaying, togglePlay, setIsVideoMode, seekTo, progress]);
+
+    useEffect(() => {
+        setPlayerMode('audio');
+    }, [currentTrack?.id]);
 
     useEffect(() => {
         if (activeTab === 'similar' && currentTrack) {
@@ -190,18 +221,55 @@ export default function MobileFullPlayer() {
                     <div className="absolute inset-0 bg-black/50" />
                 </div>
 
-                {/* Crisp centered cover */}
-                <div className="absolute inset-0 flex items-center justify-center z-[1] pointer-events-none">
-                    <div className="w-[60%] max-w-[300px] rounded-2xl overflow-hidden shadow-2xl opacity-15">
-                        <img
-                            key={currentTrack.cover_url}
-                            src={currentTrack.cover_url}
-                            alt=""
-                            className="w-full aspect-square object-cover"
-                            draggable={false}
-                        />
+                {/* Previous song ghost (top) - peeks below lyrics - only on For You tab */}
+                {activeTab === 'foryou' && playerMode === 'audio' && prevTrackData && (
+                    <div 
+                        className="absolute top-[120px] left-1/2 -translate-x-1/2 z-[1] pointer-events-none"
+                        style={{
+                            maskImage: 'linear-gradient(to bottom, transparent 0%, black 50%)',
+                            WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 50%)'
+                        }}
+                    >
+                        <motion.div 
+                            className="w-[140px] h-[140px] rounded-xl overflow-hidden opacity-35 blur-[1px]"
+                            animate={{ scale: [1, 1.02, 1] }}
+                            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+                        >
+                            <img
+                                key={prevTrackData.cover_url}
+                                src={prevTrackData.cover_url}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                draggable={false}
+                            />
+                        </motion.div>
                     </div>
-                </div>
+                )}
+
+                {/* Next song ghost (bottom) - peeks above controls - only on For You tab */}
+                {activeTab === 'foryou' && playerMode === 'audio' && nextTrackData && (
+                    <div 
+                        className="absolute bottom-[330px] left-1/2 -translate-x-1/2 z-[1] pointer-events-none"
+                        style={{
+                            maskImage: 'linear-gradient(to top, transparent 0%, black 50%)',
+                            WebkitMaskImage: 'linear-gradient(to top, transparent 0%, black 50%)'
+                        }}
+                    >
+                        <motion.div 
+                            className="w-[140px] h-[140px] rounded-xl overflow-hidden opacity-35 blur-[1px]"
+                            animate={{ scale: [1, 1.02, 1] }}
+                            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
+                        >
+                            <img
+                                key={nextTrackData.cover_url}
+                                src={nextTrackData.cover_url}
+                                alt=""
+                                className="w-full h-full object-cover"
+                                draggable={false}
+                            />
+                        </motion.div>
+                    </div>
+                )}
 
                 {/* Content overlay */}
                 <div className="relative z-10 flex-1 flex flex-col overflow-y-auto no-scrollbar">
@@ -213,7 +281,27 @@ export default function MobileFullPlayer() {
                         >
                             <ChevronLeft className="w-6 h-6" />
                         </button>
-                        <div className="flex gap-5">
+                        <div className="flex items-center gap-3">
+                            <div className="flex bg-black/40 backdrop-blur-md rounded-full p-0.5 border border-white/10">
+                                <button
+                                    onClick={() => handleModeSwitch('audio')}
+                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${
+                                        playerMode === 'audio' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'
+                                    }`}
+                                >
+                                    <Music className="w-3 h-3" />
+                                    Song
+                                </button>
+                                <button
+                                    onClick={() => handleModeSwitch('video')}
+                                    className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold transition-all ${
+                                        playerMode === 'video' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'
+                                    }`}
+                                >
+                                    <Video className="w-3 h-3" />
+                                    Video
+                                </button>
+                            </div>
                             <button
                                 onClick={() => setActiveTab('foryou')}
                                 className={`text-sm font-bold transition-colors ${
@@ -228,7 +316,7 @@ export default function MobileFullPlayer() {
                                     activeTab === 'similar' ? 'text-white' : 'text-white/40'
                                 }`}
                             >
-                                Similar to {currentTrack.artist?.split(' ')[0]}
+                                Similar
                             </button>
                         </div>
                         <button
@@ -262,39 +350,57 @@ export default function MobileFullPlayer() {
                                 )}
                             </div>
 
-                            {/* Swipeable cover */}
+                            {/* Swipeable cover / Video */}
                             <div className="flex-1 flex items-center justify-center px-6 py-2 min-h-0">
-                                <motion.div
-                                    drag="y"
-                                    dragConstraints={{ top: 0, bottom: 0 }}
-                                    dragElastic={0.15}
-                                    onDragEnd={handleSwipeEnd}
-                                    className="w-full max-w-[340px] cursor-grab active:cursor-grabbing"
-                                >
-                                    <div className="relative rounded-2xl overflow-hidden shadow-2xl">
-                                        <img
-                                            src={currentTrack.cover_url}
-                                            alt={currentTrack.title}
-                                            className="w-full aspect-square object-cover"
-                                            draggable={false}
-                                        />
-                                        <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
+                                {playerMode === 'video' ? (
+                                    <div className="w-full max-w-[400px]">
+                                        <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-2xl bg-black relative">
+                                            <VideoPlayer
+                                                videoId={currentTrack.id}
+                                                isPlaying={isPlaying}
+                                                onTimeUpdate={(time) => { if (Math.abs(time - progress) > 2) setProgress(time); }}
+                                                onPlay={() => { if (!isPlaying) togglePlay(); }}
+                                                onPause={() => { if (isPlaying) togglePlay(); }}
+                                                onEnded={nextTrack}
+                                                className="w-full h-full"
+                                            />
+                                        </div>
                                     </div>
-                                </motion.div>
+                                ) : (
+                                    <motion.div
+                                        drag="y"
+                                        dragConstraints={{ top: 0, bottom: 0 }}
+                                        dragElastic={0.15}
+                                        onDragEnd={handleSwipeEnd}
+                                        className="w-full max-w-[340px] cursor-grab active:cursor-grabbing"
+                                    >
+                                        <div className="relative rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.7)]" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 30px 80px rgba(0,0,0,0.5)' }}>
+                                            <img
+                                                src={currentTrack.cover_url}
+                                                alt={currentTrack.title}
+                                                className="w-full aspect-square object-cover"
+                                                draggable={false}
+                                            />
+                                            <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
+                                        </div>
+                                    </motion.div>
+                                )}
                             </div>
 
-                            {/* Swipe Hint */}
-                            <div className="flex justify-center py-1 shrink-0">
-                                <motion.div
-                                    className="flex flex-col items-center gap-0.5"
-                                    animate={{ opacity: [0.3, 0.7, 0.3] }}
-                                    transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                                >
-                                    <ChevronUp className="w-4 h-4 text-white/50" />
-                                    <span className="text-[10px] text-white/40 font-medium tracking-wide">swipe</span>
-                                    <ChevronDown className="w-4 h-4 text-white/50" />
-                                </motion.div>
-                            </div>
+                            {/* Swipe Hint - only in audio mode */}
+                            {playerMode === 'audio' && (
+                                <div className="flex justify-center py-1 shrink-0">
+                                    <motion.div
+                                        className="flex flex-col items-center gap-0.5"
+                                        animate={{ opacity: [0.3, 0.7, 0.3] }}
+                                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+                                    >
+                                        <ChevronUp className="w-4 h-4 text-white/50" />
+                                        <span className="text-[10px] text-white/40 font-medium tracking-wide">swipe</span>
+                                        <ChevronDown className="w-4 h-4 text-white/50" />
+                                    </motion.div>
+                                </div>
+                            )}
                         </>
                     )}
 
