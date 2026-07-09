@@ -51,6 +51,10 @@ impl SpotdlService {
         format!("https://placehold.co/400x400/{}/FFFFFF?text={}", color, initials)
     }
 
+    pub fn yt_dlp_path_static() -> String {
+        Self::yt_dlp_path()
+    }
+
     fn yt_dlp_path() -> String {
         // Use the updated binary we downloaded
         let updated_path = "/tmp/yt-dlp";
@@ -418,6 +422,11 @@ impl SpotdlService {
                     duration: duration as i32,
                     cover_url,
                     url: format!("/api/stream/{}", res.id),
+                    view_count: res.view_count,
+                    like_count: res.like_count,
+                    comment_count: res.comment_count,
+                    bitrate: res.abr.map(|b| b as i32),
+                    codec: res.acodec,
                 });
             }
         }

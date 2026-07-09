@@ -1,21 +1,25 @@
-import { useRef, useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Heart, Mic2, Shuffle, Repeat, SkipBack, SkipForward, Play, Pause, ListMusic, Sparkles, Music } from 'lucide-react';
 import { usePlayerStore } from '../../stores/playerStore';
-import { useDominantColor } from '../../hooks/useDominantColor';
+import { useLyrics } from '../../hooks/useLyrics';
 import CoverImage from '../CoverImage';
 import VideoPlayer from '../VideoPlayer';
 import BottomSheet from '../BottomSheet';
-import Lyrics from '../Lyrics';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../../types';
+
+function formatTime(t: number) {
+  if (isNaN(t)) return '0:00';
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
 
 export default function FullPlayer() {
   const currentTrack = usePlayerStore(s => s.currentTrack);
   const isPlaying = usePlayerStore(s => s.isPlaying);
-  const isBuffering = usePlayerStore(s => s.isBuffering);
   const progress = usePlayerStore(s => s.progress);
   const duration = usePlayerStore(s => s.duration);
-  const volume = usePlayerStore(s => s.volume);
   const togglePlay = usePlayerStore(s => s.togglePlay);
   const nextTrack = usePlayerStore(s => s.nextTrack);
   const prevTrack = usePlayerStore(s => s.prevTrack);
@@ -29,33 +33,46 @@ export default function FullPlayer() {
   const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
   const seekTo = usePlayerStore(s => s.seekTo);
   const setProgress = usePlayerStore(s => s.setProgress);
-  const setVolume = usePlayerStore(s => s.setVolume);
   const setIsVideoMode = usePlayerStore(s => s.setIsVideoMode);
   const queue = usePlayerStore(s => s.queue);
   const playTrack = usePlayerStore(s => s.playTrack);
 
   const navigate = useNavigate();
-  const dominantColor = useDominantColor(currentTrack?.cover_url);
   const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
-  const [isIdle, setIsIdle] = useState(false);
-  const [isVideoReady, setIsVideoReady] = useState(false);
   const [activePanel, setActivePanel] = useState<'lyrics' | 'queue' | 'related' | null>(null);
   const [relatedTracks, setRelatedTracks] = useState<Track[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
-  const idleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
-  const resetIdleTimer = () => {
-    setIsIdle(false);
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    if (playerMode === 'video' && isPlaying) {
-      idleTimerRef.current = setTimeout(() => setIsIdle(true), 3000);
-    }
-  };
+  const {
+    lyrics,
+    syncedLines,
+    activeIndex
+  } = useLyrics(
+    currentTrack?.title || '',
+    currentTrack?.artist || '',
+    progress,
+    true,
+    currentTrack?.id
+  );
+
+  const currentLyricLine = activeIndex >= 0 ? syncedLines[activeIndex]?.text : '';
+  const nextLyricLine = activeIndex >= 0 && activeIndex + 1 < syncedLines.length
+    ? syncedLines[activeIndex + 1]?.text : '';
+
+  const plainLyricLines = useMemo(() => {
+    if (lyrics) return lyrics.split('\n').filter(l => l.trim());
+    return [];
+  }, [lyrics]);
+
+  const currentPlainLine = plainLyricLines.length > 0
+    ? plainLyricLines[Math.floor((progress / (duration || 1)) * plainLyricLines.length) % plainLyricLines.length]
+    : '';
+
+  const displayLine1 = syncedLines.length > 0 ? currentLyricLine : currentPlainLine;
+  const displayLine2 = syncedLines.length > 0 ? nextLyricLine : '';
 
   useEffect(() => {
     setPlayerMode('audio');
-    setIsIdle(false);
-    setIsVideoReady(false);
     setActivePanel(null);
   }, [currentTrack?.id]);
 
@@ -70,15 +87,9 @@ export default function FullPlayer() {
     );
   }, [activePanel, currentTrack]);
 
-  useEffect(() => {
-    resetIdleTimer();
-    return () => { if (idleTimerRef.current) clearTimeout(idleTimerRef.current); };
-  }, [isPlaying, playerMode]);
-
   const handleModeSwitch = (mode: 'audio' | 'video') => {
     if (mode === 'video') {
       if (isPlaying) togglePlay();
-      setIsVideoReady(false);
       setIsVideoMode(true);
     } else {
       seekTo(progress);
@@ -88,208 +99,177 @@ export default function FullPlayer() {
     setPlayerMode(mode);
   };
 
-  const formatTime = (t: number) => {
-    if (isNaN(t)) return "0:00";
-    const m = Math.floor(t / 60);
-    const s = Math.floor(t % 60);
-    return `${m}:${s.toString().padStart(2, '0')}`;
-  };
-
   if (!currentTrack || !isFullScreenOpen) return null;
 
   return (
     <>
-      <div
-        className={`fixed inset-0 z-[70] flex flex-col transition-transform duration-300 ${isFullScreenOpen ? 'translate-y-0' : 'translate-y-full'}`}
-        style={{ background: `linear-gradient(to bottom, ${dominantColor}, #121212)` }}
-        onMouseMove={resetIdleTimer}
-        onTouchStart={resetIdleTimer}
-      >
-        {/* Header */}
-        <div className={`relative z-[80] flex items-center justify-between p-4 pt-8 shrink-0 transition-opacity duration-700 ${isIdle && playerMode === 'video' ? 'opacity-0 pointer-events-none' : 'opacity-100'}`}>
-          <div onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); }}
-               className="text-white p-2 hover:bg-white/10 rounded-full transition cursor-pointer">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 12H5M12 19l-7-7 7-7" />
-            </svg>
-          </div>
-
-          <div className="flex bg-black/40 backdrop-blur-md rounded-full p-1 border border-white/10 shadow-xl">
-            <button
-              onClick={() => handleModeSwitch('audio')}
-              className={`px-8 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${playerMode === 'audio' ? 'bg-white text-black shadow-lg scale-105' : 'text-neutral-400 hover:text-white'}`}
-            >
-              Song
-            </button>
-            <button
-              onClick={() => handleModeSwitch('video')}
-              className={`px-8 py-1.5 rounded-full text-xs font-bold transition-all duration-300 ${playerMode === 'video' ? 'bg-white text-black shadow-lg scale-105' : 'text-neutral-400 hover:text-white'}`}
-            >
-              Video
-            </button>
-          </div>
-
-          <div className="w-10" />
+      <div className="fixed inset-0 z-[70] flex flex-col">
+        {/* Blurred background */}
+        <div className="absolute inset-0 overflow-hidden bg-black">
+          <img
+            key={currentTrack.cover_url}
+            src={currentTrack.cover_url}
+            alt=""
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[130%] h-[130%] object-cover blur-3xl opacity-60"
+            draggable={false}
+          />
+          <div className="absolute inset-0 bg-black/50" />
         </div>
 
         {/* Content */}
-        <div className="flex-1 relative overflow-hidden group">
-          {playerMode === 'video' ? (
-            <div className="h-full flex flex-col items-center justify-center p-8 md:p-12 pb-48 md:pb-40 animate-in zoom-in-95 duration-500">
-              <div className="relative w-full max-w-[480px] md:max-w-[640px] mb-6 md:mb-8">
-                <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-[0_30px_60px_rgba(0,0,0,0.5)] bg-black relative">
+        <div className="relative z-10 flex-1 flex flex-col overflow-y-auto no-scrollbar">
+          {/* Top bar */}
+          <div className="flex items-center justify-between px-6 pt-6 pb-2 shrink-0">
+            <button
+              onClick={() => setIsFullScreenOpen(false)}
+              className="text-white/60 hover:text-white transition p-2"
+            >
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="flex bg-black/40 backdrop-blur-md rounded-full p-1 border border-white/10">
+              <button
+                onClick={() => handleModeSwitch('audio')}
+                className={`px-6 py-1.5 rounded-full text-xs font-bold transition-all ${playerMode === 'audio' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'}`}
+              >
+                Song
+              </button>
+              <button
+                onClick={() => handleModeSwitch('video')}
+                className={`px-6 py-1.5 rounded-full text-xs font-bold transition-all ${playerMode === 'video' ? 'bg-white text-black' : 'text-neutral-400 hover:text-white'}`}
+              >
+                Video
+              </button>
+            </div>
+            <div className="w-10" />
+          </div>
+
+          {/* Title & Artist */}
+          <div className="px-8 pt-2 pb-1 shrink-0 text-center">
+            <div className="flex items-center justify-center gap-2">
+              <h2 className="text-xl font-black text-white leading-tight truncate drop-shadow-lg">
+                {currentTrack.title}
+              </h2>
+              {currentTrack.bitrate && (
+                <span className="shrink-0 px-2 py-0.5 bg-white/15 rounded text-[10px] font-bold text-white/70">
+                  {currentTrack.bitrate}kbps
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-white/50 font-medium mt-1 truncate">{currentTrack.artist}</p>
+          </div>
+
+          {/* Lyrics */}
+          <div className="px-8 py-3 min-h-[64px] flex flex-col justify-center shrink-0">
+            {displayLine1 ? (
+              <>
+                <p className="text-lg font-bold text-white leading-tight line-clamp-1 drop-shadow-lg">
+                  {displayLine1}
+                </p>
+                {displayLine2 && (
+                  <p className="text-sm text-white/40 leading-tight line-clamp-1 mt-1 drop-shadow-lg">
+                    {displayLine2}
+                  </p>
+                )}
+              </>
+            ) : (
+              <p className="text-sm text-white/30 text-center">No lyrics available</p>
+            )}
+          </div>
+
+          {/* Cover */}
+          <div className="flex-1 flex items-center justify-center px-8 py-2 min-h-0">
+            {playerMode === 'video' ? (
+              <div className="w-full max-w-[400px]">
+                <div className="aspect-video w-full rounded-2xl overflow-hidden shadow-2xl bg-black relative">
                   <VideoPlayer
                     videoId={currentTrack.id}
                     isPlaying={isPlaying}
-                    onTimeUpdate={(time) => {
-                      if (Math.abs(time - progress) > 2) setProgress(time);
-                    }}
-                    onPlay={() => { setIsVideoReady(true); if (!isPlaying) togglePlay(); }}
+                    onTimeUpdate={(time) => { if (Math.abs(time - progress) > 2) setProgress(time); }}
+                    onPlay={() => { if (!isPlaying) togglePlay(); }}
                     onPause={() => { if (isPlaying) togglePlay(); }}
                     onEnded={nextTrack}
                     className="w-full h-full"
                   />
                 </div>
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
               </div>
-              <div className="text-center max-w-full px-4">
-                <h2 className="font-black text-white text-lg md:text-3xl mb-1 md:mb-2 drop-shadow-lg tracking-tight line-clamp-1 md:line-clamp-2">{currentTrack.title}</h2>
-                <p
-                  onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
-                  className="text-white/80 font-medium text-sm md:text-lg cursor-pointer hover:text-white hover:underline transition drop-shadow-md line-clamp-1"
-                >
-                  {currentTrack.artist}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="h-full flex flex-col items-center justify-center p-8 md:p-12 pb-48 md:pb-40 animate-in zoom-in-95 duration-500">
-              <div className="relative w-full max-w-[280px] md:max-w-[360px] mb-6 md:mb-8">
-                <img
-                  src={currentTrack.cover_url}
-                  alt={currentTrack.title}
-                  className="w-full aspect-square object-cover rounded-2xl shadow-[0_30px_60px_rgba(0,0,0,0.5)] transition-transform duration-700 hover:scale-[1.03]"
-                />
-                <div className="absolute inset-0 rounded-2xl bg-gradient-to-t from-black/30 via-transparent to-transparent pointer-events-none" />
-              </div>
-              <div className="text-center max-w-full px-4">
-                <h2 className="font-black text-white text-lg md:text-3xl mb-1 md:mb-2 drop-shadow-lg tracking-tight line-clamp-1 md:line-clamp-2">{currentTrack.title}</h2>
-                <p
-                  onClick={() => { setPlayerMode('audio'); setIsFullScreenOpen(false); navigate(`/artist/${encodeURIComponent(currentTrack.artist)}`); }}
-                  className="text-white/80 font-medium text-sm md:text-lg cursor-pointer hover:text-white hover:underline transition drop-shadow-md line-clamp-1"
-                >
-                  {currentTrack.artist}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Controls Overlay */}
-          <div className={`absolute bottom-0 left-0 right-0 z-20 px-8 pb-12 transition-all duration-700 ${playerMode === 'video' ? 'bg-gradient-to-t from-black via-black/40 to-transparent' : ''} ${isIdle && playerMode === 'video' ? 'opacity-0 translate-y-4 pointer-events-none' : 'opacity-100 translate-y-0'}`}>
-            {/* Action Row */}
-            <div className="flex items-center justify-center gap-4 md:gap-6 text-white mb-8">
-              <button onClick={() => toggleLike(currentTrack)} className={`p-2 md:p-3 rounded-full hover:bg-white/10 transition ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-white/60'}`}>
-                <Heart size={22} className="md:hidden" fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
-                <Heart size={32} className="hidden md:block" fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
-              </button>
-              <button onClick={() => setActivePanel(activePanel === 'lyrics' ? null : 'lyrics')} className={`p-2 md:p-3 rounded-full hover:bg-white/10 transition ${activePanel === 'lyrics' ? 'text-green-500' : 'text-white/60 hover:text-white'}`}>
-                <Mic2 size={22} className="md:hidden" />
-                <Mic2 size={30} className="hidden md:block" />
-              </button>
-              <button onClick={() => setActivePanel(activePanel === 'queue' ? null : 'queue')} className={`p-2 md:p-3 rounded-full hover:bg-white/10 transition ${activePanel === 'queue' ? 'text-green-500' : 'text-white/60 hover:text-white'}`}>
-                <ListMusic size={22} className="md:hidden" />
-                <ListMusic size={30} className="hidden md:block" />
-              </button>
-              <button onClick={() => setActivePanel(activePanel === 'related' ? null : 'related')} className={`p-2 md:p-3 rounded-full hover:bg-white/10 transition ${activePanel === 'related' ? 'text-green-500' : 'text-white/60 hover:text-white'}`}>
-                <Sparkles size={22} className="md:hidden" />
-                <Sparkles size={30} className="hidden md:block" />
-              </button>
-            </div>
-
-            {/* Progress */}
-            <div className="max-w-screen-md mx-auto">
-              <div className="mb-8">
-                <input
-                  type="range"
-                  min={0}
-                  max={duration || 100}
-                  value={progress}
-                  onChange={(e) => setProgress(parseFloat(e.target.value))}
-                  onMouseUp={() => seekTo(progress)}
-                  onTouchEnd={() => seekTo(progress)}
-                  className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white mb-2 hover:bg-white/30 transition-colors"
-                />
-                <div className="flex justify-between text-[10px] md:text-xs text-white/50 font-bold uppercase tracking-widest font-mono">
-                  <span>{formatTime(progress)}</span>
-                  <span>{formatTime(duration)}</span>
+            ) : (
+              <div className="w-full max-w-[360px]">
+                <div className="relative rounded-2xl overflow-hidden shadow-2xl">
+                  <img
+                    src={currentTrack.cover_url}
+                    alt={currentTrack.title}
+                    className="w-full aspect-square object-cover"
+                    draggable={false}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
                 </div>
               </div>
+            )}
+          </div>
 
-              {/* Playback Controls */}
-              <div className="flex items-center justify-between w-full">
-                <button onClick={toggleShuffle} className={`p-2 transition-all duration-300 ${shuffle ? 'text-green-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                  <Shuffle size={24} />
-                </button>
-                <button onClick={prevTrack} className="text-white hover:scale-110 active:scale-95 transition">
-                  <SkipBack size={42} />
-                </button>
-                <button onClick={togglePlay} className="w-20 h-20 bg-white rounded-full flex items-center justify-center text-black hover:scale-110 active:scale-90 transition shadow-2xl">
-                  {isPlaying ? <Pause size={42} /> : <Play size={42} className="ml-1.5" />}
-                </button>
-                <button onClick={nextTrack} className="text-white hover:scale-110 active:scale-95 transition">
-                  <SkipForward size={42} />
-                </button>
-                <button onClick={toggleRepeat} className={`p-2 transition-all duration-300 ${repeatMode !== 'none' ? 'text-green-500 scale-110' : 'text-white/40 hover:text-white'}`}>
-                  <Repeat size={24} />
-                </button>
-              </div>
+          {/* Action buttons */}
+          <div className="flex items-center justify-center gap-6 py-2 shrink-0">
+            <button onClick={() => toggleLike(currentTrack)} className={`p-2 rounded-full hover:bg-white/10 transition ${likedTracks.has(currentTrack.id) ? 'text-green-500' : 'text-white/50'}`}>
+              <Heart size={22} fill={likedTracks.has(currentTrack.id) ? "currentColor" : "none"} />
+            </button>
+            <button onClick={() => setActivePanel(activePanel === 'lyrics' ? null : 'lyrics')} className={`p-2 rounded-full hover:bg-white/10 transition ${activePanel === 'lyrics' ? 'text-green-500' : 'text-white/50'}`}>
+              <Mic2 size={22} />
+            </button>
+            <button onClick={() => setActivePanel(activePanel === 'queue' ? null : 'queue')} className={`p-2 rounded-full hover:bg-white/10 transition ${activePanel === 'queue' ? 'text-green-500' : 'text-white/50'}`}>
+              <ListMusic size={22} />
+            </button>
+            <button onClick={() => setActivePanel(activePanel === 'related' ? null : 'related')} className={`p-2 rounded-full hover:bg-white/10 transition ${activePanel === 'related' ? 'text-green-500' : 'text-white/50'}`}>
+              <Sparkles size={22} />
+            </button>
+          </div>
 
-              {/* Volume slider — desktop only */}
-              <div className="hidden md:flex items-center justify-center mt-6 gap-3">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/60">
-                  <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
-                  <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
-                </svg>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={volume}
-                  onChange={(e) => setVolume(parseFloat(e.target.value))}
-                  className="w-32 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer accent-white"
-                />
-              </div>
+          {/* Progress */}
+          <div className="px-8 py-1 shrink-0">
+            <input
+              type="range"
+              min={0}
+              max={duration || 100}
+              value={progress}
+              onChange={(e) => setProgress(parseFloat(e.target.value))}
+              onMouseUp={() => seekTo(progress)}
+              className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white"
+              style={{
+                background: `linear-gradient(to right, white ${duration > 0 ? (progress / duration) * 100 : 0}%, rgba(255,255,255,0.2) ${duration > 0 ? (progress / duration) * 100 : 0}%)`
+              }}
+            />
+            <div className="flex justify-between text-[10px] text-white/40 font-mono mt-1">
+              <span>{formatTime(progress)}</span>
+              <span>{formatTime(duration)}</span>
             </div>
           </div>
+
+          {/* Playback controls */}
+          <div className="flex items-center justify-center gap-6 py-3 shrink-0">
+            <button onClick={toggleShuffle} className={`p-2 transition ${shuffle ? 'text-green-500' : 'text-white/40 hover:text-white'}`}>
+              <Shuffle size={20} />
+            </button>
+            <button onClick={prevTrack} className="text-white hover:scale-110 transition">
+              <SkipBack size={28} />
+            </button>
+            <button onClick={togglePlay} className="w-14 h-14 bg-white rounded-full flex items-center justify-center text-black hover:scale-105 transition shadow-lg">
+              {isPlaying ? <Pause size={28} /> : <Play size={28} className="ml-0.5" />}
+            </button>
+            <button onClick={nextTrack} className="text-white hover:scale-110 transition">
+              <SkipForward size={28} />
+            </button>
+            <button onClick={toggleRepeat} className={`p-2 transition ${repeatMode !== 'none' ? 'text-green-500' : 'text-white/40 hover:text-white'}`}>
+              <Repeat size={20} />
+            </button>
+          </div>
+
+          <div className="h-8 shrink-0" />
         </div>
       </div>
 
-      {/* Lyrics Bottom Sheet */}
-      <BottomSheet
-        isOpen={activePanel === 'lyrics'}
-        onClose={() => setActivePanel(null)}
-        title="Lyrics"
-      >
-        {currentTrack && (
-          <Lyrics
-            trackTitle={currentTrack.title}
-            artistName={currentTrack.artist || ''}
-            currentTime={progress}
-            isOpen={true}
-            onClose={() => setActivePanel(null)}
-            videoId={currentTrack.id}
-            variant="panel"
-          />
-        )}
-      </BottomSheet>
-
-      {/* Queue Bottom Sheet */}
-      <BottomSheet
-        isOpen={activePanel === 'queue'}
-        onClose={() => setActivePanel(null)}
-        title="Queue"
-      >
+      {/* Bottom Sheets */}
+      <BottomSheet isOpen={activePanel === 'queue'} onClose={() => setActivePanel(null)} title="Queue">
         {queue.length === 0 ? (
           <div className="text-neutral-600 text-sm text-center py-8">Queue is empty</div>
         ) : (
@@ -310,12 +290,7 @@ export default function FullPlayer() {
         )}
       </BottomSheet>
 
-      {/* Related Bottom Sheet */}
-      <BottomSheet
-        isOpen={activePanel === 'related'}
-        onClose={() => setActivePanel(null)}
-        title="Related"
-      >
+      <BottomSheet isOpen={activePanel === 'related'} onClose={() => setActivePanel(null)} title="Related">
         {loadingRelated ? (
           <div className="text-neutral-500 text-sm text-center py-8">Loading...</div>
         ) : relatedTracks.length === 0 ? (

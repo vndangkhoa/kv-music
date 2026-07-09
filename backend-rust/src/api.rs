@@ -294,35 +294,7 @@ pub async fn lyrics_handler(
         .build()
         .unwrap_or_default();
 
-    // 1. Try LRCLIB for synced + plain lyrics (fully free and open-source database)
-    let lrclib_url = format!(
-        "https://lrclib.net/api/search?artist_name={}&track_name={}",
-        urlencoding::encode(artist),
-        urlencoding::encode(track)
-    );
-    if let Ok(res) = client.get(&lrclib_url).send().await {
-        if res.status().is_success() {
-            if let Ok(results) = res.json::<Vec<serde_json::Value>>().await {
-                if let Some(first) = results.first() {
-                    let plain = first.get("plainLyrics").and_then(|l| l.as_str());
-                    let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
-                    
-                    let has_lyrics = plain.is_some() || synced.is_some();
-                    let plain_restricted = plain.map(is_restricted_lyrics).unwrap_or(false);
-                    let synced_restricted = synced.map(is_restricted_lyrics).unwrap_or(false);
-                    
-                    if has_lyrics && !plain_restricted && !synced_restricted {
-                        return (StatusCode::OK, Json(serde_json::json!({
-                            "plainLyrics": plain,
-                            "syncedLyrics": synced
-                        }))).into_response();
-                    }
-                }
-            }
-        }
-    }
-
-    // 2. Try SimpMusic by Video ID if available
+    // 1. Try SimpMusic by Video ID first (YouTube-based, best for Vietnamese)
     if let Some(ref vid) = params.video_id {
         let simpmusic_url = format!("https://api-lyrics.simpmusic.org/v1/{}", vid);
         if let Ok(res) = client.get(&simpmusic_url).send().await {
@@ -346,6 +318,34 @@ pub async fn lyrics_handler(
                                 }
                             }
                         }
+                    }
+                }
+            }
+        }
+    }
+
+    // 2. Try LRCLIB for synced + plain lyrics
+    let lrclib_url = format!(
+        "https://lrclib.net/api/search?artist_name={}&track_name={}",
+        urlencoding::encode(artist),
+        urlencoding::encode(track)
+    );
+    if let Ok(res) = client.get(&lrclib_url).send().await {
+        if res.status().is_success() {
+            if let Ok(results) = res.json::<Vec<serde_json::Value>>().await {
+                if let Some(first) = results.first() {
+                    let plain = first.get("plainLyrics").and_then(|l| l.as_str());
+                    let synced = first.get("syncedLyrics").and_then(|l| l.as_str());
+                    
+                    let has_lyrics = plain.is_some() || synced.is_some();
+                    let plain_restricted = plain.map(is_restricted_lyrics).unwrap_or(false);
+                    let synced_restricted = synced.map(is_restricted_lyrics).unwrap_or(false);
+                    
+                    if has_lyrics && !plain_restricted && !synced_restricted {
+                        return (StatusCode::OK, Json(serde_json::json!({
+                            "plainLyrics": plain,
+                            "syncedLyrics": synced
+                        }))).into_response();
                     }
                 }
             }
@@ -411,6 +411,60 @@ pub async fn lyrics_handler(
     }
 
     (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Lyrics not found"}))).into_response()
+}
+
+#[derive(Deserialize)]
+pub struct VideoStatsQuery {
+    pub id: String,
+}
+
+#[derive(Serialize)]
+pub struct VideoStatsResponse {
+    pub view_count: Option<i64>,
+    pub like_count: Option<i64>,
+    pub comment_count: Option<i64>,
+    pub bitrate: Option<i32>,
+    pub codec: Option<String>,
+}
+
+pub async fn video_stats_handler(
+    Query(params): Query<VideoStatsQuery>,
+) -> impl IntoResponse {
+    let video_id = params.id.trim();
+    if video_id.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Video ID required"})));
+    }
+
+    let url = format!("https://www.youtube.com/watch?v={}", video_id);
+    let path = crate::spotdl::SpotdlService::yt_dlp_path_static();
+
+    let output = std::process::Command::new(&path)
+        .args(["--dump-json", "--no-playlist", "--flat-playlist", &url])
+        .output();
+
+    match output {
+        Ok(o) if o.status.success() => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            if let Ok(res) = serde_json::from_str::<crate::models::YTResult>(&stdout) {
+                return (StatusCode::OK, Json(serde_json::json!({
+                    "view_count": res.view_count,
+                    "like_count": res.like_count,
+                    "comment_count": res.comment_count,
+                    "bitrate": res.abr.map(|b| b as i32),
+                    "codec": res.acodec,
+                })));
+            }
+        }
+        _ => {}
+    }
+
+    (StatusCode::OK, Json(serde_json::json!({
+        "view_count": null,
+        "like_count": null,
+        "comment_count": null,
+        "bitrate": null,
+        "codec": null,
+    })))
 }
 
 pub async fn zingmp3_lyrics_handler(

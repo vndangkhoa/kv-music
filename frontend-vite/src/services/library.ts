@@ -89,6 +89,17 @@ const apiFetch = async (path: string) => {
 
 };
 
+const CACHE_KEY_INITIAL = 'initial_tracks_cache_v1';
+
+async function preFetchAudio(tracks: Track[]) {
+    for (const track of tracks.slice(0, 3)) {
+        try {
+            const audio = new Audio(`/api/stream/${track.id}`);
+            audio.preload = 'auto';
+        } catch {}
+    }
+}
+
 export const libraryService = {
     async search(query: string): Promise<Track[]> {
         const data = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
@@ -109,6 +120,56 @@ export const libraryService = {
             });
         }
         return [];
+    },
+
+    async getInitialTrendingTracks(): Promise<Track[]> {
+        const cached = localStorage.getItem(CACHE_KEY_INITIAL);
+        if (cached) {
+            try {
+                const tracks = JSON.parse(cached) as Track[];
+                if (tracks.length > 0) {
+                    // Shuffle cached tracks for randomness
+                    const shuffled = [...tracks].sort(() => Math.random() - 0.5);
+                    return shuffled;
+                }
+            } catch {}
+        }
+
+        const queries = [
+            'vietnamese trending music',
+            'V-Pop top hits',
+            'Son Tung trending',
+            'V-pop hits 2024',
+            'Rap Viet trending',
+            'Lofi Chill hits'
+        ];
+        // Pick 2-3 random queries for more variety
+        const shuffledQueries = queries.sort(() => Math.random() - 0.5);
+        const selectedQueries = shuffledQueries.slice(0, 2 + Math.floor(Math.random() * 2));
+        
+        let allTracks: Track[] = [];
+        for (const query of selectedQueries) {
+            const tracks = await this.search(query);
+            allTracks = [...allTracks, ...tracks];
+        }
+        
+        // Deduplicate by id
+        const seen = new Set<string>();
+        allTracks = allTracks.filter(t => {
+            if (seen.has(t.id)) return false;
+            seen.add(t.id);
+            return true;
+        });
+        
+        // Shuffle the combined results
+        allTracks.sort(() => Math.random() - 0.5);
+
+        if (allTracks.length > 0) {
+            localStorage.setItem(CACHE_KEY_INITIAL, JSON.stringify(allTracks.slice(0, 30)));
+            preFetchAudio(allTracks);
+        }
+
+        return allTracks;
     },
 
     async getBrowseContent(): Promise<Record<string, StaticPlaylist[]>> {
@@ -390,17 +451,30 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 return null;
             };
 
-            // Try lyrics.ovh (best for English songs)
-            const lyricsOvhResult = await tryFetch(
-                `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTrack)}`,
-                (data) => data.lyrics ? { plainLyrics: data.lyrics } : null
-            );
-            if (lyricsOvhResult) {
-                console.log('Found lyrics from lyrics.ovh');
-                return lyricsOvhResult;
+            // 1. Try SimpMusic with video ID first (YouTube-based, best for Vietnamese)
+            if (videoId) {
+                console.log('Trying SimpMusic with video ID:', videoId);
+                const simpmusicVideoResult = await tryFetch(
+                    `https://api-lyrics.simpmusic.org/v1/${videoId}`,
+                    (data) => {
+                        if (data && data.type === 'success' && Array.isArray(data.data) && data.data.length > 0) {
+                            const lyricsData = data.data[0];
+                            const synced = lyricsData.syncedLyrics;
+                            const plain = lyricsData.lyrics;
+                            if (synced || plain) {
+                                return { plainLyrics: plain || undefined, syncedLyrics: synced || undefined };
+                            }
+                        }
+                        return null;
+                    }
+                );
+                if (simpmusicVideoResult) {
+                    console.log('Found lyrics from SimpMusic (video ID)');
+                    return simpmusicVideoResult;
+                }
             }
 
-            // Try LRCLIB (good for synced lyrics)
+            // 2. Try LRCLIB for synced lyrics
             const lrclibResult = await tryFetch(
                 `https://lrclib.net/api/search?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTrack)}`,
                 (data) => {
@@ -419,89 +493,17 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 return lrclibResult;
             }
 
-            // Helper function to check if text is likely Vietnamese
-            const isVietnameseText = (text: string): boolean => {
-                // Vietnamese characters: àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ
-                const vietnamesePattern = /[àáảãạâầấẩẫậăằắẳẵặèéẻẽẹêềếểễệìíỉĩịòóỏõọôồốổỗộơờớởỡợùúủũụưừứửữựỳýỷỹỵđ]/i;
-                return vietnamesePattern.test(text);
-            };
-
-            // If we have a video ID, try SimpMusic with video ID
-            if (videoId) {
-                console.log('Trying SimpMusic with video ID:', videoId);
-                const simpmusicVideoResult = await tryFetch(
-                    `https://api-lyrics.simpmusic.org/v1/${videoId}`,
-                    (data) => {
-                        console.log('SimpMusic FULL response:', data);
-                        
-                        // Handle SimpMusic API response format: { type: 'success', data: Array(1), success: true }
-                        if (data && data.type === 'success' && Array.isArray(data.data) && data.data.length > 0) {
-                            const lyricsData = data.data[0];
-                            console.log('SimpMusic first item:', lyricsData);
-                            
-                            const synced = lyricsData.syncedLyrics;
-                            const plain = lyricsData.lyrics;
-                            
-                            if (synced || plain) {
-                                console.log('SimpMusic lyrics found:', (plain || synced).substring(0, 100));
-                                return {
-                                    plainLyrics: plain || undefined,
-                                    syncedLyrics: synced || undefined
-                                };
-                            } else {
-                                console.log('SimpMusic data item has no lyrics property');
-                                return null;
-                            }
-                        } else if (data && data.type === 'error') {
-                            console.log('SimpMusic error:', data.error?.reason || 'Unknown error');
-                            return null;
-                        }
-                        console.log('SimpMusic: Unexpected response format');
-                        return null;
-                    }
-                );
-                if (simpmusicVideoResult) {
-                    console.log('Found lyrics from SimpMusic (video ID)');
-                    return simpmusicVideoResult;
-                } else {
-                    console.log('SimpMusic video ID search returned null');
-                }
-            }
-
-            // Try with simplified names (remove special characters)
-            const simpleTrack = cleanTrack.replace(/[^\w\s]/g, '').trim();
-            const simpleArtist = cleanArtist.replace(/[^\w\s]/g, '').trim();
-            
-            if (simpleTrack !== cleanTrack || simpleArtist !== cleanArtist) {
-                console.log(`Trying simplified search: "${simpleTrack}" by "${simpleArtist}"`);
-                
-                const simpleResult = await tryFetch(
-                    `https://api.lyrics.ovh/v1/${encodeURIComponent(simpleArtist)}/${encodeURIComponent(simpleTrack)}`,
-                    (data) => data.lyrics ? { plainLyrics: data.lyrics } : null
-                );
-                if (simpleResult) {
-                    console.log('Found lyrics with simplified search');
-                    return simpleResult;
-                }
-            }
-
-            // Last resort: Try SimpMusic search by title
+            // 3. Try SimpMusic search by title
             console.log('Trying SimpMusic search by title...');
             const simpmusicSearchResult = await tryFetch(
                 `https://api-lyrics.simpmusic.org/v1/search/title?title=${encodeURIComponent(cleanTrack)}`,
                 (data) => {
-                    console.log('SimpMusic search response:', data);
                     if (data && data.type === 'success' && Array.isArray(data.data) && data.data.length > 0) {
                         const first = data.data[0];
                         const synced = first.syncedLyrics;
                         const plain = first.lyrics;
-                        
                         if (synced || plain) {
-                            console.log('SimpMusic search found lyrics:', (plain || synced).substring(0, 100));
-                            return {
-                                plainLyrics: plain || undefined,
-                                syncedLyrics: synced || undefined
-                            };
+                            return { plainLyrics: plain || undefined, syncedLyrics: synced || undefined };
                         }
                     }
                     return null;
@@ -512,16 +514,23 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 return simpmusicSearchResult;
             }
 
-            // Try LRCLIB get by name (alternative endpoint)
+            // 4. Try lyrics.ovh (plain lyrics, good for English)
+            const lyricsOvhResult = await tryFetch(
+                `https://api.lyrics.ovh/v1/${encodeURIComponent(cleanArtist)}/${encodeURIComponent(cleanTrack)}`,
+                (data) => data.lyrics ? { plainLyrics: data.lyrics } : null
+            );
+            if (lyricsOvhResult) {
+                console.log('Found lyrics from lyrics.ovh');
+                return lyricsOvhResult;
+            }
+
+            // 5. Try LRCLIB get by name (alternative endpoint)
             console.log('Trying LRCLIB get-by-name...');
             const lrclibGetResult = await tryFetch(
                 `https://lrclib.net/api/get?artist_name=${encodeURIComponent(cleanArtist)}&track_name=${encodeURIComponent(cleanTrack)}`,
                 (data) => {
                     if (data && (data.plainLyrics || data.syncedLyrics)) {
-                        return {
-                            plainLyrics: data.plainLyrics || undefined,
-                            syncedLyrics: data.syncedLyrics || undefined
-                        };
+                        return { plainLyrics: data.plainLyrics || undefined, syncedLyrics: data.syncedLyrics || undefined };
                     }
                     return null;
                 }
@@ -529,6 +538,24 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
             if (lrclibGetResult) {
                 console.log('Found lyrics from LRCLIB get-by-name');
                 return lrclibGetResult;
+            }
+
+            // 6. Try backend API (has ZingMP3 and other sources)
+            if (videoId) {
+                console.log('Trying backend /api/lyrics...');
+                const backendResult = await tryFetch(
+                    `/api/lyrics?track=${encodeURIComponent(cleanTrack)}&artist=${encodeURIComponent(cleanArtist)}&video_id=${videoId}`,
+                    (data) => {
+                        if (data && (data.plainLyrics || data.syncedLyrics)) {
+                            return { plainLyrics: data.plainLyrics || undefined, syncedLyrics: data.syncedLyrics || undefined };
+                        }
+                        return null;
+                    }
+                );
+                if (backendResult) {
+                    console.log('Found lyrics from backend API');
+                    return backendResult;
+                }
             }
 
             console.log('No lyrics found from any API');

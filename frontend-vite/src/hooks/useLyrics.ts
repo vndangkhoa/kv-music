@@ -26,7 +26,7 @@ export function useLyrics(trackTitle: string, artistName: string, currentTime: n
         
         // Check cache first
         const cached = lyricsCache.get(trackKey);
-        if (cached) {
+        if (cached && (cached.syncedLyrics || cached.plainLyrics)) {
             if (cached.syncedLyrics) {
                 setSyncedLines(parseSyncedLyrics(cached.syncedLyrics));
                 setLyrics(null);
@@ -77,8 +77,6 @@ libraryService.getLyrics(trackTitle, artistName, videoId)
                             setSyncedLines([]);
                         }
                     } else {
-                        // Cache empty result to avoid repeated failed requests
-                        lyricsCache.set(trackKey, {});
                         setLyrics(null);
                         setSyncedLines([]);
                     }
@@ -91,7 +89,7 @@ libraryService.getLyrics(trackTitle, artistName, videoId)
 
         // Cleanup timeout on unmount
         return () => clearTimeout(timeoutId);
-    }, [trackTitle, artistName, enabled]);
+    }, [trackTitle, artistName, enabled, videoId]);
 
     // Clear cache when track changes to prevent stale data
     useEffect(() => {

@@ -67,9 +67,11 @@ KV Music is a self-hosted music streaming web application that pulls content fro
 
 ### Player Features
 - **Audio/Video Overlap Prevention** - Smart switching between audio and video modes
-- **Synced Lyrics** - Time-aligned lyrics that scroll with playback
+- **Mobile Full Player** - Dedicated mobile player with drag-to-dismiss, swipe between queue/lyrics
+- **Synced Lyrics** - Time-aligned lyrics that scroll with playback (SimpMusic first for Vietnamese)
 - **Volume Control** - Desktop volume slider (hidden on mobile)
 - **Shuffle & Repeat** - Full playback mode controls
+- **Share & Download** - Share track URL or download directly from mobile player
 
 ---
 
@@ -205,7 +207,7 @@ kv-music/
 ├── frontend-vite/              # React frontend
 │   ├── src/
 │   │   ├── components/         # UI components
-│   │   │   ├── player/         # MiniPlayer, FullPlayer, ProgressBar
+│   │   │   ├── player/         # MiniPlayer, FullPlayer, MobileFullPlayer, ProgressBar
 │   │   │   ├── layout/         # AppLayout, NowPlayingBar, Header
 │   │   │   ├── BottomSheet.tsx # Reusable bottom sheet with drag-to-dismiss
 │   │   │   ├── CoverImage.tsx  # Image with fallback
@@ -241,7 +243,8 @@ kv-music/
 | `GET` | `/api/search?q={query}` | Search YouTube Music |
 | `GET` | `/api/trending?country={VN}` | Get trending categories |
 | `GET` | `/api/stream/{video_id}` | Stream audio (with yt-dlp) |
-| `GET` | `/api/lyrics?title={t}&artist={a}` | Fetch synced lyrics |
+| `GET` | `/api/lyrics?title={t}&artist={a}` | Fetch synced lyrics (SimpMusic first) |
+| `GET` | `/api/video-stats/{id}` | Get video stats (views, likes) |
 | `GET` | `/api/artist/{id}` | Get artist info & top tracks |
 | `GET` | `/api/recommendations/{id}` | Get similar songs |
 | `GET` | `/api/related/{id}` | Get related content (albums, artists) |

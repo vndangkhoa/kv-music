@@ -8,6 +8,11 @@ export interface Track {
     cover_url: string;
     url?: string;
     duration?: number;
+    view_count?: number;
+    like_count?: number;
+    comment_count?: number;
+    bitrate?: number;
+    codec?: string;
 }
 
 export interface Playlist {

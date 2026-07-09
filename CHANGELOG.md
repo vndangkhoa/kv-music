@@ -5,6 +5,7 @@ All notable changes to KV Music will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **MobileFullPlayer** - Dedicated mobile full-screen player with framer-motion drag-to-dismiss, swipe between queue/lyrics
 - **BottomSheet component** - Reusable slide-up panel with drag handle and swipe-to-dismiss gesture
 - **FullPlayer redesign** - Song/Video toggle, action row (heart, lyrics, queue, related), clean layout
 - **MiniPlayer redesign** - Edge-to-edge bar with thin progress indicator, skip/play controls, tablet layout
@@ -13,8 +14,12 @@ All notable changes to KV Music will be documented in this file.
 - **Queue/Related bottom sheets** - Slide-up panels replacing inline compact lists
 - **Lyrics bottom sheet** - Slide-up panel replacing fullscreen overlay
 - **Video mode toggle** - Switch between audio and video playback in FullPlayer
+- **Lyrics search button** - Search for lyrics directly from lyrics panel
+- **Share track** - Share track URL from mobile player
+- **Download track** - Download track from mobile player
 
 ### Changed
+- **Lyrics priority** - SimpMusic tried first (better Vietnamese coverage), then LRCLIB, then lyrics.ovh
 - **State management** - Migrated from React Context to Zustand stores (playerStore, libraryStore, uiStore)
 - **Title overlap fix** - FullPlayer title now 1 line on mobile, 2 lines on desktop
 - **Action row separated** - Heart, lyrics, queue, related icons in their own row below track info
@@ -22,6 +27,8 @@ All notable changes to KV Music will be documented in this file.
 - **Library page** - Browse content always visible (not just when library is empty)
 - **Right panel** - NowPlayingBar toggleable via header button; hidden by default on first load
 - **Mobile MiniPlayer** - Removed duplicate progress bar, fixed title/button overlap
+- **BottomNav** - Redesigned with animation and better spacing
+- **AppLayout** - Improved layout structure for mobile/desktop
 
 ### Fixed
 - **Stream 500 error** - Removed `--extractor-args "youtube:player_client=web"` and `--js-runtimes node` from yt-dlp args
@@ -34,6 +41,7 @@ All notable changes to KV Music will be documented in this file.
 - **Song Info modal** - Removed from FullPlayer
 - **Volume slider on mobile** - Hidden (users use hardware volume buttons)
 - **Unused React contexts** - PlayerContext, AuthContext, LibraryContext, LayoutContext, ThemeContext
+- **LRCLIB first priority** - Demoted in favor of SimpMusic for better Vietnamese lyrics coverage
 
 ---
 

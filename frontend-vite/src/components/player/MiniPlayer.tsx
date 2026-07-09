@@ -4,7 +4,11 @@ import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
 import CoverImage from '../CoverImage';
 
-export default function MiniPlayer() {
+interface MiniPlayerProps {
+    hideUI?: boolean;
+}
+
+export default function MiniPlayer({ hideUI = false }: MiniPlayerProps) {
   const currentTrack = usePlayerStore(s => s.currentTrack);
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const isBuffering = usePlayerStore(s => s.isBuffering);
@@ -126,7 +130,7 @@ export default function MiniPlayer() {
         onError={handleAudioError}
       />
 
-      {currentTrack && (
+      {currentTrack && !hideUI && (
         <footer
           className="fixed bottom-[calc(4rem+env(safe-area-inset-bottom))] left-0 right-0 z-[60] lg:hidden select-none animate-in slide-in-from-bottom duration-200"
           onClick={() => setIsFullScreenOpen(true)}

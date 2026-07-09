@@ -30,6 +30,7 @@ interface PlayerState {
 
   // Actions
   playTrack: (track: Track, queue?: Track[]) => void;
+  loadTrack: (track: Track, queue?: Track[]) => void;
   togglePlay: () => void;
   nextTrack: () => void;
   prevTrack: () => void;
@@ -71,7 +72,7 @@ export const usePlayerStore = create<PlayerState>()(
       audioQuality: null,
       qualityPreference: 'auto',
       isLyricsOpen: false,
-      isFullScreenOpen: false,
+      isFullScreenOpen: true,
       isSettingsOpen: false,
       isRightPanelOpen: false,
       rightPanelTab: 'queue' as const,
@@ -98,6 +99,31 @@ export const usePlayerStore = create<PlayerState>()(
               : `/api/stream/${track.id}`
           },
           isPlaying: true,
+          isRightPanelOpen: true,
+        };
+        if (newQueue) {
+          const index = newQueue.findIndex(t => t.id === track.id);
+          updates.queue = newQueue;
+          updates.currentIndex = index;
+        }
+        set(updates as PlayerState);
+      },
+
+      loadTrack: (track, newQueue) => {
+        const state = get();
+        if (state.currentTrack?.id !== track.id) {
+          const filtered = state.playHistory.filter(t => t.id !== track.id);
+          const playHistory = [track, ...filtered].slice(0, 20);
+          set({ playHistory });
+        }
+        const updates: Partial<PlayerState> = {
+          currentTrack: {
+            ...track,
+            url: track.url && (track.url.startsWith('/') || track.url.startsWith('http'))
+              ? track.url
+              : `/api/stream/${track.id}`
+          },
+          isPlaying: false,
           isRightPanelOpen: true,
         };
         if (newQueue) {
