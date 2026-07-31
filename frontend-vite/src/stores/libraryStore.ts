@@ -5,7 +5,7 @@ import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
 import { libraryService } from '../services/library';
 
-type FilterType = 'all' | 'playlists' | 'artists' | 'albums';
+type FilterType = 'all' | 'playlists' | 'artists' | 'albums' | 'liked';
 
 interface SavedAlbum {
   id: string;
