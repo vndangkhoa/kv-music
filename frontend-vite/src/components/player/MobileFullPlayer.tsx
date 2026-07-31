@@ -96,10 +96,10 @@ export default function MobileFullPlayer() {
     const displayLine1 = syncedLines.length > 0 ? currentLyricLine : currentPlainLine;
     const displayLine2 = syncedLines.length > 0 ? nextLyricLine : '';
 
-    // Vertical Swipe on Cover to change track (Swipe Up = Next track, Swipe Down = Prev track)
+    // Vertical Swipe on Cover/Screen to change track (Swipe Up = Next track, Swipe Down = Prev track)
     const handleVerticalSwipeEnd = useCallback((_event: any, info: PanInfo) => {
-        const threshold = 40;
-        const velocityThreshold = 150;
+        const threshold = 30;
+        const velocityThreshold = 100;
         if (info.offset.y < -threshold || info.velocity.y < -velocityThreshold) {
             nextTrack();
         } else if (info.offset.y > threshold || info.velocity.y > velocityThreshold) {
@@ -401,10 +401,11 @@ export default function MobileFullPlayer() {
                                 ) : (
                                     <motion.div
                                         drag="y"
+                                        dragDirectionLock={true}
                                         dragConstraints={{ top: 0, bottom: 0 }}
-                                        dragElastic={0.2}
+                                        dragElastic={0.25}
                                         onDragEnd={handleVerticalSwipeEnd}
-                                        className="w-full max-w-[340px] cursor-grab active:cursor-grabbing select-none"
+                                        className="w-full max-w-[340px] cursor-grab active:cursor-grabbing select-none touch-pan-y"
                                     >
                                         <div className="relative rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.7)]" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 30px 80px rgba(0,0,0,0.5)' }}>
                                             <img
