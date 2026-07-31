@@ -1,7 +1,11 @@
 version: "3"
 services:
   kv-music:
-    image: git.khoavo.myds.me/vndangkhoa/kv-music:latest
+    # Pull from any of these registries:
+    # docker.io/vndangkhoa/kv-music:latest
+    # ghcr.io/vndangkhoa/kv-music:latest
+    # git.khoavo.myds.me/vndangkhoa/kv-music:latest
+    image: vndangkhoa/kv-music:latest
     container_name: kv-music
     restart: unless-stopped
     ports:
