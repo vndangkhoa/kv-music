@@ -96,13 +96,13 @@ export default function MobileFullPlayer() {
     const displayLine1 = syncedLines.length > 0 ? currentLyricLine : currentPlainLine;
     const displayLine2 = syncedLines.length > 0 ? nextLyricLine : '';
 
-    // Horizontal Swipe on Cover to change track WITHOUT closing player
-    const handleHorizontalSwipeEnd = useCallback((_event: any, info: PanInfo) => {
+    // Vertical Swipe on Cover to change track (Swipe Up = Next track, Swipe Down = Prev track)
+    const handleVerticalSwipeEnd = useCallback((_event: any, info: PanInfo) => {
         const threshold = 40;
         const velocityThreshold = 150;
-        if (info.offset.x < -threshold || info.velocity.x < -velocityThreshold) {
+        if (info.offset.y < -threshold || info.velocity.y < -velocityThreshold) {
             nextTrack();
-        } else if (info.offset.x > threshold || info.velocity.x > velocityThreshold) {
+        } else if (info.offset.y > threshold || info.velocity.y > velocityThreshold) {
             prevTrack();
         }
     }, [nextTrack, prevTrack]);
@@ -382,7 +382,7 @@ export default function MobileFullPlayer() {
                                 )}
                             </div>
 
-                            {/* Horizontal Swipeable cover / Video */}
+                            {/* Vertical Swipeable cover / Video */}
                             <div className="flex-1 flex items-center justify-center px-6 py-2 min-h-0">
                                 {playerMode === 'video' ? (
                                     <div className="w-full max-w-[400px]">
@@ -400,10 +400,10 @@ export default function MobileFullPlayer() {
                                     </div>
                                 ) : (
                                     <motion.div
-                                        drag="x"
-                                        dragConstraints={{ left: 0, right: 0 }}
+                                        drag="y"
+                                        dragConstraints={{ top: 0, bottom: 0 }}
                                         dragElastic={0.2}
-                                        onDragEnd={handleHorizontalSwipeEnd}
+                                        onDragEnd={handleVerticalSwipeEnd}
                                         className="w-full max-w-[340px] cursor-grab active:cursor-grabbing select-none"
                                     >
                                         <div className="relative rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.7)]" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 30px 80px rgba(0,0,0,0.5)' }}>
@@ -419,11 +419,11 @@ export default function MobileFullPlayer() {
                                 )}
                             </div>
 
-                            {/* Horizontal Swipe Hint - only in audio mode */}
+                            {/* Vertical Swipe Hint - only in audio mode */}
                             {playerMode === 'audio' && (
                                 <div className="flex justify-center py-1 shrink-0">
                                     <span className="text-[10px] text-cyan-400/70 font-semibold tracking-wider">
-                                        ← Vuốt trái/phải để đổi bài →
+                                        ↑ Vuốt lên/xuống để đổi bài ↓
                                     </span>
                                 </div>
                             )}
