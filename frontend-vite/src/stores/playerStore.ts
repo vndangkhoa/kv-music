@@ -100,7 +100,7 @@ export const usePlayerStore = create<PlayerState>()(
           },
           isPlaying: true,
           isRightPanelOpen: true,
-          isFullScreenOpen: openFullPlayer === true,
+          isFullScreenOpen: openFullPlayer ? true : state.isFullScreenOpen,
         };
         if (newQueue) {
           const index = newQueue.findIndex(t => t.id === track.id);

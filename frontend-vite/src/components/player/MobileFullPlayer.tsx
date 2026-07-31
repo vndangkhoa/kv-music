@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Search, Share2, Download, ListMusic, ChevronLeft, ChevronUp, ChevronDown, Check, Music, Video } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { motion, PanInfo, AnimatePresence } from 'framer-motion';
@@ -34,7 +34,7 @@ export default function MobileFullPlayer() {
     const setProgress = usePlayerStore(s => s.setProgress);
 
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState<'foryou' | 'similar'>('foryou');
+    const [activeTab, setActiveTab] = useState<'foryou' | 'lyrics' | 'similar'>('foryou');
     const [playerMode, setPlayerMode] = useState<'audio' | 'video'>('audio');
     const [followingArtists, setFollowingArtists] = useState<Set<string>>(new Set());
     const [relatedTracks, setRelatedTracks] = useState<Track[]>([]);
@@ -42,6 +42,8 @@ export default function MobileFullPlayer() {
     const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
     const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'done'>('idle');
     const [showQueue, setShowQueue] = useState(false);
+
+    const activeLyricRef = useRef<HTMLParagraphElement>(null);
 
     const nextTracks = useMemo(() => {
         if (queue.length === 0 || currentIndex < 0) return [];
@@ -61,7 +63,8 @@ export default function MobileFullPlayer() {
     const {
         lyrics,
         syncedLines,
-        activeIndex
+        activeIndex,
+        loading: loadingLyrics
     } = useLyrics(
         currentTrack?.title || '',
         currentTrack?.artist || '',
@@ -69,6 +72,13 @@ export default function MobileFullPlayer() {
         true,
         currentTrack?.id
     );
+
+    // Auto-scroll lyrics in full lyrics tab
+    useEffect(() => {
+        if (activeTab === 'lyrics' && activeLyricRef.current) {
+            activeLyricRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    }, [activeIndex, activeTab]);
 
     const currentLyricLine = activeIndex >= 0 ? syncedLines[activeIndex]?.text : '';
     const nextLyricLine = activeIndex >= 0 && activeIndex + 1 < syncedLines.length
@@ -85,6 +95,17 @@ export default function MobileFullPlayer() {
 
     const displayLine1 = syncedLines.length > 0 ? currentLyricLine : currentPlainLine;
     const displayLine2 = syncedLines.length > 0 ? nextLyricLine : '';
+
+    // Horizontal Swipe on Cover to change track WITHOUT closing player
+    const handleHorizontalSwipeEnd = useCallback((_event: any, info: PanInfo) => {
+        const threshold = 40;
+        const velocityThreshold = 150;
+        if (info.offset.x < -threshold || info.velocity.x < -velocityThreshold) {
+            nextTrack();
+        } else if (info.offset.x > threshold || info.velocity.x > velocityThreshold) {
+            prevTrack();
+        }
+    }, [nextTrack, prevTrack]);
 
     const isFollowing = currentTrack ? followingArtists.has(currentTrack.artist) : false;
 
@@ -311,6 +332,14 @@ export default function MobileFullPlayer() {
                                 For You
                             </button>
                             <button
+                                onClick={() => setActiveTab('lyrics')}
+                                className={`text-sm font-bold transition-colors ${
+                                    activeTab === 'lyrics' ? 'text-cyan-400' : 'text-white/40'
+                                }`}
+                            >
+                                Lyrics
+                            </button>
+                            <button
                                 onClick={() => setActiveTab('similar')}
                                 className={`text-sm font-bold transition-colors ${
                                     activeTab === 'similar' ? 'text-white' : 'text-white/40'
@@ -330,11 +359,14 @@ export default function MobileFullPlayer() {
                     {/* For You Tab */}
                     {activeTab === 'foryou' && (
                         <>
-                            {/* Lyrics Display */}
-                            <div className="px-6 py-3 min-h-[64px] flex flex-col justify-center shrink-0">
+                            {/* Lyrics Display Preview - Tapping opens full Lyrics tab */}
+                            <div
+                                onClick={() => setActiveTab('lyrics')}
+                                className="px-6 py-3 min-h-[64px] flex flex-col justify-center shrink-0 cursor-pointer hover:opacity-90 transition group"
+                            >
                                 {displayLine1 ? (
                                     <>
-                                        <p className="text-base sm:text-lg font-bold text-white mb-0.5 leading-tight line-clamp-1 drop-shadow-lg">
+                                        <p className="text-base sm:text-lg font-bold text-white mb-0.5 leading-tight line-clamp-1 drop-shadow-lg group-hover:text-cyan-300 transition">
                                             {displayLine1}
                                         </p>
                                         {displayLine2 && (
@@ -344,13 +376,13 @@ export default function MobileFullPlayer() {
                                         )}
                                     </>
                                 ) : (
-                                    <p className="text-sm text-white/30 text-center drop-shadow-lg">
-                                        No lyrics available
+                                    <p className="text-sm text-cyan-400/80 text-center drop-shadow-lg font-bold">
+                                        🎵 Chạm để xem lời bài hát đầy đủ
                                     </p>
                                 )}
                             </div>
 
-                            {/* Swipeable cover / Video */}
+                            {/* Horizontal Swipeable cover / Video */}
                             <div className="flex-1 flex items-center justify-center px-6 py-2 min-h-0">
                                 {playerMode === 'video' ? (
                                     <div className="w-full max-w-[400px]">
@@ -368,17 +400,17 @@ export default function MobileFullPlayer() {
                                     </div>
                                 ) : (
                                     <motion.div
-                                        drag="y"
-                                        dragConstraints={{ top: 0, bottom: 0 }}
-                                        dragElastic={0.15}
-                                        onDragEnd={handleSwipeEnd}
-                                        className="w-full max-w-[340px] cursor-grab active:cursor-grabbing"
+                                        drag="x"
+                                        dragConstraints={{ left: 0, right: 0 }}
+                                        dragElastic={0.2}
+                                        onDragEnd={handleHorizontalSwipeEnd}
+                                        className="w-full max-w-[340px] cursor-grab active:cursor-grabbing select-none"
                                     >
                                         <div className="relative rounded-2xl overflow-hidden shadow-[0_20px_60px_rgba(0,0,0,0.7)]" style={{ boxShadow: '0 20px 60px rgba(0,0,0,0.7), 0 30px 80px rgba(0,0,0,0.5)' }}>
                                             <img
                                                 src={currentTrack.cover_url}
                                                 alt={currentTrack.title}
-                                                className="w-full aspect-square object-cover"
+                                                className="w-full aspect-square object-cover pointer-events-none"
                                                 draggable={false}
                                             />
                                             <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent pointer-events-none" />
@@ -387,21 +419,53 @@ export default function MobileFullPlayer() {
                                 )}
                             </div>
 
-                            {/* Swipe Hint - only in audio mode */}
+                            {/* Horizontal Swipe Hint - only in audio mode */}
                             {playerMode === 'audio' && (
                                 <div className="flex justify-center py-1 shrink-0">
-                                    <motion.div
-                                        className="flex flex-col items-center gap-0.5"
-                                        animate={{ opacity: [0.3, 0.7, 0.3] }}
-                                        transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                                    >
-                                        <ChevronUp className="w-4 h-4 text-white/50" />
-                                        <span className="text-[10px] text-white/40 font-medium tracking-wide">swipe</span>
-                                        <ChevronDown className="w-4 h-4 text-white/50" />
-                                    </motion.div>
+                                    <span className="text-[10px] text-cyan-400/70 font-semibold tracking-wider">
+                                        ← Vuốt trái/phải để đổi bài →
+                                    </span>
                                 </div>
                             )}
                         </>
+                    )}
+
+                    {/* Dedicated Full Lyrics Tab */}
+                    {activeTab === 'lyrics' && (
+                        <div className="flex-1 overflow-y-auto no-scrollbar px-6 py-4 text-center my-auto flex flex-col justify-center max-h-[460px]">
+                            {loadingLyrics ? (
+                                <div className="flex flex-col items-center justify-center py-12 gap-3">
+                                    <div className="w-6 h-6 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin" />
+                                    <p className="text-xs text-neutral-400">Đang tải lời bài hát...</p>
+                                </div>
+                            ) : syncedLines.length > 0 ? (
+                                <div className="space-y-6 py-6 max-h-full overflow-y-auto no-scrollbar">
+                                    {syncedLines.map((line, idx) => (
+                                        <p
+                                            key={idx}
+                                            ref={idx === activeIndex ? activeLyricRef : null}
+                                            onClick={() => seekTo(line.time)}
+                                            className={`font-bold transition-all duration-300 cursor-pointer py-1.5 ${
+                                                idx === activeIndex
+                                                    ? 'text-cyan-300 text-xl sm:text-2xl scale-105 drop-shadow-[0_0_20px_rgba(0,168,255,0.7)] font-black'
+                                                    : 'text-neutral-500 hover:text-neutral-300 text-sm sm:text-base'
+                                            }`}
+                                        >
+                                            {line.text}
+                                        </p>
+                                    ))}
+                                </div>
+                            ) : lyrics ? (
+                                <div className="whitespace-pre-wrap text-sm sm:text-base leading-relaxed text-neutral-300 py-6 max-h-full overflow-y-auto no-scrollbar">
+                                    {lyrics}
+                                </div>
+                            ) : (
+                                <div className="flex flex-col items-center justify-center py-12 gap-2 text-neutral-500">
+                                    <p className="text-sm font-bold text-neutral-400">Chưa có lời bài hát đồng bộ</p>
+                                    <p className="text-xs">Thưởng thức âm nhạc chất lượng cao trên kv-music</p>
+                                </div>
+                            )}
+                        </div>
                     )}
 
                     {/* Similar Tab */}
