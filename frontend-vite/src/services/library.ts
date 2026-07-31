@@ -672,72 +672,76 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
     },
 
     async getCharts(chartType: string): Promise<Track[]> {
-        const regionalQueries: Record<string, string[]> = {
-            'vn': ['Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Den Vau', 'SOOBIN', 'Erik', 'Vũ', 'Hoang Dung', 'Grey D', 'Jack J97'],
-            'us': ['Taylor Swift', 'The Weeknd', 'Bruno Mars', 'Billie Eilish', 'Sabrina Carpenter', 'Ariana Grande', 'Post Malone', 'Drake'],
-            'kr': ['NewJeans', 'BLACKPINK', 'BTS', 'AESPA', 'ILLIT', 'TWICE', 'Stray Kids', 'IVE', 'IU'],
-            'cn': ['Jay Chou', 'Eric Chou', 'GEM Deng Ziqi', 'JJ Lin', 'Nhạc Hoa Lời Việt'],
-            'top-hits': ['Son Tung M-TP', 'Taylor Swift', 'The Weeknd', 'HIEUTHUHAI'],
-            'trending': ['Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Den Vau'],
-            'top-albums': ['Son Tung M-TP', 'Taylor Swift', 'BTS', 'Jay Chou'],
-            'hits-collection': ['Son Tung M-TP', 'The Weeknd', 'NewJeans', 'Eric Chou']
+        const regionalArtistsList: Record<string, string[]> = {
+            'vn': [
+                'Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Den Vau', 'SOOBIN',
+                'Erik', 'Vũ', 'Hoang Dung', 'Grey D', 'Wren Evans',
+                'tlinh', 'Madihu', 'Phuc Du', 'Duc Phuc', 'Hoa Minzy',
+                'Bich Phuong', 'Phan Manh Quynh', 'Jack J97', 'Amee', 'Min'
+            ],
+            'us': [
+                'Taylor Swift', 'The Weeknd', 'Bruno Mars', 'Billie Eilish', 'Sabrina Carpenter',
+                'Ariana Grande', 'Post Malone', 'Drake', 'Dua Lipa', 'Justin Bieber',
+                'Ed Sheeran', 'Olivia Rodrigo'
+            ],
+            'kr': [
+                'NewJeans', 'BLACKPINK', 'BTS', 'AESPA', 'ILLIT',
+                'TWICE', 'Stray Kids', 'IVE', 'IU', 'SEVENTEEN',
+                'LE SSERAFIM', 'ENHYPEN'
+            ],
+            'cn': [
+                'Jay Chou', 'Eric Chou', 'GEM Deng Ziqi', 'JJ Lin', 'Teresa Teng', 'Nhạc Hoa Lời Việt'
+            ],
+            'top-hits': ['Son Tung M-TP', 'Taylor Swift', 'The Weeknd', 'HIEUTHUHAI', 'NewJeans', 'Bruno Mars', 'MONO'],
+            'trending': ['Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Den Vau', 'SOOBIN', 'Wren Evans', 'tlinh'],
+            'top-albums': ['Son Tung M-TP', 'Taylor Swift', 'BTS', 'Jay Chou', 'The Weeknd', 'NewJeans'],
+            'hits-collection': ['Son Tung M-TP', 'The Weeknd', 'NewJeans', 'Eric Chou', 'HIEUTHUHAI', 'Bruno Mars']
         };
 
-        try {
-            const data = await apiFetch(`/charts?chart_type=${encodeURIComponent(chartType)}`);
-            if (data?.tracks && data.tracks.length > 0) {
-                // Filter out non-songs / compilation titles
-                const validSongs = data.tracks.filter((t: Track) => {
-                    const title = t.title.toLowerCase();
-                    return !title.includes('megamix') &&
-                        !title.includes('top 100') &&
-                        !title.includes('top 50') &&
-                        !title.includes('top 30') &&
-                        !title.includes('hơn 50') &&
-                        !title.includes('tổng kết') &&
-                        !title.includes('tuyển tập') &&
-                        !title.includes('full album');
-                });
-                if (validSongs.length > 0) {
-                    return validSongs.map((track: Track) => ({
-                        ...track,
-                        url: `/api/stream/${track.id}`
-                    }));
+        const artistQueries = regionalArtistsList[chartType] || regionalArtistsList['vn'];
+        
+        // Query each artist and pick the top valid song (round-robin interleave)
+        const artistResults = await Promise.all(
+            artistQueries.map(async (query) => {
+                try {
+                    const tracks = await this.search(query);
+                    return tracks.filter(t => {
+                        const titleLower = t.title.toLowerCase();
+                        return !titleLower.includes('megamix') &&
+                            !titleLower.includes('top 100') &&
+                            !titleLower.includes('top 50') &&
+                            !titleLower.includes('hơn 50') &&
+                            !titleLower.includes('tổng kết') &&
+                            !titleLower.includes('tuyển tập') &&
+                            !titleLower.includes('full album');
+                    });
+                } catch {
+                    return [];
                 }
-            }
-        } catch (e) {
-            console.error(`Failed to fetch ${chartType} charts:`, e);
-        }
-        
-        const queries = regionalQueries[chartType] || regionalQueries['vn'];
-        const allTracks: Track[] = [];
-        const seenIds = new Set<string>();
-        
-        for (const query of queries) {
-            const tracks = await this.search(query);
-            for (const track of tracks) {
-                const titleLower = track.title.toLowerCase();
-                // Strict check: skip compilation/playlist videos
-                const isCompilation = titleLower.includes('megamix') ||
-                    titleLower.includes('top 100') ||
-                    titleLower.includes('top 50') ||
-                    titleLower.includes('top 30') ||
-                    titleLower.includes('hơn 50') ||
-                    titleLower.includes('tổng kết') ||
-                    titleLower.includes('tuyển tập') ||
-                    titleLower.includes('bộ sưu tập') ||
-                    titleLower.includes('danh sách bài hát') ||
-                    titleLower.includes('full album');
+            })
+        );
 
-                if (!isCompilation && !seenIds.has(track.id)) {
-                    seenIds.add(track.id);
-                    allTracks.push(track);
+        const combined: Track[] = [];
+        const seenIds = new Set<string>();
+        const seenArtists = new Set<string>();
+
+        // Round-robin pick 1 song per artist first to guarantee artist diversity
+        for (let round = 0; round < 3; round++) {
+            for (const tracks of artistResults) {
+                if (tracks[round]) {
+                    const t = tracks[round];
+                    if (!seenIds.has(t.id)) {
+                        seenIds.add(t.id);
+                        combined.push({
+                            ...t,
+                            url: `/api/stream/${t.id}`
+                        });
+                    }
                 }
             }
-            if (allTracks.length >= 25) break;
         }
-        
-        return allTracks.slice(0, 20);
+
+        return combined.slice(0, 20);
     },
 
     async getArtists(region: 'vn' | 'us' | 'kr' | 'cn' = 'vn'): Promise<Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string; topTrack: string }>> {
@@ -752,7 +756,9 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 { id: 'erik', name: 'ERIK', followers: '2.9M', topTrack: 'Em Không Sai Chúng Ta Sai' },
                 { id: 'min', name: 'MIN', followers: '2.5M', topTrack: 'Ghen' },
                 { id: 'amee', name: 'AMEE', followers: '2.4M', topTrack: 'Anh Nhà Ở Đâu Thế' },
-                { id: 'hoang-dung', name: 'Hoàng Dũng', followers: '2.1M', topTrack: 'Nàng Thơ' }
+                { id: 'hoang-dung', name: 'Hoàng Dũng', followers: '2.1M', topTrack: 'Nàng Thơ' },
+                { id: 'wren-evans', name: 'Wren Evans', followers: '2.0M', topTrack: 'Từng Quen' },
+                { id: 'tlinh', name: 'tlinh', followers: '1.9M', topTrack: 'nếu lúc đó' }
             ],
             us: [
                 { id: 'taylor-swift', name: 'Taylor Swift', followers: '112M', topTrack: 'Cruel Summer' },
@@ -762,7 +768,9 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 { id: 'sabrina-carpenter', name: 'Sabrina Carpenter', followers: '42M', topTrack: 'Espresso' },
                 { id: 'ariana-grande', name: 'Ariana Grande', followers: '98M', topTrack: 'we can\'t be friends' },
                 { id: 'post-malone', name: 'Post Malone', followers: '64M', topTrack: 'Sunflower' },
-                { id: 'drake', name: 'Drake', followers: '86M', topTrack: 'God\'s Plan' }
+                { id: 'drake', name: 'Drake', followers: '86M', topTrack: 'God\'s Plan' },
+                { id: 'dua-lipa', name: 'Dua Lipa', followers: '52M', topTrack: 'Levitating' },
+                { id: 'justin-bieber', name: 'Justin Bieber', followers: '76M', topTrack: 'Stay' }
             ],
             kr: [
                 { id: 'bts', name: 'BTS', followers: '74M', topTrack: 'Dynamite' },
@@ -772,7 +780,9 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
                 { id: 'illit', name: 'ILLIT', followers: '14M', topTrack: 'Magnetic' },
                 { id: 'twice', name: 'TWICE', followers: '34M', topTrack: 'What is Love?' },
                 { id: 'stray-kids', name: 'Stray Kids', followers: '28M', topTrack: 'S-Class' },
-                { id: 'iu', name: 'IU', followers: '25M', topTrack: 'Love wins all' }
+                { id: 'iu', name: 'IU', followers: '25M', topTrack: 'Love wins all' },
+                { id: 'seventeen', name: 'SEVENTEEN', followers: '19M', topTrack: 'Super' },
+                { id: 'le-sserafim', name: 'LE SSERAFIM', followers: '16M', topTrack: 'EASY' }
             ],
             cn: [
                 { id: 'jay-chou', name: 'JAY CHOU (Châu Kiệt Luân)', followers: '45M', topTrack: 'Dạ Khúc (Nocturne)' },
@@ -785,49 +795,65 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
 
         const list = regionalArtists[region] || regionalArtists['vn'];
 
-        // Fetch real artist photos asynchronously from cache or info
-        const result = await Promise.all(list.map(async (art, index) => {
-            let photo: string | undefined = undefined;
-            try {
-                const info = await this.getArtistInfo(art.name);
-                photo = info.photo;
-            } catch {}
+        // Return list immediately with instant photo fallback so no empty blinking boxes appear
+        return list.map((art, index) => {
+            const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(art.name)}&background=00a8ff&color=fff&size=128&rounded=true&bold=true`;
             return {
                 ...art,
-                photo,
+                photo: avatarUrl,
                 region,
                 rank: index + 1
             };
-        }));
-
-        return result;
+        });
     },
 
     async getSmartSuggestions(history: Track[] = [], likedTracks: Track[] = []): Promise<{ tracks: Track[]; reason: string }> {
-        // Collect seed artists and query targets
         const userArtists = new Set<string>();
         [...history, ...likedTracks].forEach(t => {
             if (t.artist) userArtists.add(t.artist);
         });
 
-        let seedQuery = 'V-Pop hot trending';
-        let reason = 'Xu hướng phát nhạc thông minh dành cho bạn';
+        let seedQueries = ['V-Pop 2024 hits', 'Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Wren Evans', 'tlinh', 'Den Vau'];
+        let reason = 'Gợi Ý Phát Nhạc Đa Dạng Dành Cho Bạn';
 
         if (userArtists.size > 0) {
             const arr = Array.from(userArtists);
-            const randomArtist = arr[Math.floor(Math.random() * arr.length)];
-            seedQuery = `${randomArtist} official music`;
-            reason = `Gợi ý thông minh dựa trên nghệ sĩ bạn yêu thích: ${randomArtist}`;
+            const topSeed = arr[0];
+            seedQueries = [topSeed, 'Son Tung M-TP', 'HIEUTHUHAI', 'Wren Evans', 'MONO', 'Den Vau'];
+            reason = `Gợi ý phát nhạc thông minh dựa trên: ${topSeed}`;
         }
 
-        const results = await this.search(seedQuery);
-        const filtered = results.filter(t => {
-            const title = t.title.toLowerCase();
-            return !title.includes('megamix') && !title.includes('top 100') && !title.includes('top 50');
-        });
+        // Fetch tracks across multiple diverse query targets
+        const searchResults = await Promise.all(
+            seedQueries.slice(0, 6).map(q => this.search(q))
+        );
+
+        const combined: Track[] = [];
+        const seenIds = new Set<string>();
+        const seenArtistsCount: Record<string, number> = {};
+
+        // Round-robin pick max 2 songs per artist for high singer diversity
+        for (let i = 0; i < 4; i++) {
+            for (const list of searchResults) {
+                if (list[i]) {
+                    const track = list[i];
+                    const artistKey = (track.artist || 'unknown').toLowerCase();
+                    const count = seenArtistsCount[artistKey] || 0;
+                    
+                    const titleLower = track.title.toLowerCase();
+                    const isCompilation = titleLower.includes('megamix') || titleLower.includes('top 100') || titleLower.includes('top 50');
+
+                    if (!isCompilation && !seenIds.has(track.id) && count < 2) {
+                        seenIds.add(track.id);
+                        seenArtistsCount[artistKey] = count + 1;
+                        combined.push(track);
+                    }
+                }
+            }
+        }
 
         return {
-            tracks: filtered.slice(0, 20),
+            tracks: combined.slice(0, 20),
             reason
         };
     }
