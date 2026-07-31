@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Play, Music2, Sparkles, Flame, Disc, Search, User, Clock, TrendingUp, Star } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Play, Flame, Disc, User, Clock, ChevronLeft, ChevronRight, Volume2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
@@ -8,14 +8,28 @@ import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
 
 export default function Discovery() {
-  const navigate = useNavigate();
-  const [timeOfDay, setTimeOfDay] = useState("Good evening");
   const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
   const [loading, setLoading] = useState(true);
-  const [heroPlaylist, setHeroPlaylist] = useState<StaticPlaylist | null>(null);
+  const [heroSlides, setHeroSlides] = useState<StaticPlaylist[]>([]);
+  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
+  const [chartRegion, setChartRegion] = useState<'vn' | 'us' | 'kr' | 'cn'>('vn');
+  const [chartTracks, setChartTracks] = useState<Track[]>([]);
+  const [chartLoading, setChartLoading] = useState(true);
+  const [newReleaseFilter, setNewReleaseFilter] = useState<'all' | 'vn' | 'us'>('all');
+  
   const playTrack = usePlayerStore(s => s.playTrack);
   const playHistory = usePlayerStore(s => s.playHistory);
-  const [activeChip, setActiveChip] = useState<'all' | string>('all');
+
+  const playTopic = async (query: string) => {
+    try {
+      const tracks = await libraryService.search(query);
+      if (tracks && tracks.length > 0) {
+        playTrack(tracks[0], tracks);
+      }
+    } catch (e) {
+      console.error("Failed to play topic", e);
+    }
+  };
 
   const playCollection = async (id: string, isAlbum: boolean) => {
     try {
@@ -28,477 +42,489 @@ export default function Discovery() {
     }
   };
 
-  const filterChips = [
-    { id: 'energize', label: 'Energize', categories: ['Workout Energy', 'Party Anthems', 'Rap Viet', 'Gaming Music'] },
-    { id: 'workout', label: 'Workout', categories: ['Workout Energy', 'Gaming Music'] },
-    { id: 'relax', label: 'Relax', categories: ['Lofi Chill Vietnam', 'Sleep Sounds', 'Acoustic Thu Gian', 'Piano Focus'] },
-    { id: 'focus', label: 'Focus', categories: ['Piano Focus', 'Lofi Chill Vietnam'] },
-    { id: 'commute', label: 'Commute', categories: ['US UK Top Hits', 'Trending Music', 'V-Pop Rising', 'Viral Hits Vietnam'] }
-  ];
-
+  // Load Browse & Hero Carousel Data
   useEffect(() => {
-    const hour = new Date().getHours();
-    if (hour < 12) setTimeOfDay("Good morning");
-    else if (hour < 18) setTimeOfDay("Good afternoon");
-    else setTimeOfDay("Good evening");
-
-    const cached = localStorage.getItem('ytm_browse_cache_v8');
-    let hasCache = false;
+    const cached = localStorage.getItem('nct_browse_cache_v1');
     if (cached) {
-      setBrowseData(JSON.parse(cached));
+      const parsed = JSON.parse(cached);
+      setBrowseData(parsed);
       setLoading(false);
-      hasCache = true;
+      const allPlaylists = Object.values(parsed).flat().filter((p: any) => p.type === 'Playlist') as StaticPlaylist[];
+      if (allPlaylists.length > 0) {
+        setHeroSlides(allPlaylists.slice(0, 6));
+      }
     }
 
-    const fetchData = () => {
-      if (!hasCache) setLoading(true);
-      libraryService.getBrowseContent()
-        .then(data => {
-          setBrowseData(data);
-          setLoading(false);
-          localStorage.setItem('ytm_browse_cache_v8', JSON.stringify(data));
-          const allPlaylists = Object.values(data).flat().filter((p: any) => p.type === 'Playlist');
-          if (allPlaylists.length > 0) {
-            const randomIdx = Math.floor(Math.random() * allPlaylists.length);
-            setHeroPlaylist(allPlaylists[randomIdx]);
-          }
-        })
-        .catch(() => setLoading(false));
-    };
-
-    fetchData();
-    const refreshInterval = setInterval(fetchData, 300000);
-    return () => clearInterval(refreshInterval);
+    libraryService.getBrowseContent()
+      .then(data => {
+        setBrowseData(data);
+        setLoading(false);
+        localStorage.setItem('nct_browse_cache_v1', JSON.stringify(data));
+        const allPlaylists = Object.values(data).flat().filter((p: any) => p.type === 'Playlist') as StaticPlaylist[];
+        if (allPlaylists.length > 0) {
+          setHeroSlides(allPlaylists.slice(0, 6));
+        }
+      })
+      .catch(() => setLoading(false));
   }, []);
 
+  // Hero Slider Auto-rotation
+  useEffect(() => {
+    if (heroSlides.length <= 1) return;
+    const timer = setInterval(() => {
+      setCurrentSlideIndex(prev => (prev + 1) % heroSlides.length);
+    }, 4500);
+    return () => clearInterval(timer);
+  }, [heroSlides.length]);
+
+  // Load Right-Sidebar Real-time BXH Chart
+  useEffect(() => {
+    const fetchBXH = async () => {
+      setChartLoading(true);
+      try {
+        const results = await libraryService.getCharts(chartRegion);
+        if (results && results.length > 0) {
+          setChartTracks(results.slice(0, 20));
+        }
+      } catch (e) {
+        console.error("BXH load error", e);
+      }
+      setChartLoading(false);
+    };
+    fetchBXH();
+  }, [chartRegion]);
+
   return (
-    <div className="h-full overflow-y-auto p-6 no-scrollbar pb-24">
-      <div className="flex items-center justify-between mb-6 select-none">
-        <h1 className="text-3xl font-extrabold tracking-tight text-white">{timeOfDay}</h1>
-        <div className="flex items-center gap-2">
-          <button onClick={() => navigate('/search')} className="flex items-center justify-center w-10 h-10 bg-white/5 hover:bg-white/10 rounded-full transition">
-            <Search className="w-5 h-5 text-white/70" />
-          </button>
-        </div>
-      </div>
-
-      {/* Filter Chips */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar mb-8 select-none">
-        <button onClick={() => setActiveChip('all')}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap ${activeChip === 'all' ? 'bg-white text-black shadow-md' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-          All
-        </button>
-        {filterChips.map(chip => (
-          <button key={chip.id} onClick={() => setActiveChip(activeChip === chip.id ? 'all' : chip.id)}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition whitespace-nowrap ${activeChip === chip.id ? 'bg-white text-black shadow-md' : 'bg-white/5 text-white hover:bg-white/10'}`}>
-            {chip.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Hero Section */}
-      {activeChip === 'all' && (
-        loading ? (
-          <div className="mb-8 w-full h-80 bg-[#1f1f1f] rounded-2xl flex items-center p-8 animate-pulse">
-            <div className="w-56 h-56 bg-white/5 rounded-2xl mr-8 shadow-2xl" />
-            <div className="flex-1 space-y-4">
-              <div className="h-6 bg-white/5 rounded w-32" />
-              <div className="h-12 bg-white/5 rounded w-3/4" />
-              <div className="h-4 bg-white/5 rounded w-1/2" />
-            </div>
-          </div>
-        ) : heroPlaylist && (
-          <Link to={`/playlist/${heroPlaylist.id}`}>
-            <div className="mb-8 w-full h-auto md:h-80 bg-gradient-to-r from-[#212121] to-[#0f0f0f] rounded-2xl flex flex-col md:flex-row items-center p-6 md:p-8 hover:bg-[#252525] transition group cursor-pointer shadow-2xl border border-white/5">
-              <div className="relative mb-4 md:mb-0 md:mr-8 flex-shrink-0">
-                <CoverImage src={heroPlaylist.cover_url} alt={heroPlaylist.title} className="w-48 h-48 md:w-56 md:h-56 rounded-2xl shadow-2xl group-hover:scale-[1.02] transition" fallbackText="FT" />
-              </div>
-              <div className="flex flex-col text-center md:text-left overflow-hidden">
-                <span className="text-xs font-bold tracking-wider text-green-500 uppercase mb-2">Featured Playlist</span>
-                <h2 className="text-3xl md:text-5xl font-black mb-4 text-white leading-tight line-clamp-2 md:line-clamp-3">{heroPlaylist.title}</h2>
-                <p className="text-neutral-400 text-sm md:text-base line-clamp-2 md:line-clamp-3 max-w-2xl mb-6">{heroPlaylist.description}</p>
-                <div className="mt-auto inline-flex items-center gap-2 bg-white text-black px-8 py-3 rounded-full font-bold uppercase tracking-wider hover:scale-105 active:scale-95 transition self-center md:self-start shadow-lg">
-                  <Play className="fill-current text-black w-4 h-4" />
-                  Play Now
-                </div>
-              </div>
-            </div>
-          </Link>
-        )
-      )}
-
-      {/* Recently Listened */}
-      {activeChip === 'all' && playHistory.length > 0 && (
-        <div className="mb-8 animate-in">
-          <div className="flex items-center gap-2 mb-4">
-            <Clock className="w-5 h-5 text-green-500" />
-            <h2 className="text-2xl font-bold">Recently Listened</h2>
-          </div>
-          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-            {playHistory.slice(0, 10).map((track, i) => (
-              <div key={`${track.id}-${i}`} onClick={() => { playTrack(track, playHistory); }}
-                className="flex-shrink-0 w-40 bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer border border-white/5 flex flex-col justify-between">
-                <div>
-                  <div className="relative mb-3">
-                    <CoverImage src={track.cover_url} alt={track.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={track.title?.substring(0, 2).toUpperCase()} />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center">
-                      <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                        <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+    <div className="min-h-full bg-[#0b132d] text-white p-3 md:p-6 no-scrollbar pb-28">
+      {/* 2-COLUMN MAIN NCT LAYOUT */}
+      <div className="max-w-[1440px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+        
+        {/* LEFT COLUMN: Main Carousel & Content (8 cols) */}
+        <div className="lg:col-span-8 flex flex-col gap-8">
+          
+          {/* Hero Banner Carousel (Signature NCT Slider) */}
+          {loading ? (
+            <div className="w-full h-64 md:h-80 bg-[#142044] rounded-2xl animate-pulse" />
+          ) : heroSlides.length > 0 && (
+            <div className="relative w-full h-64 md:h-80 rounded-2xl overflow-hidden shadow-2xl group border border-cyan-500/20">
+              <div 
+                className="w-full h-full flex transition-transform duration-700 ease-out"
+                style={{ transform: `translateX(-${currentSlideIndex * 100}%)` }}
+              >
+                {heroSlides.map((slide, idx) => (
+                  <div key={slide.id || idx} className="w-full h-full flex-shrink-0 relative">
+                    <CoverImage src={slide.cover_url} alt={slide.title} className="w-full h-full object-cover brightness-75" />
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#0b132d] via-[#0b132d]/40 to-transparent flex flex-col justify-end p-6 md:p-8">
+                      <div className="inline-flex items-center gap-2 px-3 py-1 bg-cyan-500/20 backdrop-blur-md border border-cyan-400/40 rounded-full text-cyan-300 text-xs font-bold uppercase tracking-wider mb-2 w-fit">
+                        <Flame className="w-3.5 h-3.5 text-cyan-400" />
+                        NCT HOT ALBUM
                       </div>
+                      <h2 className="text-2xl md:text-4xl font-extrabold text-white mb-2 line-clamp-1 group-hover:text-cyan-300 transition">
+                        {slide.title}
+                      </h2>
+                      <p className="text-neutral-300 text-xs md:text-sm line-clamp-2 max-w-xl mb-4">
+                        {slide.description}
+                      </p>
+                      <button 
+                        onClick={() => playCollection(slide.id, false)}
+                        className="inline-flex items-center gap-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white px-6 py-2.5 rounded-full font-bold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/30 w-fit active:scale-95 transition"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        Nghe Ngay
+                      </button>
                     </div>
                   </div>
-                  <h3 className="font-bold text-white text-sm mb-0.5 truncate">{track.title}</h3>
-                  <p className="text-xs text-neutral-400 truncate">{track.artist}</p>
-                </div>
+                ))}
               </div>
-            ))}
+
+              {/* Slider Arrows */}
+              <button 
+                onClick={() => setCurrentSlideIndex(prev => (prev === 0 ? heroSlides.length - 1 : prev - 1))}
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-cyan-500/80 text-white backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300"
+              >
+                <ChevronLeft className="w-6 h-6" />
+              </button>
+              <button 
+                onClick={() => setCurrentSlideIndex(prev => (prev + 1) % heroSlides.length)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-black/40 hover:bg-cyan-500/80 text-white backdrop-blur-md flex items-center justify-center opacity-0 group-hover:opacity-100 transition duration-300"
+              >
+                <ChevronRight className="w-6 h-6" />
+              </button>
+
+              {/* Slider Dots Indicator */}
+              <div className="absolute bottom-3 right-4 flex items-center gap-1.5 z-10">
+                {heroSlides.map((_, i) => (
+                  <button 
+                    key={i} 
+                    onClick={() => setCurrentSlideIndex(i)}
+                    className={`h-2 rounded-full transition-all duration-300 ${i === currentSlideIndex ? 'w-6 bg-cyan-400 shadow-sm shadow-cyan-400' : 'w-2 bg-white/40 hover:bg-white'}`}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CHỦ ĐỀ HOT (Featured Topics Grid) */}
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
+              <h2 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                <span className="w-1.5 h-5 bg-cyan-400 rounded-full" />
+                CHỦ ĐỀ HOT
+              </h2>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 md:gap-4">
+              {[
+                { title: 'Nhạc Trẻ HOT', query: 'Nhạc Trẻ HOT', desc: 'Giai điệu thịnh hành', gradient: 'from-blue-600 to-cyan-500', img: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=400&q=80' },
+                { title: 'V-Pop Rực Rỡ', query: 'V-Pop 2024', desc: 'Bảng xếp hạng mới', gradient: 'from-indigo-600 to-purple-500', img: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=400&q=80' },
+                { title: 'Chill Cuối Tuần', query: 'Lofi Chill', desc: 'Thư giãn tuyệt đối', gradient: 'from-teal-500 to-emerald-500', img: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400&q=80' },
+                { title: 'Lofi Tâm Trạng', query: 'Lofi Viet', desc: 'Đêm khuya thao thức', gradient: 'from-[#00a8ff] to-[#2e86de]', img: 'https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400&q=80' },
+                { title: 'Remix Sôi Động', query: 'Remix Viet', desc: 'Nonstop Bass cực căng', gradient: 'from-pink-600 to-rose-500', img: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=400&q=80' },
+                { title: 'US-UK Top Hits', query: 'US UK Hits', desc: 'Bản tình ca thế giới', gradient: 'from-cyan-600 to-blue-700', img: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=400&q=80' },
+              ].map((topic, i) => (
+                <div key={i} onClick={() => playTopic(topic.query)} className="group relative h-28 md:h-32 rounded-2xl overflow-hidden shadow-lg border border-cyan-500/20 cursor-pointer hover:scale-[1.02] active:scale-95 transition duration-300">
+                  <img src={topic.img} alt={topic.title} className="w-full h-full object-cover group-hover:scale-110 transition duration-500" />
+                  <div className={`absolute inset-0 bg-gradient-to-t ${topic.gradient} opacity-80 group-hover:opacity-90 transition duration-300`} />
+                  <div className="absolute inset-0 p-3 md:p-4 flex flex-col justify-end">
+                    <h3 className="font-extrabold text-white text-sm md:text-base group-hover:text-cyan-200 transition">{topic.title}</h3>
+                    <p className="text-[10px] md:text-xs text-white/80 line-clamp-1">{topic.desc}</p>
+                  </div>
+                  <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow">
+                    <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
 
-      {/* Made For You */}
-      {activeChip === 'all' && <MadeForYouSection />}
+          {/* MỚI PHÁT HÀNH (Latest Songs Grid with NCT Tabs) */}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-cyan-500/10 pb-2">
+              <h2 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                <span className="w-1.5 h-5 bg-cyan-400 rounded-full" />
+                MỚI PHÁT HÀNH
+              </h2>
+              
+              <div className="flex items-center gap-1.5 bg-[#142044] p-1 rounded-xl border border-cyan-500/20 text-xs font-bold">
+                {[
+                  { id: 'all', label: 'TẤT CẢ' },
+                  { id: 'vn', label: 'VIỆT NAM' },
+                  { id: 'us', label: 'ÂU MỸ' },
+                ].map(tab => (
+                  <button 
+                    key={tab.id}
+                    onClick={() => setNewReleaseFilter(tab.id as any)}
+                    className={`px-3 py-1 rounded-lg transition ${newReleaseFilter === tab.id ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow-sm' : 'text-neutral-400 hover:text-white'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+            </div>
 
-      {/* Suggested Artists */}
-      {activeChip === 'all' && <ArtistSpotlightSection />}
+            {/* Song Grid */}
+            <NewReleasesGrid filter={newReleaseFilter} onPlayTrack={(track, list) => playTrack(track, list)} />
+          </div>
 
-      {/* Charts / Trending */}
-      {activeChip === 'all' && (
-        <>
-          <ChartSection 
-            title="Top Hits" 
-            icon={<Flame className="w-5 h-5 text-orange-500" />} 
-            chartType="top-hits" 
-          />
-          <ChartSection 
-            title="Trending Now" 
-            icon={<TrendingUp className="w-5 h-5 text-green-500" />} 
-            chartType="trending" 
-          />
-          <ChartSection 
-            title="Top Albums" 
-            icon={<Disc className="w-5 h-5 text-blue-500" />} 
-            chartType="top-albums" 
-          />
-          <ChartSection 
-            title="Hits Collection" 
-            icon={<Star className="w-5 h-5 text-yellow-500" />} 
-            chartType="hits-collection" 
-          />
-        </>
-      )}
+          {/* PLAYLIST / ALBUM HOT (NCT Album Grid) */}
+          {Object.entries(browseData).slice(0, 2).map(([category, playlists]) => (
+            <div key={category} className="flex flex-col gap-4">
+              <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
+                <h2 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+                  <span className="w-1.5 h-5 bg-cyan-400 rounded-full" />
+                  {category.toUpperCase()}
+                </h2>
+                <Link to={`/section?category=${encodeURIComponent(category)}`} className="text-xs font-bold text-cyan-400 hover:text-white transition uppercase">
+                  Xem tất cả &rarr;
+                </Link>
+              </div>
 
-      {/* Browse Content */}
-      {loading ? (
-        <div className="space-y-8">
-          {[1, 2, 3].map(i => (
-            <div key={i}>
-              <Skeleton className="h-8 w-48 mb-4" />
-                <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                {[1, 2, 3, 4, 5, 6].map(j => (
-                  <div key={j} className="space-y-3">
-                    <Skeleton className="w-full aspect-square rounded-2xl" />
-                    <Skeleton className="h-4 w-3/4" />
-                    <Skeleton className="h-3 w-1/2" />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                {(playlists as any[]).slice(0, 8).map(playlist => (
+                  <div 
+                    key={playlist.id} 
+                    onClick={() => playCollection(playlist.id, false)}
+                    className="bg-[#142044]/60 p-3 rounded-2xl hover:bg-[#1c2c5b] transition group cursor-pointer border border-cyan-500/10 flex flex-col"
+                  >
+                    <div className="relative mb-2.5 overflow-hidden rounded-xl">
+                      <CoverImage src={playlist.cover_url} alt={playlist.title} className="w-full aspect-square object-cover group-hover:scale-105 transition duration-300" fallbackText="NCT" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                        <div className="w-11 h-11 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
+                          <Play className="w-5 h-5 text-white fill-white ml-0.5" />
+                        </div>
+                      </div>
+                    </div>
+                    <h3 className="font-bold text-white text-xs md:text-sm line-clamp-1 group-hover:text-cyan-300 transition">{playlist.title}</h3>
+                    <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">{playlist.description || 'NCT Playlist'}</p>
                   </div>
                 ))}
               </div>
             </div>
           ))}
+
+          {/* CA SĨ HOT (Artist Carousel) */}
+          <ArtistSpotlightSection />
         </div>
-      ) : Object.keys(browseData).length > 0 ? (
-        Object.entries(browseData)
-          .filter(([category, items]) => {
-            if (category === "Top Albums" || (items as any[]).length === 0) return false;
-            if (activeChip !== 'all') {
-              const selected = filterChips.find(c => c.id === activeChip);
-              return selected ? selected.categories.includes(category) : true;
-            }
-            return true;
-          })
-          .map(([category, playlists]) => {
-            const uniquePlaylists = (playlists as any[]).filter((p, i, self) => self.findIndex(x => x.id === p.id) === i);
-            return (
-              <div key={category} className="mb-8">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-bold text-white hover:underline cursor-pointer">{category}</h2>
-                  <Link to={`/section?category=${encodeURIComponent(category)}`}>
-                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider hover:text-white cursor-pointer">Show all</span>
-                  </Link>
+
+        {/* RIGHT COLUMN: Real-time BXH Widget (4 cols) */}
+        <div className="lg:col-span-4 flex flex-col gap-6">
+          
+          {/* Realtime BXH Widget Box */}
+          <div className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4 shadow-xl flex flex-col gap-4">
+            
+            <div className="flex items-center justify-between border-b border-cyan-500/15 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#00a8ff] to-[#00d2d3] flex items-center justify-center shadow-md">
+                  <Flame className="w-4 h-4 text-white fill-white" />
                 </div>
-              <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                  {uniquePlaylists.slice(0, 16).map(playlist => (
-                    <div onClick={() => playCollection(playlist.id, false)} key={playlist.id} className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
-                      <div className="relative mb-3">
-                        <CoverImage src={playlist.cover_url} alt={playlist.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={playlist.title?.substring(0, 2).toUpperCase()} />
-                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center pointer-events-none">
-                          <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+                <h2 className="text-base font-black text-white tracking-wider">BXH BÀI HÁT</h2>
+              </div>
+              <Link to="/charts" className="text-[11px] font-bold text-cyan-400 hover:underline">
+                Xem Thêm
+              </Link>
+            </div>
+
+            {/* BXH Tabs: Việt Nam | Âu Mỹ | Hàn Quốc | Trung Quốc */}
+            <div className="grid grid-cols-4 gap-1 bg-[#0b132d] p-1 rounded-xl border border-cyan-500/15 text-[11px] md:text-xs font-extrabold text-center">
+              {[
+                { id: 'vn', label: 'VIỆT NAM' },
+                { id: 'us', label: 'ÂU MỸ' },
+                { id: 'kr', label: 'HÀN QUỐC' },
+                { id: 'cn', label: 'TRUNG QUỐC' },
+              ].map(tab => (
+                <button
+                  key={tab.id}
+                  onClick={() => setChartRegion(tab.id as any)}
+                  className={`py-1.5 rounded-lg transition ${chartRegion === tab.id ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Chart Tracks List */}
+            {chartLoading ? (
+              <div className="space-y-3 py-2">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                  <Skeleton key={i} className="h-12 w-full rounded-xl" />
+                ))}
+              </div>
+            ) : chartTracks.length > 0 ? (
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-col gap-2 max-h-[620px] overflow-y-auto pr-1 no-scrollbar">
+                  {chartTracks.map((track, rank) => {
+                    const isTop1 = rank === 0;
+                    const isTop2 = rank === 1;
+                    const isTop3 = rank === 2;
+
+                    return (
+                      <div 
+                        key={track.id || rank}
+                        onClick={() => playTrack(track, chartTracks)}
+                        className={`group flex items-center gap-3 p-2 rounded-xl transition cursor-pointer border ${
+                          isTop1 ? 'bg-gradient-to-r from-amber-500/15 via-[#142044] to-[#142044] border-amber-500/30' :
+                          isTop2 ? 'bg-gradient-to-r from-cyan-500/15 via-[#142044] to-[#142044] border-cyan-500/30' :
+                          isTop3 ? 'bg-gradient-to-r from-blue-500/15 via-[#142044] to-[#142044] border-blue-500/30' :
+                          'bg-[#0b132d]/40 hover:bg-[#1a2957] border-cyan-500/5'
+                        }`}
+                      >
+                        {/* Rank Badge Number */}
+                        <div className={`w-8 text-center font-black text-base flex-shrink-0 ${
+                          isTop1 ? 'text-amber-400 text-lg drop-shadow-[0_2px_4px_rgba(245,158,11,0.5)]' :
+                          isTop2 ? 'text-cyan-400' :
+                          isTop3 ? 'text-blue-400' :
+                          'text-neutral-400'
+                        }`}>
+                          {rank + 1}
+                        </div>
+
+                        {/* Song Image */}
+                        <div className="relative w-11 h-11 rounded-lg overflow-hidden flex-shrink-0">
+                          <CoverImage src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                            <Play className="w-4 h-4 text-white fill-white ml-0.5" />
                           </div>
                         </div>
+
+                        {/* Song Info */}
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-white text-xs truncate group-hover:text-cyan-300 transition">
+                            {track.title}
+                          </h4>
+                          <p className="text-[10px] text-neutral-400 truncate mt-0.5">
+                            {track.artist}
+                          </p>
+                        </div>
+
+                        {/* Play count / trend */}
+                        <div className="text-[10px] text-cyan-400/70 font-semibold flex flex-col items-end">
+                          <span>▲ {Math.floor(Math.random() * 10) + 1}</span>
+                        </div>
                       </div>
-                      <h3 className="font-bold text-white text-sm mb-0.5 truncate">{playlist.title}</h3>
-                      <p className="text-xs text-neutral-400 line-clamp-2">{playlist.description}</p>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
-              </div>
-            );
-          })
-      ) : (
-        <div className="text-center py-20">
-          <h2 className="text-xl font-bold mb-4 text-white">Ready to explore?</h2>
-          <p className="text-neutral-400">Browse content is loading or empty. Try searching for music.</p>
-        </div>
-      )}
 
-      {/* Top Albums */}
-      {activeChip === 'all' && !loading && browseData["Top Albums"] && browseData["Top Albums"].length > 0 && (
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-white flex items-center gap-2">
-              <Disc className="w-5 h-5 text-green-500" /> Top Albums
-            </h2>
+                {/* Play All Button */}
+                <button 
+                  onClick={() => playTrack(chartTracks[0], chartTracks)}
+                  className="mt-2 w-full py-2.5 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white rounded-xl font-bold text-xs uppercase tracking-wider shadow-md shadow-cyan-500/20 active:scale-95 transition flex items-center justify-center gap-2"
+                >
+                  <Play className="w-4 h-4 fill-white" />
+                  Nghe Tất Cả ({chartTracks.length} bài)
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-neutral-400 text-center py-4">Đang tải bảng xếp hạng...</p>
+            )}
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {(browseData["Top Albums"] as any[]).filter((a, i, self) => self.findIndex(x => x.id === a.id) === i).slice(0, 16).map(album => (
-              <div onClick={() => playCollection(album.id, true)} key={album.id} className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
-                <div className="relative mb-3">
-                  <CoverImage src={album.cover_url} alt={album.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={album.title?.substring(0, 2).toUpperCase()} />
-                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center pointer-events-none">
-                    <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                      <Play className="fill-current text-black ml-0.5 w-5 h-5" />
+
+          {/* Right Widget 2: Recently Played */}
+          {playHistory.length > 0 && (
+            <div className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4 shadow-xl flex flex-col gap-3">
+              <div className="flex items-center gap-2 border-b border-cyan-500/15 pb-2">
+                <Clock className="w-4 h-4 text-cyan-400" />
+                <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">NGHE GẦN ĐÂY</h3>
+              </div>
+              <div className="flex flex-col gap-2">
+                {playHistory.slice(0, 5).map((track, i) => (
+                  <div 
+                    key={`${track.id}-${i}`}
+                    onClick={() => playTrack(track, playHistory)}
+                    className="flex items-center gap-3 p-1.5 rounded-xl hover:bg-cyan-500/10 cursor-pointer transition group"
+                  >
+                    <CoverImage src={track.cover_url} alt={track.title} className="w-9 h-9 rounded-lg flex-shrink-0 object-cover" />
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-xs font-semibold text-white truncate group-hover:text-cyan-300">{track.title}</h4>
+                      <p className="text-[10px] text-neutral-400 truncate">{track.artist}</p>
                     </div>
                   </div>
-                </div>
-                <h3 className="font-bold text-white text-sm mb-0.5 truncate">{album.title}</h3>
-                <p className="text-xs text-neutral-400 line-clamp-1">{album.description}</p>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MadeForYouSection() {
-  const playHistory = usePlayerStore(s => s.playHistory);
-  const playTrack = usePlayerStore(s => s.playTrack);
-  const [recommendations, setRecommendations] = useState<Track[]>([]);
-  const [seedTrack, setSeedTrack] = useState<Track | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    if (playHistory.length > 0) {
-      const seed = playHistory[0];
-      setSeedTrack(seed);
-      setLoading(true);
-      libraryService.getRecommendations(seed.artist)
-        .then(tracks => { setRecommendations(tracks); setLoading(false); })
-        .catch(() => setLoading(false));
-    }
-  }, [playHistory.length > 0 ? playHistory[0]?.id : null]);
-
-  if (playHistory.length === 0) return null;
-  if (!loading && recommendations.length === 0) return null;
-
-  return (
-    <div className="mb-8 animate-in">
-      <div className="flex items-center gap-2 mb-2">
-        <Music2 className="w-5 h-5 text-green-500" />
-        <h2 className="text-2xl font-bold">Made For You</h2>
-      </div>
-      <p className="text-sm text-neutral-400 mb-4">
-        {seedTrack ? <>Because you listened to <span className="text-white font-medium">{seedTrack.artist}</span></> : "Recommended for you"}
-      </p>
-      {loading ? (
-        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-            <div key={i} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
-              <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
-              <Skeleton className="h-4 w-3/4 animate-pulse" />
-              <Skeleton className="h-3 w-1/2 animate-pulse" />
             </div>
-          ))}
+          )}
+
         </div>
-      ) : (
-        <div className="grid grid-cols-3 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {recommendations.slice(0, 16).map((track, i) => (
-            <div key={i} onClick={() => { playTrack(track, recommendations); }}
-              className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer relative h-full flex flex-col border border-white/5">
-              <div className="relative mb-3">
-                <CoverImage src={track.cover_url} alt={track.title} className="w-full aspect-square rounded-xl shadow-lg" fallbackText={track.title?.substring(0, 2).toUpperCase()} />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-xl flex items-center justify-center">
-                  <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                    <Play className="fill-current text-black ml-0.5 w-5 h-5" />
-                  </div>
-                </div>
-              </div>
-              <h3 className="font-bold text-white text-sm mb-0.5 truncate">{track.title}</h3>
-              <p className="text-xs text-neutral-400 line-clamp-2">{track.artist}</p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
-function ArtistSpotlightSection() {
-  const playHistory = usePlayerStore(s => s.playHistory);
-  const [artists, setArtists] = useState<string[]>([]);
-  const [artistPhotos, setArtistPhotos] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState(true);
-
-  const POPULAR_ARTISTS = [
-    "Sơn Tùng M-TP", "HIEUTHUHAI", "Đen Vâu", "Hoàng Dũng",
-    "Vũ.", "MONO", "Tlinh", "Erik", "Binz", "JustaTee",
-    "Rhymastic", "Low G", "MCK", "Min", "Amee", "Karik",
-    "Suboi", "Bích Phương", "Trúc Nhân", "Đức Phúc"
-  ];
-
-  useEffect(() => {
-    const deriveArtists = () => {
-      const historyArtists = new Set<string>();
-      playHistory.forEach(track => { if (track.artist) historyArtists.add(track.artist); });
-      const recent = Array.from(historyArtists).slice(0, 5);
-      const needed = 20 - recent.length;
-      const available = POPULAR_ARTISTS.filter(a => !historyArtists.has(a));
-      const shuffled = available.sort(() => 0.5 - Math.random()).slice(0, needed);
-      return [...recent, ...shuffled];
-    };
-
-    const targetArtists = deriveArtists();
-    setArtists(targetArtists);
-
-    const loadPhotos = async () => {
-      const cacheKey = 'artist_photos_cache_v7';
-      const cached = JSON.parse(localStorage.getItem(cacheKey) || '{}');
-      setArtistPhotos(cached);
-      const missing = targetArtists.filter(name => !cached[name]);
-
-      if (missing.length > 0) {
-        const results = await Promise.all(missing.map(async (name) => {
-          try { const data = await libraryService.getArtistInfo(name); if (data.photo) return { name, photo: data.photo, isPlaceholder: data.isPlaceholder }; } catch { }
-          return null;
-        }));
-        const updates: Record<string, string> = {};
-        const cacheUpdates: Record<string, string> = {};
-        results.forEach(r => { if (r) { updates[r.name] = r.photo; if (!r.isPlaceholder) cacheUpdates[r.name] = r.photo; } });
-        if (Object.keys(updates).length > 0) {
-          setArtistPhotos(prev => {
-            const next = { ...prev, ...updates };
-            const nextCache = { ...prev, ...cacheUpdates };
-            localStorage.setItem(cacheKey, JSON.stringify(nextCache));
-            return next;
-          });
-        }
-      }
-      setLoading(false);
-    };
-
-    loadPhotos();
-  }, [playHistory.length]);
-
-  return (
-    <div className="mb-8 animate-in">
-      <div className="flex items-center gap-2 mb-4">
-        <User className="w-5 h-5 text-green-500" />
-        <h2 className="text-2xl font-bold">Suggested Artists</h2>
-      </div>
-      <p className="text-sm text-neutral-400 mb-4">Based on your recent listening</p>
-      <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
-        {loading ? (
-          [1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="flex-shrink-0 w-36 text-center space-y-3">
-              <Skeleton className="w-36 h-36 rounded-full animate-pulse" />
-              <Skeleton className="h-4 w-3/4 mx-auto animate-pulse" />
-            </div>
-          ))
-        ) : (
-          artists.map((name, i) => (
-            <Link to={`/artist/${encodeURIComponent(name)}`} key={i} className="flex-shrink-0 w-36 text-center group cursor-pointer">
-              <div className="relative mb-3">
-                <CoverImage src={artistPhotos[name]} alt={name} className="w-36 h-36 rounded-full shadow-lg group-hover:shadow-xl transition object-cover" fallbackText={name.substring(0, 2).toUpperCase()} />
-                <div className="absolute inset-0 bg-black/45 opacity-0 group-hover:opacity-100 transition rounded-full flex items-center justify-center">
-                  <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                    <Play className="fill-current text-black ml-0.5 w-5 h-5" />
-                  </div>
-                </div>
-              </div>
-              <h3 className="font-bold text-white text-sm truncate px-2">{name}</h3>
-              <p className="text-xs text-neutral-400">Artist</p>
-            </Link>
-          ))
-        )}
       </div>
     </div>
   );
 }
 
-function ChartSection({ title, icon, chartType }: { title: string; icon: React.ReactNode; chartType: string }) {
-  const playTrack = usePlayerStore(s => s.playTrack);
+// Subcomponent for New Releases tabbed song list
+function NewReleasesGrid({ filter, onPlayTrack }: { filter: 'all' | 'vn' | 'us'; onPlayTrack: (t: Track, list: Track[]) => void }) {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const fetchCharts = async () => {
+    const fetchNewReleases = async () => {
+      setLoading(true);
       try {
-        const results = await libraryService.getCharts(chartType);
-        if (results && results.length > 0) setTracks(results.slice(0, 24));
-      } catch (err) { console.error(err); }
+        const type = filter === 'vn' ? 'trending' : filter === 'us' ? 'top-hits' : 'hits-collection';
+        const res = await libraryService.getCharts(type);
+        if (res && res.length > 0) {
+          setTracks(res.slice(0, 12));
+        }
+      } catch (e) {
+        console.error("New releases load error", e);
+      }
       setLoading(false);
     };
-    fetchCharts();
-  }, [chartType]);
+    fetchNewReleases();
+  }, [filter]);
 
-  if (loading && tracks.length === 0) return null;
-  if (!loading && tracks.length === 0) return null;
+  if (loading) {
+    return (
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <Skeleton key={i} className="h-16 w-full rounded-2xl" />
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <div className="mb-8 animate-in">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-2">
-          {icon}
-          <h2 className="text-xl font-bold text-white">{title}</h2>
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+      {tracks.map((track, i) => (
+        <div
+          key={track.id || i}
+          onClick={() => onPlayTrack(track, tracks)}
+          className="bg-[#142044]/60 hover:bg-[#1c2c5b] border border-cyan-500/10 p-2.5 rounded-2xl flex items-center gap-3 transition cursor-pointer group shadow-sm"
+        >
+          <div className="relative w-12 h-12 rounded-xl overflow-hidden flex-shrink-0">
+            <CoverImage src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+              <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+            </div>
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <h4 className="font-bold text-white text-xs md:text-sm truncate group-hover:text-cyan-300 transition">
+              {track.title}
+            </h4>
+            <p className="text-[11px] text-neutral-400 truncate mt-0.5">
+              {track.artist}
+            </p>
+          </div>
+
+          <div className="p-1.5 rounded-full text-neutral-400 group-hover:text-cyan-400 transition">
+            <Volume2 className="w-4 h-4 opacity-0 group-hover:opacity-100 transition" />
+          </div>
         </div>
-        <Link to={`/charts?chart_type=${chartType}`}>
-          <span className="text-xs font-bold text-neutral-400 uppercase tracking-wider cursor-pointer hover:text-white">See all</span>
-        </Link>
+      ))}
+    </div>
+  );
+}
+
+// Subcomponent for Artist Spotlight Carousel
+function ArtistSpotlightSection() {
+  const [artists, setArtists] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<Record<string, string>>({});
+
+  const POPULAR_ARTISTS = [
+    "Sơn Tùng M-TP", "HIEUTHUHAI", "Đen Vâu", "Hoàng Dũng",
+    "Vũ.", "MONO", "Tlinh", "Erik", "Binz", "JustaTee",
+    "MCK", "Min", "Amee", "Karik", "Suboi", "Bích Phương"
+  ];
+
+  useEffect(() => {
+    setArtists(POPULAR_ARTISTS);
+    Promise.all(POPULAR_ARTISTS.slice(0, 10).map(async (name) => {
+      try {
+        const data = await libraryService.getArtistInfo(name);
+        const photoUrl = data.photo;
+        if (photoUrl) {
+          setPhotos(prev => ({ ...prev, [name]: photoUrl }));
+        }
+      } catch {}
+    }));
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between border-b border-cyan-500/10 pb-2">
+        <h2 className="text-xl font-extrabold text-white uppercase tracking-wider flex items-center gap-2">
+          <span className="w-1.5 h-5 bg-cyan-400 rounded-full" />
+          CA SĨ NỔI BẬT
+        </h2>
       </div>
-      {loading ? (
-        <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
-          {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
-            <div key={i} className="flex-shrink-0 w-36 space-y-3">
-              <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
-              <Skeleton className="h-4 w-3/4 animate-pulse" />
-              <Skeleton className="h-3 w-1/2 animate-pulse" />
+
+      <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
+        {artists.map((name, i) => (
+          <Link to={`/artist/${encodeURIComponent(name)}`} key={i} className="flex-shrink-0 w-28 text-center group cursor-pointer">
+            <div className="relative mb-2 w-28 h-28 mx-auto">
+              <CoverImage 
+                src={photos[name]} 
+                alt={name} 
+                className="w-full h-full rounded-full shadow-lg group-hover:scale-105 transition object-cover border-2 border-cyan-500/20 group-hover:border-cyan-400" 
+                fallbackText={name.substring(0, 2).toUpperCase()} 
+              />
             </div>
-          ))}
-        </div>
-      ) : (
-        <div className="flex gap-3 overflow-x-auto pb-4 no-scrollbar">
-          {tracks.map((track, idx) => (
-            <div key={track.id} onClick={() => playTrack(track, tracks)}
-              className="flex-shrink-0 w-36 bg-[#1f1f1f]/30 p-2 rounded-xl hover:bg-[#1f1f1f]/85 transition group cursor-pointer border border-white/5">
-              <div className="relative mb-2">
-                <div className="absolute top-1 left-1 z-10 w-6 h-6 bg-black/70 rounded-full flex items-center justify-center">
-                  <span className="text-[10px] font-bold text-white">{(idx + 1).toString().padStart(2, '0')}</span>
-                </div>
-                <CoverImage src={track.cover_url} alt={track.title} className="w-full aspect-square rounded-lg shadow-lg" />
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition rounded-lg flex items-center justify-center">
-                  <div className="w-10 h-10 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                    <Play className="fill-current text-black ml-0.5 w-4 h-4" />
-                  </div>
-                </div>
-              </div>
-              <h4 className="font-bold text-white text-xs truncate">{track.title}</h4>
-              <p className="text-[10px] text-neutral-400 truncate">{track.artist}</p>
-            </div>
-          ))}
-        </div>
-      )}
+            <h3 className="font-bold text-white text-xs truncate px-1 group-hover:text-cyan-300 transition">{name}</h3>
+            <p className="text-[10px] text-neutral-400">Ca sĩ</p>
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }

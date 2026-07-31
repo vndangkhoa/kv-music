@@ -75,24 +75,38 @@ export default function NowPlayingBar() {
   if (!isNowPlayingOpen) return null;
   if (!currentTrack) {
     return (
-      <aside className="hidden lg:flex w-[340px] xl:w-[380px] h-full bg-[#121212] border-l border-white/[0.06] flex-col flex-shrink-0 items-center justify-center">
-        <div className="text-center p-8">
-          <div className="w-24 h-24 rounded-full bg-white/5 mx-auto mb-4 flex items-center justify-center">
-            <ListMusic className="w-10 h-10 text-neutral-600" />
+      <aside className="hidden lg:flex w-[340px] xl:w-[380px] h-full bg-[#0f1938] border-l border-cyan-500/15 flex-col flex-shrink-0 select-none overflow-hidden">
+        <div className="p-4 border-b border-cyan-500/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-cyan-400" />
+            <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">GỢI Ý PHÁT NHẠC</h3>
           </div>
-          <p className="text-neutral-500 text-sm font-medium">Select a song to play</p>
-          <p className="text-neutral-600 text-xs mt-1">Pick something from your library</p>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+            AUTO
+          </span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-4 no-scrollbar">
+          <div className="p-4 rounded-2xl bg-gradient-to-br from-[#142044] to-[#1c2c5b] border border-cyan-500/20 text-center shadow-lg">
+            <div className="w-16 h-16 rounded-full bg-gradient-to-tr from-[#00a8ff] to-[#00d2d3] mx-auto mb-3 flex items-center justify-center shadow-lg shadow-cyan-500/20">
+              <Play className="w-7 h-7 text-white fill-white ml-1" />
+            </div>
+            <h4 className="text-sm font-extrabold text-white">Bắt Đầu Trải Nghiệm</h4>
+            <p className="text-xs text-neutral-400 mt-1">Chọn bất kỳ bài hát nào để thưởng thức âm nhạc chất lượng cao trên kv-music.</p>
+          </div>
+
+          <IdleTrendingWidget onPlayTrack={(track, list) => playTrack(track, list)} />
         </div>
       </aside>
     );
   }
 
   return (
-    <aside className="hidden lg:flex w-[340px] xl:w-[380px] h-full bg-[#121212] border-l border-white/[0.06] flex-col flex-shrink-0 select-none">
+    <aside className="hidden lg:flex w-[340px] xl:w-[380px] h-full bg-[#0f1938] border-l border-cyan-500/10 flex-col flex-shrink-0 select-none">
       {/* Player Section */}
-      <div className="p-4 border-b border-white/[0.06]">
+      <div className="p-4 border-b border-cyan-500/10">
         {showVideo ? (
-          <div className="mb-4 rounded-xl overflow-hidden">
+          <div className="mb-4 rounded-xl overflow-hidden shadow-lg border border-cyan-500/20">
             <VideoPlayer
               videoId={currentTrack.id}
               isPlaying={isPlaying}
@@ -106,11 +120,16 @@ export default function NowPlayingBar() {
             />
           </div>
         ) : (
-          <CoverImage src={currentTrack.cover_url} alt={currentTrack.title} className="w-40 h-40 mx-auto rounded-xl object-cover shadow-lg mb-4" />
+          <div className="relative mb-4 group">
+            <CoverImage src={currentTrack.cover_url} alt={currentTrack.title} className="w-44 h-44 mx-auto rounded-2xl object-cover shadow-2xl border-2 border-cyan-500/20 group-hover:scale-105 transition duration-300" />
+            <div className="absolute top-2 right-6 px-2 py-0.5 rounded bg-gradient-to-r from-cyan-500 to-blue-600 text-white font-extrabold text-[10px] shadow uppercase tracking-wider">
+              Lossless 320k
+            </div>
+          </div>
         )}
-        <div className="mb-1">
-          <h3 className="font-bold text-white text-base truncate">{currentTrack.title}</h3>
-          <p className="text-sm text-neutral-400 truncate">{currentTrack.artist}</p>
+        <div className="mb-2 text-center">
+          <h3 className="font-extrabold text-white text-base truncate">{currentTrack.title}</h3>
+          <p className="text-xs font-medium text-cyan-400/80 truncate mt-0.5">{currentTrack.artist}</p>
         </div>
 
         <ProgressBar
@@ -118,9 +137,9 @@ export default function NowPlayingBar() {
           duration={duration}
           onSeek={(time) => { seekTo(time); }}
           className="w-full h-1.5 mb-2"
-          barClassName="bg-white/10"
+          barClassName="bg-gradient-to-r from-[#00a8ff] to-[#00d2d3]"
         />
-        <div className="flex justify-between text-[10px] text-neutral-500 font-mono mb-3">
+        <div className="flex justify-between text-[10px] text-cyan-300/70 font-mono mb-3">
           <span>{Math.floor(progress / 60)}:{Math.floor(progress % 60).toString().padStart(2, '0')}</span>
           <span>{Math.floor(duration / 60)}:{Math.floor(duration % 60).toString().padStart(2, '0')}</span>
         </div>
@@ -140,8 +159,8 @@ export default function NowPlayingBar() {
         />
 
         {/* Volume */}
-        <div className="flex items-center gap-2 mt-3">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-neutral-400">
+        <div className="flex items-center gap-2 mt-3 px-2">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-cyan-400">
             <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
             <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
           </svg>
@@ -152,37 +171,37 @@ export default function NowPlayingBar() {
             step={0.01}
             value={volume}
             onChange={(e) => setVolume(parseFloat(e.target.value))}
-            className="flex-1 h-1 bg-white/10 rounded-lg appearance-none cursor-pointer accent-white"
+            className="flex-1 h-1 bg-cyan-950 rounded-lg appearance-none cursor-pointer accent-cyan-400"
           />
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center justify-center gap-2 mt-3">
+        <div className="flex items-center justify-center gap-3 mt-4">
           <button
             onClick={handleToggleVideo}
-            className={`p-2 rounded-full hover:bg-white/5 transition ${showVideo ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
+            className={`p-2 rounded-xl transition border border-cyan-500/10 ${showVideo ? 'bg-cyan-500/20 text-cyan-400' : 'text-neutral-400 hover:text-white hover:bg-cyan-500/10'}`}
             title="Video"
           >
             <Video className="w-4 h-4" />
           </button>
           <button
             onClick={toggleLyrics}
-            className={`p-2 rounded-full hover:bg-white/5 transition ${isLyricsOpen ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
+            className={`p-2 rounded-xl transition border border-cyan-500/10 ${isLyricsOpen ? 'bg-cyan-500/20 text-cyan-400' : 'text-neutral-400 hover:text-white hover:bg-cyan-500/10'}`}
             title="Lyrics"
           >
             <Mic2 className="w-4 h-4" />
           </button>
           <button
             onClick={() => usePlayerStore.getState().toggleRightPanel('queue')}
-            className={`p-2 rounded-full hover:bg-white/5 transition ${isRightPanelOpen && rightPanelTab === 'queue' ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
-            title="Queue"
+            className={`p-2 rounded-xl transition border border-cyan-500/10 ${isRightPanelOpen && rightPanelTab === 'queue' ? 'bg-cyan-500/20 text-cyan-400' : 'text-neutral-400 hover:text-white hover:bg-cyan-500/10'}`}
+            title="Danh sách phát"
           >
             <ListMusic className="w-4 h-4" />
           </button>
           <button
             onClick={() => usePlayerStore.getState().toggleRightPanel('related')}
-            className={`p-2 rounded-full hover:bg-white/5 transition ${isRightPanelOpen && rightPanelTab === 'related' ? 'text-green-500' : 'text-neutral-400 hover:text-white'}`}
-            title="Related"
+            className={`p-2 rounded-xl transition border border-cyan-500/10 ${isRightPanelOpen && rightPanelTab === 'related' ? 'bg-cyan-500/20 text-cyan-400' : 'text-neutral-400 hover:text-white hover:bg-cyan-500/10'}`}
+            title="Gợi ý"
           >
             <Sparkles className="w-4 h-4" />
           </button>
@@ -353,5 +372,61 @@ export default function NowPlayingBar() {
         </div>
       )}
     </aside>
+  );
+}
+
+function IdleTrendingWidget({ onPlayTrack }: { onPlayTrack: (track: Track, list: Track[]) => void }) {
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    libraryService.getCharts('trending')
+      .then(res => {
+        if (res && res.length > 0) setTracks(res.slice(0, 20));
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="space-y-2">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="h-12 bg-cyan-500/10 rounded-xl animate-pulse" />
+        ))}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between mb-2">
+        <h5 className="text-xs font-extrabold text-cyan-400 uppercase tracking-wider">BÀI HÁT HOT NỔI BẬT</h5>
+        <span className="text-[10px] text-cyan-300/70 font-semibold">{tracks.length} bài</span>
+      </div>
+      <div className="flex flex-col gap-2 max-h-[580px] overflow-y-auto pr-1 no-scrollbar">
+        {tracks.map((track, idx) => (
+          <div
+            key={track.id || idx}
+            onClick={() => onPlayTrack(track, tracks)}
+            className="flex items-center gap-3 p-2 rounded-xl bg-[#142044]/80 hover:bg-[#1c2c5b] border border-cyan-500/10 cursor-pointer group transition hover:scale-[1.01]"
+          >
+            <div className="w-6 text-center font-extrabold text-xs text-cyan-400/80 flex-shrink-0">
+              {idx + 1}
+            </div>
+            <div className="relative w-10 h-10 rounded-lg overflow-hidden flex-shrink-0 shadow-sm">
+              <CoverImage src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                <Play className="w-4 h-4 text-white fill-white ml-0.5" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
+              <h6 className="text-xs font-bold text-white truncate group-hover:text-cyan-300 transition">{track.title}</h6>
+              <p className="text-[10px] text-neutral-400 truncate">{track.artist}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }

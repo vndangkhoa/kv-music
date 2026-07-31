@@ -83,7 +83,7 @@ export const usePlayerStore = create<PlayerState>()(
       recentSearches: [],
       isVideoMode: false,
 
-      playTrack: (track, newQueue, openFullPlayer = true) => {
+      playTrack: (track, newQueue, openFullPlayer = false) => {
         const state = get();
         if (state.currentTrack?.id !== track.id) {
           set({ isBuffering: true });
@@ -91,7 +91,6 @@ export const usePlayerStore = create<PlayerState>()(
           const playHistory = [track, ...filtered].slice(0, 20);
           set({ playHistory });
         }
-        const isFullScreen = openFullPlayer === true || (openFullPlayer !== false && state.isFullScreenOpen);
         const updates: Partial<PlayerState> = {
           currentTrack: {
             ...track,
@@ -101,7 +100,7 @@ export const usePlayerStore = create<PlayerState>()(
           },
           isPlaying: true,
           isRightPanelOpen: true,
-          isFullScreenOpen: isFullScreen,
+          isFullScreenOpen: openFullPlayer === true,
         };
         if (newQueue) {
           const index = newQueue.findIndex(t => t.id === track.id);

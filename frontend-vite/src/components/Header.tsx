@@ -89,55 +89,84 @@ export default function Header() {
 
   return (
     <>
-      <header className="h-14 md:h-16 bg-[#0f0f0f] border-b border-white/5 flex items-center justify-between px-3 md:px-6 z-[60] relative select-none">
-        <div className="flex items-center gap-2 md:gap-4">
-          <button onClick={toggleSidebar} className="p-2 hover:bg-white/10 rounded-lg transition hidden fold:flex" aria-label="Toggle sidebar">
-            <Menu className="w-5 h-5 text-neutral-300" />
-          </button>
-          <Link to="/" className="hover:opacity-95 active:scale-95 transition">
-            <Logo />
-          </Link>
-        </div>
-
-        <form onSubmit={handleFormSubmit} className="flex-1 max-w-[480px] mx-4 relative">
-          <div className="relative flex items-center w-full bg-[#212121] hover:bg-[#2b2b2b] focus-within:bg-[#2b2b2b] rounded-full border border-transparent focus-within:border-neutral-700 transition duration-200">
-            <Search className="absolute left-4 w-4 h-4 text-neutral-400 pointer-events-none" />
-            <input type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Search songs, albums, artists"
-              className="w-full pl-11 pr-4 py-2 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
+      <header className="bg-[#0f1938]/95 backdrop-blur-md border-b border-cyan-500/20 flex flex-col z-[60] relative select-none sticky top-0 shadow-lg shadow-black/20">
+        {/* Top Navbar */}
+        <div className="h-14 md:h-16 flex items-center justify-between px-3 md:px-6">
+          <div className="flex items-center gap-2 md:gap-4">
+            <button onClick={toggleSidebar} className="p-2 hover:bg-cyan-500/10 rounded-xl text-neutral-300 hover:text-cyan-400 transition hidden fold:flex" aria-label="Toggle sidebar">
+              <Menu className="w-5 h-5" />
+            </button>
+            <Link to="/" className="hover:opacity-95 active:scale-95 transition">
+              <Logo />
+            </Link>
           </div>
-        </form>
 
-        <div className="flex items-center gap-3 md:gap-4 text-neutral-300">
-          <button onClick={toggleNowPlaying} className="hover:text-white active:scale-95 transition p-1 hidden lg:block" title="Toggle player panel">
-            {isNowPlayingOpen ? <PanelRightClose className="w-5 h-5" /> : <PanelRightOpen className="w-5 h-5" />}
-          </button>
+          <form onSubmit={handleFormSubmit} className="flex-1 max-w-[540px] mx-3 md:mx-6 relative">
+            <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
+              <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
+              <input type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Tìm bài hát, ca sĩ, album, lyric..."
+                className="w-full pl-11 pr-24 py-2 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
+              <button type="submit" className="absolute right-1.5 px-3 py-1 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white text-xs font-semibold rounded-full shadow transition">
+                Tìm kiếm
+              </button>
+            </div>
+          </form>
 
-          <button onClick={() => setIsSettingsOpen(true)} className="hover:text-white active:scale-95 transition p-1">
-            <Settings className="w-5 h-5" />
-          </button>
-
-          <div className="relative" ref={dropdownRef}>
-            <button onClick={handleAvatarClick}
-              className="w-8 h-8 rounded-full text-white font-extrabold flex items-center justify-center text-sm shadow-md cursor-pointer border border-white/10 hover:scale-105 active:scale-95 transition select-none"
-              style={{ background: avatarGradient }}>
-              {isLoggedIn ? displayLetter : '?'}
+          <div className="flex items-center gap-2 md:gap-3 text-neutral-300">
+            <button onClick={toggleNowPlaying} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10 hidden lg:block" title="Toggle player panel">
+              {isNowPlayingOpen ? <PanelRightClose className="w-5 h-5 text-cyan-400" /> : <PanelRightOpen className="w-5 h-5" />}
             </button>
 
-            {isLoggedIn && isDropdownOpen && (
-              <div className="absolute right-0 top-10 w-48 bg-[#282828] border border-white/10 rounded-xl shadow-2xl py-1 z-[70] animate-in fade-in slide-in-from-top-2 duration-150">
-                <div className="px-4 py-3 border-b border-white/5">
-                  <p className="text-sm font-bold text-white truncate">{user?.name}</p>
-                  <p className="text-[10px] text-neutral-400">Local Profile</p>
+            <button onClick={() => setIsSettingsOpen(true)} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10">
+              <Settings className="w-5 h-5" />
+            </button>
+
+            <div className="relative" ref={dropdownRef}>
+              <button onClick={handleAvatarClick}
+                className="w-9 h-9 rounded-full text-white font-extrabold flex items-center justify-center text-sm shadow-md cursor-pointer border border-cyan-400/30 hover:scale-105 active:scale-95 transition select-none shadow-cyan-500/20"
+                style={{ background: avatarGradient }}>
+                {isLoggedIn ? displayLetter : '?'}
+              </button>
+
+              {isLoggedIn && isDropdownOpen && (
+                <div className="absolute right-0 top-11 w-48 bg-[#142044] border border-cyan-500/20 rounded-xl shadow-2xl py-1 z-[70] animate-in fade-in slide-in-from-top-2 duration-150">
+                  <div className="px-4 py-3 border-b border-cyan-500/10">
+                    <p className="text-sm font-bold text-white truncate">{user?.name}</p>
+                    <p className="text-[10px] text-cyan-400 font-medium uppercase tracking-wider">Thành viên VIP</p>
+                  </div>
+                  <button onClick={handleLogout}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:text-white hover:bg-cyan-500/10 transition">
+                    <LogOut className="w-4 h-4 text-red-400" />
+                    <span>Đăng Xuất</span>
+                  </button>
                 </div>
-                <button onClick={handleLogout}
-                  className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:text-white hover:bg-white/5 transition">
-                  <LogOut className="w-4 h-4" />
-                  <span>Log Out</span>
-                </button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
+        </div>
+
+        {/* Sub-Navigation Category Bar (NCT Header Menu) */}
+        <div className="hidden fold:flex items-center gap-1 md:gap-6 px-4 md:px-8 py-1.5 border-t border-cyan-500/10 text-xs md:text-sm font-bold text-neutral-300 overflow-x-auto no-scrollbar">
+          <Link to="/" className="text-cyan-400 hover:text-white transition py-1 border-b-2 border-cyan-400 px-1">
+            BÀI HÁT
+          </Link>
+          <Link to="/library" className="hover:text-cyan-400 transition py-1 px-1">
+            PLAYLIST
+          </Link>
+          <Link to="/charts" className="hover:text-cyan-400 transition py-1 px-1 flex items-center gap-1">
+            <span>BXH REALTIME</span>
+            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
+          </Link>
+          <Link to="/search?q=Chul%20De" className="hover:text-cyan-400 transition py-1 px-1">
+            CHỦ ĐỀ
+          </Link>
+          <Link to="/charts?chart_type=top-hits" className="hover:text-cyan-400 transition py-1 px-1">
+            TOP 100
+          </Link>
+          <Link to="/search?q=Artist" className="hover:text-cyan-400 transition py-1 px-1">
+            ARTISTS
+          </Link>
         </div>
       </header>
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />

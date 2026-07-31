@@ -672,6 +672,17 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
     },
 
     async getCharts(chartType: string): Promise<Track[]> {
+        const fallbackQueries: Record<string, string[]> = {
+            'vn': ['V-Pop 2024', 'Nhạc Trẻ HOT', 'Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'SOOBIN'],
+            'us': ['US UK Top Hits 2024', 'Taylor Swift hits', 'The Weeknd hits', 'Bruno Mars hits', 'Billboard Hot 100'],
+            'kr': ['K-Pop Top Hits 2024', 'NewJeans hits', 'BLACKPINK hits', 'BTS hits', 'AESPA hits'],
+            'cn': ['C-Pop Top Hits', 'Nhạc Hoa Lời Việt', 'Jay Chou hits', 'Eric Chou hits'],
+            'top-hits': ['US UK Top Hits 2024', 'Taylor Swift hits', 'The Weeknd hits'],
+            'trending': ['V-Pop 2024', 'Nhạc Trẻ HOT', 'Son Tung M-TP'],
+            'top-albums': ['V-Pop Albums', 'US-UK Albums', 'K-Pop Albums'],
+            'hits-collection': ['Billboard Hot 100', 'Global Top Hits']
+        };
+
         try {
             const data = await apiFetch(`/charts?chart_type=${encodeURIComponent(chartType)}`);
             if (data?.tracks && data.tracks.length > 0) {
@@ -684,15 +695,7 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
             console.error(`Failed to fetch ${chartType} charts:`, e);
         }
         
-        // Fallback to search-based results using artist names
-        const fallbackQueries: Record<string, string[]> = {
-            'top-hits': ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'MONO', 'Binz'],
-            'trending': ['Rap Viet', 'V-Pop', 'Nhạc trẻ', 'Amee', 'Erik'],
-            'top-albums': ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'Hoang Dung', 'Vũ'],
-            'hits-collection': ['Nhạc Việt hay nhất', 'Vietnamese hits', 'V-Pop hits', 'Nhạc Trẻ']
-        };
-        
-        const queries = fallbackQueries[chartType] || ['Son Tung M-TP'];
+        const queries = fallbackQueries[chartType] || fallbackQueries['vn'];
         const allTracks: Track[] = [];
         const seenIds = new Set<string>();
         

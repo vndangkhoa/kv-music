@@ -3,38 +3,55 @@
 @tailwind utilities;
 
 :root {
-    --background: #030303;
+    --background: #0b1329;
     --foreground: #FFFFFF;
 
-    /* YouTube Music Theme */
-    --spotify-base: #030303;
-    --spotify-sidebar: #0f0f0f;
-    --spotify-player: #0f0f0f;
-    --spotify-highlight: #FF0000;
-    --spotify-hover: rgba(255, 255, 255, 0.1);
+    /* NhạcCủaTui Theme */
+    --spotify-base: #0b132d;
+    --spotify-sidebar: #0f1938;
+    --spotify-player: #0f1938;
+    --spotify-highlight: #00a8ff;
+    --spotify-hover: rgba(0, 168, 255, 0.12);
     --spotify-text-main: #FFFFFF;
-    --spotify-text-muted: #AAAAAA;
-    --spotify-card: #0f0f0f;
-    --spotify-card-hover: #212121;
-    --font-family: 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --spotify-text-muted: #94a3b8;
+    --spotify-card: #142044;
+    --spotify-card-hover: #1c2c5b;
+
+    /* NCT Specific Accents */
+    --nct-cyan: #00a8ff;
+    --nct-teal: #00d2d3;
+    --nct-blue: #2e86de;
+    --nct-gold: #ff9f43;
+    --nct-purple: #9b59b6;
+    --nct-dark-card: #142044;
+    --nct-dark-card-hover: #1e2e60;
+    --font-family: 'Inter', 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 :root[data-theme='apple'] {
-    /* YouTube Music Pitch Black Theme */
-    --background: #000000;
+    /* Pitch Black NCT Night Mode */
+    --background: #060913;
     --foreground: #FFFFFF;
 
-    --spotify-base: #000000;
-    --spotify-sidebar: #080808;
-    --spotify-player: #080808;
-    --spotify-highlight: #FF0000;
-    --spotify-hover: rgba(255, 255, 255, 0.12);
+    --spotify-base: #060913;
+    --spotify-sidebar: #0b1021;
+    --spotify-player: #0b1021;
+    --spotify-highlight: #00a8ff;
+    --spotify-hover: rgba(0, 168, 255, 0.15);
     --spotify-text-main: #FFFFFF;
-    --spotify-text-muted: #909090;
-    --spotify-card: #0c0c0c;
-    --spotify-card-hover: #1f1f1f;
+    --spotify-text-muted: #64748b;
+    --spotify-card: #0f172a;
+    --spotify-card-hover: #1e293b;
 
-    --font-family: 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    --nct-cyan: #00a8ff;
+    --nct-teal: #00d2d3;
+    --nct-blue: #2e86de;
+    --nct-gold: #ff9f43;
+    --nct-purple: #9b59b6;
+    --nct-dark-card: #0f172a;
+    --nct-dark-card-hover: #1e293b;
+
+    --font-family: 'Inter', 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
 
 @layer utilities {

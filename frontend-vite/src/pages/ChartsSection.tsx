@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star, Loader2 } from 'lucide-react';
+import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star, Loader2, Music, Volume2 } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
 import CoverImage from '../components/CoverImage';
@@ -9,60 +9,24 @@ import type { Track } from '../types';
 
 const CHART_CONFIG: Record<string, { title: string; icon: React.ReactNode; queries: string[] }> = {
     'top-hits': { 
-        title: 'Top Hits', 
-        icon: <Flame className="w-6 h-6 text-orange-500" />,
-        queries: [
-            'Son Tung M-TP', 
-            'HIEUTHUHAI', 
-            'Den Vau', 
-            'MONO',
-            'Binz',
-            'Tlinh',
-            'JustaTee',
-            'Hoang Dung'
-        ]
+        title: 'BXH REALTIME BÀI HÁT HOT', 
+        icon: <Flame className="w-6 h-6 text-cyan-400 fill-cyan-400" />,
+        queries: ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'MONO', 'Binz', 'Tlinh', 'JustaTee', 'Hoang Dung']
     },
     'trending': { 
-        title: 'Trending Now', 
-        icon: <TrendingUp className="w-6 h-6 text-green-500" />,
-        queries: [
-            'Rap Viet', 
-            'V-Pop 2024', 
-            'Nhạc trẻ', 
-            'Amee',
-            'Erik',
-            'Viral TikTok Vietnam',
-            'Low G',
-            'MCK'
-        ]
+        title: 'BXH NHẠC TRẺ VIỆT NAM', 
+        icon: <TrendingUp className="w-6 h-6 text-[#00d2d3]" />,
+        queries: ['Rap Viet', 'V-Pop 2024', 'Nhạc trẻ', 'Amee', 'Erik', 'Viral TikTok Vietnam', 'Low G', 'MCK']
     },
     'top-albums': { 
-        title: 'Top Albums', 
-        icon: <Disc className="w-6 h-6 text-blue-500" />,
-        queries: [
-            'Son Tung M-TP', 
-            'HIEUTHUHAI', 
-            'Den Vau', 
-            'Hoang Dung',
-            'Vũ',
-            'MONO',
-            'Tlinh',
-            'Binz'
-        ]
+        title: 'BXH ALBUM / PLAYLIST HOT', 
+        icon: <Disc className="w-6 h-6 text-blue-400" />,
+        queries: ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'Hoang Dung', 'Vũ', 'MONO', 'Tlinh', 'Binz']
     },
     'hits-collection': { 
-        title: 'Hits Collection', 
-        icon: <Star className="w-6 h-6 text-yellow-500" />,
-        queries: [
-            'Nhạc Việt hay nhất', 
-            'Vietnamese hits', 
-            'V-Pop hits',
-            'Nhạc Trẻ',
-            'Top nhạc Việt',
-            'Vietnamese pop hits',
-            'Best of Vietnamese music',
-            'Vietnamese classic hits'
-        ]
+        title: 'BXH ÂU MỸ & QUỐC TẾ', 
+        icon: <Star className="w-6 h-6 text-amber-400 fill-amber-400" />,
+        queries: ['Nhạc Việt hay nhất', 'Vietnamese hits', 'V-Pop hits', 'Nhạc Trẻ', 'Top nhạc Việt']
     },
 };
 
@@ -92,7 +56,6 @@ export default function ChartsSection() {
 
     const loadMore = useCallback(async () => {
         if (loadingMore || currentQueryIndex >= config.queries.length - 1) return;
-        
         setLoadingMore(true);
         const nextQuery = config.queries[currentQueryIndex + 1];
         
@@ -107,111 +70,115 @@ export default function ChartsSection() {
         } catch (err) {
             console.error('Failed to load more:', err);
         }
-        
         setLoadingMore(false);
     }, [loadingMore, currentQueryIndex, config.queries]);
 
-    useEffect(() => {
-        const handleScroll = () => {
-            if (loadingMore || currentQueryIndex >= config.queries.length - 1) return;
-            
-            const scrollTop = document.documentElement.scrollTop || document.body.scrollTop;
-            const scrollHeight = document.documentElement.scrollHeight;
-            const clientHeight = document.documentElement.clientHeight;
-            
-            if (scrollTop + clientHeight >= scrollHeight - 500) {
-                loadMore();
-            }
-        };
-
-        window.addEventListener('scroll', handleScroll);
-        return () => window.removeEventListener('scroll', handleScroll);
-    }, [loadingMore, currentQueryIndex, config.queries.length, loadMore]);
-
     return (
-        <div className="h-full overflow-y-auto no-scrollbar pb-24 p-6">
+        <div className="h-full bg-[#0b132d] text-white overflow-y-auto no-scrollbar pb-28 p-4 md:p-8">
             {/* Header */}
-            <div className="flex items-center gap-4 mb-6">
-                <Link to="/">
-                    <ArrowLeft className="w-6 h-6 text-neutral-400 hover:text-white transition" />
-                </Link>
-                <div className="flex items-center gap-3">
-                    {config.icon}
-                    <h1 className="text-3xl font-bold">{config.title}</h1>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-cyan-500/20">
+                <div className="flex items-center gap-4">
+                    <Link to="/" className="p-2 rounded-xl bg-[#142044] hover:bg-cyan-500/20 border border-cyan-500/20 transition">
+                        <ArrowLeft className="w-5 h-5 text-cyan-400" />
+                    </Link>
+                    <div className="flex items-center gap-3">
+                        {config.icon}
+                        <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider">{config.title}</h1>
+                    </div>
                 </div>
+
+                {!loading && tracks.length > 0 && (
+                    <button
+                        onClick={() => playTrack(tracks[0], tracks)}
+                        className="px-6 py-2.5 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white rounded-full font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/30 active:scale-95 transition flex items-center gap-2"
+                    >
+                        <Play className="w-4 h-4 fill-white" />
+                        Phát Tất Cả ({tracks.length})
+                    </button>
+                )}
             </div>
 
-            {/* Tracks count */}
-            {!loading && tracks.length > 0 && (
-                <p className="text-sm text-neutral-400 mb-4">{tracks.length} tracks</p>
-            )}
-
-            {/* Tracks Grid */}
+            {/* NCT BXH Ranked List */}
             {loading ? (
-                <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
-                        <div key={i} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
-                            <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
-                            <Skeleton className="h-4 w-3/4 animate-pulse" />
-                            <Skeleton className="h-3 w-1/2 animate-pulse" />
-                        </div>
+                <div className="space-y-3">
+                    {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+                        <Skeleton key={i} className="h-16 w-full rounded-2xl" />
                     ))}
                 </div>
             ) : (
-                <>
-                    <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                        {tracks.map((track, idx) => (
+                <div className="flex flex-col gap-2">
+                    {tracks.map((track, idx) => {
+                        const isTop1 = idx === 0;
+                        const isTop2 = idx === 1;
+                        const isTop3 = idx === 2;
+
+                        return (
                             <div
-                                key={track.id}
+                                key={track.id || idx}
                                 onClick={() => playTrack(track, tracks)}
-                                className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer h-full flex flex-col border border-white/5"
+                                className={`group flex items-center gap-4 p-3 rounded-2xl transition cursor-pointer border ${
+                                    isTop1 ? 'bg-gradient-to-r from-amber-500/20 via-[#142044] to-[#142044] border-amber-500/40 shadow-lg shadow-amber-500/10' :
+                                    isTop2 ? 'bg-gradient-to-r from-cyan-500/20 via-[#142044] to-[#142044] border-cyan-500/40 shadow-lg shadow-cyan-500/10' :
+                                    isTop3 ? 'bg-gradient-to-r from-blue-500/20 via-[#142044] to-[#142044] border-blue-500/40 shadow-lg shadow-blue-500/10' :
+                                    'bg-[#142044]/60 hover:bg-[#1c2c5b] border-cyan-500/10'
+                                }`}
                             >
-                                <div className="relative mb-3">
-                                    <div className="absolute top-1 left-1 z-10 w-7 h-7 bg-black/70 rounded-full flex items-center justify-center">
-                                        <span className="text-xs font-bold text-white">{(idx + 1).toString().padStart(2, '0')}</span>
-                                    </div>
-                                    <CoverImage
-                                        src={track.cover_url}
-                                        alt={track.title}
-                                        className="w-full aspect-square rounded-xl shadow-lg"
-                                    />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-300 rounded-xl flex items-center justify-center">
-                                        <div className="w-12 h-12 bg-white text-black rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition active:scale-95">
-                                            <Play className="fill-current text-black ml-0.5 w-5 h-5" />
-                                        </div>
+                                {/* Rank Number */}
+                                <div className={`w-10 text-center font-black text-xl flex-shrink-0 ${
+                                    isTop1 ? 'text-amber-400 text-2xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]' :
+                                    isTop2 ? 'text-cyan-400 text-xl' :
+                                    isTop3 ? 'text-blue-400 text-xl' :
+                                    'text-neutral-400'
+                                }`}>
+                                    {idx + 1}
+                                </div>
+
+                                {/* Cover Image */}
+                                <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
+                                    <CoverImage src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
+                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                        <Play className="w-5 h-5 text-white fill-white ml-0.5" />
                                     </div>
                                 </div>
-                                <h3 className="font-bold text-white mb-1 truncate text-xs md:text-base">{track.title}</h3>
-                                <p className="text-neutral-400 text-xs md:text-sm truncate">{track.artist}</p>
-                            </div>
-                        ))}
-                    </div>
 
-                    {/* Load More Indicator */}
+                                {/* Track Title & Artist */}
+                                <div className="flex-1 min-w-0">
+                                    <h3 className="font-extrabold text-white text-sm md:text-base truncate group-hover:text-cyan-300 transition">
+                                        {track.title}
+                                    </h3>
+                                    <p className="text-xs text-neutral-400 truncate mt-0.5">
+                                        {track.artist}
+                                    </p>
+                                </div>
+
+                                {/* Rank trend badge */}
+                                <div className="hidden sm:flex items-center gap-1 px-3 py-1 bg-[#0b132d] rounded-lg border border-cyan-500/15 text-xs font-bold text-cyan-400">
+                                    <span>▲ {Math.floor(Math.random() * 15) + 1}</span>
+                                </div>
+
+                                <button className="p-2 rounded-full text-neutral-400 hover:text-cyan-400 transition">
+                                    <Volume2 className="w-5 h-5 opacity-0 group-hover:opacity-100 transition" />
+                                </button>
+                            </div>
+                        );
+                    })}
+
                     {loadingMore && (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="w-8 h-8 text-white animate-spin" />
+                        <div className="flex justify-center py-6">
+                            <Loader2 className="w-7 h-7 text-cyan-400 animate-spin" />
                         </div>
                     )}
 
-                    {/* Load More Button */}
                     {!loadingMore && currentQueryIndex < config.queries.length - 1 && (
-                        <div className="flex justify-center py-8">
+                        <div className="flex justify-center py-6">
                             <button
                                 onClick={loadMore}
-                                className="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-full text-white font-medium transition"
+                                className="px-6 py-2.5 bg-[#142044] hover:bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30 rounded-full text-xs uppercase tracking-wider transition"
                             >
-                                Load More
+                                Xem Thêm Bài Hát
                             </button>
                         </div>
                     )}
-                </>
-            )}
-
-            {!loading && tracks.length === 0 && (
-                <div className="text-center py-20">
-                    <h2 className="text-xl font-bold mb-2">No tracks found</h2>
-                    <p className="text-neutral-400">This chart is empty.</p>
                 </div>
             )}
         </div>
