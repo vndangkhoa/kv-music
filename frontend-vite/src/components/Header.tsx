@@ -158,13 +158,10 @@ export default function Header() {
             <span>BXH REALTIME</span>
             <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
           </Link>
-          <Link to="/search?q=Chul%20De" className="hover:text-cyan-400 transition py-1 px-1">
+          <Link to="/section" className="hover:text-cyan-400 transition py-1 px-1">
             CHỦ ĐỀ
           </Link>
-          <Link to="/charts?chart_type=top-hits" className="hover:text-cyan-400 transition py-1 px-1">
-            TOP 100
-          </Link>
-          <Link to="/search?q=Artist" className="hover:text-cyan-400 transition py-1 px-1">
+          <Link to="/artists" className="hover:text-cyan-400 transition py-1 px-1">
             ARTISTS
           </Link>
         </div>

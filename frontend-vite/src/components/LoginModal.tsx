@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
+import { User, LogIn, UserPlus, QrCode, Sparkles, X, Check, Copy } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -12,151 +13,284 @@ interface GradientColor {
 }
 
 const AVATAR_COLORS: GradientColor[] = [
+  { from: '#00a8ff', to: '#2e86de' },  // NCT Cyan Blue
+  { from: '#00d2d3', to: '#01a3a4' },  // Teal Glow
   { from: '#ff6b6b', to: '#ee5a24' },  // Coral
   { from: '#a29bfe', to: '#6c5ce7' },  // Lavender
-  { from: '#00b894', to: '#00cec9' },  // Mint
   { from: '#fdcb6e', to: '#e17055' },  // Sunset
   { from: '#74b9ff', to: '#0984e3' },  // Ocean
   { from: '#fd79a8', to: '#e84393' },  // Pink
   { from: '#55efc4', to: '#00b894' },  // Emerald
-  { from: '#dfe6e9', to: '#b2bec3' },  // Silver
 ];
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const login = useAuthStore(s => s.login);
+  const register = useAuthStore(s => s.register);
+  const linkPairCode = useAuthStore(s => s.linkPairCode);
+  const currentUser = useAuthStore(s => s.user);
+
+  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'pair'>('login');
   const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [pairInput, setPairInput] = useState('');
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
+  const [copied, setCopied] = useState(false);
+  const [pairError, setPairError] = useState('');
+  const [pairSuccess, setPairSuccess] = useState(false);
 
   if (!isOpen) return null;
 
   const selectedColor = AVATAR_COLORS[selectedColorIndex];
   const displayLetter = name.trim().length > 0 ? name.trim()[0].toUpperCase() : '?';
-  const isValid = name.trim().length >= 1;
 
-  const handleSubmit = (e: React.FormEvent): void => {
+  const handleLoginSubmit = (e: React.FormEvent): void => {
     e.preventDefault();
-    if (!isValid) return;
-    login(name.trim(), JSON.stringify(selectedColor));
+    if (!name.trim()) return;
+    login(name.trim(), JSON.stringify(selectedColor), email.trim());
     onClose();
   };
 
-  const handleBackdropClick = (e: React.MouseEvent<HTMLDivElement>): void => {
-    if (e.target === e.currentTarget) {
-      onClose();
+  const handleRegisterSubmit = (e: React.FormEvent): void => {
+    e.preventDefault();
+    if (!name.trim() || !email.trim()) return;
+    register(name.trim(), email.trim(), JSON.stringify(selectedColor));
+    onClose();
+  };
+
+  const handlePairSubmit = (e: React.FormEvent): void => {
+    e.preventDefault();
+    setPairError('');
+    if (!pairInput.trim()) return;
+    const ok = linkPairCode(pairInput.trim());
+    if (ok) {
+      setPairSuccess(true);
+      setTimeout(() => {
+        setPairSuccess(false);
+        onClose();
+      }, 1000);
+    } else {
+      setPairError('Mã Pair Code không hợp lệ. Vui lòng kiểm tra lại!');
+    }
+  };
+
+  const copyCurrentPairCode = () => {
+    if (currentUser?.pairCode) {
+      navigator.clipboard.writeText(currentUser.pairCode);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
   return (
-    <>
-      <style>{`
-        @keyframes loginModalFadeIn {
-          from {
-            opacity: 0;
-          }
-          to {
-            opacity: 1;
-          }
-        }
-        @keyframes loginModalScaleUp {
-          from {
-            opacity: 0;
-            transform: scale(0.9) translateY(20px);
-          }
-          to {
-            opacity: 1;
-            transform: scale(1) translateY(0);
-          }
-        }
-        .login-backdrop {
-          animation: loginModalFadeIn 0.2s ease-out forwards;
-        }
-        .login-modal-card {
-          animation: loginModalScaleUp 0.3s ease-out forwards;
-        }
-      `}</style>
-
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="login-backdrop fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-        onClick={handleBackdropClick}
+        className="relative w-full max-w-md bg-[#0d1636]/95 border border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 text-white overflow-hidden"
+        onClick={e => e.stopPropagation()}
       >
-        <div className="login-modal-card bg-[#1a1a2e]/90 backdrop-blur-xl border border-white/10 rounded-3xl p-8 max-w-md w-full mx-4 shadow-2xl">
-          {/* Header */}
-          <div className="text-center mb-6">
-            <h2
-              className="text-3xl font-bold mb-2"
-              style={{
-                background: 'linear-gradient(to bottom, #ffffff, #a3a3a3)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent',
-              }}
-            >
-              Welcome to KV Music
-            </h2>
-            <p className="text-neutral-400 text-sm">Create your profile to start tracking</p>
-          </div>
+        {/* Glow backdrop decorative effect */}
+        <div className="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
 
-          {/* Preview Avatar */}
-          <div className="flex justify-center mb-6">
-            <div
-              className="flex items-center justify-center rounded-full text-white text-2xl font-bold"
-              style={{
-                width: 64,
-                height: 64,
-                background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})`,
-              }}
-            >
-              {displayLetter}
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-5 right-5 p-2 rounded-full text-neutral-400 hover:text-white hover:bg-cyan-500/10 transition"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
+        {/* Header */}
+        <div className="text-center mb-6">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/20 text-cyan-400 text-xs font-bold mb-3">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>KV-MUSIC SYNC PASS</span>
+          </div>
+          <h2 className="text-2xl font-black text-white tracking-tight">Tài Khoản & Đồng Bộ</h2>
+          <p className="text-neutral-400 text-xs mt-1">Đăng nhập để đồng bộ nhạc và danh sách phát mọi thiết bị</p>
+        </div>
+
+        {/* Tab Navigation */}
+        <div className="grid grid-cols-3 gap-1 bg-[#142044] p-1 rounded-xl border border-cyan-500/20 mb-6 text-xs font-extrabold text-center">
+          <button
+            onClick={() => setActiveTab('login')}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'login' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <LogIn className="w-3.5 h-3.5" />
+            <span>Đăng Nhập</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('register')}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'register' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <UserPlus className="w-3.5 h-3.5" />
+            <span>Đăng Ký</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('pair')}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'pair' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+          >
+            <QrCode className="w-3.5 h-3.5" />
+            <span>Mã Pair</span>
+          </button>
+        </div>
+
+        {/* TAB 1: LOGIN */}
+        {activeTab === 'login' && (
+          <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div className="flex justify-center mb-2">
+              <div
+                className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-cyan-400/40"
+                style={{ background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})` }}
+              >
+                {displayLetter}
+              </div>
             </div>
-          </div>
 
-          <form onSubmit={handleSubmit}>
-            {/* Name Input */}
-            <div className="mb-6">
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Tên hiển thị / Username</label>
               <input
                 type="text"
+                required
                 value={name}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setName(e.target.value)}
-                placeholder="Enter your name"
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-neutral-500 focus:border-white/30 focus:outline-none transition-colors"
-                autoFocus
+                onChange={e => setName(e.target.value)}
+                placeholder="Nhập tên của bạn (VD: Khoa Vo)"
+                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
               />
             </div>
 
-            {/* Color Picker */}
-            <div className="mb-8">
-              <p className="text-neutral-400 text-sm mb-3">Choose your avatar color</p>
-              <div className="flex items-center justify-center gap-3 flex-wrap">
-                {AVATAR_COLORS.map((color, index) => (
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Email (không bắt buộc)</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="khoavo@kvmusic.com"
+                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-neutral-400 mb-2">Màu Avatar cá nhân</label>
+              <div className="flex items-center justify-center gap-2.5 flex-wrap">
+                {AVATAR_COLORS.map((color, idx) => (
                   <button
-                    key={index}
+                    key={idx}
                     type="button"
-                    onClick={() => setSelectedColorIndex(index)}
-                    className="rounded-full border-2 transition-all duration-200"
+                    onClick={() => setSelectedColorIndex(idx)}
+                    className="w-8 h-8 rounded-full border-2 transition transform active:scale-95"
                     style={{
-                      width: 40,
-                      height: 40,
                       background: `linear-gradient(135deg, ${color.from}, ${color.to})`,
-                      borderColor: selectedColorIndex === index ? '#ffffff' : 'transparent',
-                      transform: selectedColorIndex === index ? 'scale(1.1)' : 'scale(1)',
+                      borderColor: selectedColorIndex === idx ? '#ffffff' : 'transparent',
+                      transform: selectedColorIndex === idx ? 'scale(1.15)' : 'scale(1)',
                     }}
-                    aria-label={`Color option ${index + 1}`}
                   />
                 ))}
               </div>
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
-              disabled={!isValid}
-              className="w-full bg-gradient-to-r from-green-500 to-emerald-600 text-black font-bold py-3 rounded-full hover:scale-[1.02] active:scale-95 transition disabled:opacity-50 disabled:hover:scale-100 disabled:active:scale-100"
+              disabled={!name.trim()}
+              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
             >
-              Create Profile
+              Đăng Nhập Ngay
             </button>
           </form>
-        </div>
+        )}
+
+        {/* TAB 2: REGISTER */}
+        {activeTab === 'register' && (
+          <form onSubmit={handleRegisterSubmit} className="space-y-4">
+            <div className="flex justify-center mb-2">
+              <div
+                className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-cyan-400/40"
+                style={{ background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})` }}
+              >
+                {displayLetter}
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Họ và Tên</label>
+              <input
+                type="text"
+                required
+                value={name}
+                onChange={e => setName(e.target.value)}
+                placeholder="Tên thành viên mới"
+                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Địa chỉ Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="user@kvmusic.com"
+                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={!name.trim() || !email.trim()}
+              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
+            >
+              Đăng Ký & Nhận Mã Pair
+            </button>
+          </form>
+        )}
+
+        {/* TAB 3: DEVICE PAIR CODE SYNC */}
+        {activeTab === 'pair' && (
+          <div className="space-y-5">
+            {/* Show Current Pair Code if logged in */}
+            {currentUser?.pairCode && (
+              <div className="p-4 bg-[#142044] border border-cyan-500/30 rounded-2xl text-center">
+                <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-wider mb-1">Mã Pair Code Thiết Bị Này</p>
+                <div className="flex items-center justify-center gap-2">
+                  <span className="text-2xl font-black tracking-widest text-cyan-400">{currentUser.pairCode}</span>
+                  <button
+                    onClick={copyCurrentPairCode}
+                    className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition"
+                    title="Sao chép mã"
+                  >
+                    {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-neutral-400 mt-1">Nhập mã này trên TV/Laptop khác để đồng bộ tài khoản!</p>
+              </div>
+            )}
+
+            {/* Input box to pair another device */}
+            <form onSubmit={handlePairSubmit} className="space-y-3">
+              <label className="block text-xs font-bold text-neutral-300">Nhập Mã Pair Code Từ Thiết Bị Khác</label>
+              <input
+                type="text"
+                value={pairInput}
+                onChange={e => setPairInput(e.target.value)}
+                placeholder="VD: KV-849201"
+                className="w-full bg-[#142044] border border-cyan-500/30 rounded-xl px-4 py-3 text-center text-lg font-black tracking-widest text-cyan-300 placeholder-neutral-500 uppercase focus:border-cyan-400 focus:outline-none transition"
+              />
+
+              {pairError && <p className="text-xs text-red-400 text-center font-semibold">{pairError}</p>}
+              {pairSuccess && <p className="text-xs text-green-400 text-center font-bold">✅ Đồng bộ thành công!</p>}
+
+              <button
+                type="submit"
+                disabled={!pairInput.trim()}
+                className="w-full bg-gradient-to-r from-teal-400 to-cyan-500 hover:brightness-110 text-black font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
+              >
+                Kết Nối & Đồng Bộ Thiết Bị
+              </button>
+            </form>
+          </div>
+        )}
       </div>
-    </>
+    </div>
   );
 };
 

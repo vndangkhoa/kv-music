@@ -1,8 +1,8 @@
-
 import { useState } from 'react';
-import { X, RefreshCcw, Check, CheckCircle2, Trash2, Database, Volume2, Activity, PlayCircle } from 'lucide-react';
-import { useUIStore } from '../stores/uiStore';
+import { X, RefreshCcw, Check, Trash2, Volume2, QrCode, Copy, Cpu } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
+import { useAuthStore } from '../stores/authStore';
+import Logo from './Logo';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -10,14 +10,19 @@ interface SettingsModalProps {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-    const theme = useUIStore(s => s.theme);
-    const toggleTheme = useUIStore(s => s.toggleTheme);
     const qualityPreference = usePlayerStore(s => s.qualityPreference);
     const setQualityPreference = usePlayerStore(s => s.setQualityPreference);
+    const currentUser = useAuthStore(s => s.user);
+    const generatePairCode = useAuthStore(s => s.generatePairCode);
+    const linkPairCode = useAuthStore(s => s.linkPairCode);
+
     const [isUpdating, setIsUpdating] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [updateLog, setUpdateLog] = useState<string>('');
     const [isClearingCache, setIsClearingCache] = useState(false);
+    const [pairInput, setPairInput] = useState('');
+    const [pairMsg, setPairMsg] = useState('');
+    const [copied, setCopied] = useState(false);
 
     if (!isOpen) return null;
 
@@ -33,14 +38,14 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
             if (response.ok) {
                 setUpdateStatus('success');
-                setUpdateLog(data.output || 'Update successful.');
+                setUpdateLog(data.output || 'Cập nhật thành công core extractor!');
             } else {
                 setUpdateStatus('error');
-                setUpdateLog(data.error || 'Update failed.');
+                setUpdateLog(data.error || 'Cập nhật thất bại.');
             }
         } catch (e) {
             setUpdateStatus('error');
-            setUpdateLog('Network error occurred.');
+            setUpdateLog('Lỗi kết nối máy chủ.');
         } finally {
             setIsUpdating(false);
         }
@@ -48,175 +53,184 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     const handleClearCache = () => {
         setIsClearingCache(true);
-        // Wipe common caches
-localStorage.removeItem('ytm_browse_cache_v8');
-        localStorage.removeItem('ytm_browse_cache_v7');
-        localStorage.removeItem('artist_photos_cache_v5');
-        localStorage.removeItem('artist_photos_cache_v6');
+        localStorage.removeItem('nct_browse_cache_v1');
+        localStorage.removeItem('last_search_results');
+        localStorage.removeItem('initial_tracks_cache_v1');
 
-        // Short delay for feedback
         setTimeout(() => {
             setIsClearingCache(false);
-            alert("Cache cleared successfully! The app will reload fresh data.");
-        }, 800);
+            alert("Đã xóa bộ nhớ đệm cache thành công! Ứng dụng sẽ tải dữ liệu mới.");
+        }, 600);
+    };
+
+    const handleCopyPairCode = () => {
+        if (currentUser?.pairCode) {
+            navigator.clipboard.writeText(currentUser.pairCode);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        }
+    };
+
+    const handleLinkPairCodeSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        setPairMsg('');
+        if (!pairInput.trim()) return;
+        const ok = linkPairCode(pairInput.trim());
+        if (ok) {
+            setPairMsg('✅ Đã đồng bộ tài khoản thành công!');
+            setPairInput('');
+        } else {
+            setPairMsg('❌ Mã Pair Code không đúng.');
+        }
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
             <div
-                className="absolute inset-0 bg-black/70 backdrop-blur-md"
-                onClick={onClose}
-            />
-
-            {/* Modal Container */}
-            <div
-                className={`bg-black/90 backdrop-blur-2xl w-full h-full md:h-auto md:max-w-2xl md:rounded-3xl overflow-hidden border-t md:border border-white/10 flex flex-col shadow-2xl transition-all duration-500 ${isOpen ? 'scale-100 opacity-100' : 'scale-95 opacity-0'}`}
-                onClick={(e) => e.stopPropagation()}
+                className="relative w-full max-w-2xl bg-[#0b132d] border border-cyan-500/30 md:rounded-3xl rounded-2xl overflow-hidden flex flex-col shadow-2xl shadow-cyan-500/10 text-white max-h-[90vh]"
+                onClick={e => e.stopPropagation()}
             >
-
-                {/* Header */}
-                <div className="flex items-center justify-between p-5 border-b border-white/5">
+                {/* Top Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-500/20 bg-[#0f1938]">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-xl bg-[#FF0000]/10 text-[#FF0000]">
-                            <Activity className="w-5 h-5" />
-                        </div>
-                        <h2 className="text-xl md:text-2xl font-black tracking-tight text-white">Settings</h2>
+                        <Logo />
+                        <span className="text-xs font-bold text-neutral-400">| Cài Đặt Hệ Thống</span>
                     </div>
-                    <button onClick={onClose} className="p-2 rounded-full hover:bg-white/10 transition-colors">
-                        <X className="w-6 h-6 text-white" />
+                    <button
+                        onClick={onClose}
+                        className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-cyan-500/10 transition"
+                    >
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Scrollable Content */}
-                <div className="flex-1 overflow-y-auto p-5 space-y-8 no-scrollbar pb-10">
-
-                    {/* Appearance Section */}
-                    <section>
-                        <div className="flex items-center gap-2 mb-4 opacity-50">
-                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Appearance Theme</span>
+                {/* Body Content */}
+                <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
+                    {/* SECTION 1: Audio Quality */}
+                    <section className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <Volume2 className="w-4 h-4 text-cyan-400" />
+                            <h3 className="text-sm font-black text-white uppercase tracking-wider">Chất Lượng Âm Thanh</h3>
                         </div>
-
-                        <div className="grid grid-cols-1 xs:grid-cols-2 gap-4">
-                            {/* YouTube Music Theme */}
-                            <button
-                                onClick={() => toggleTheme('spotify')}
-                                className={`relative group p-4 rounded-2xl border-2 transition-all duration-300 flex flex-col gap-3 text-left ${theme === 'spotify' ? 'border-[#FF0000] bg-[#FF0000]/5' : 'border-transparent bg-white/5 hover:bg-white/10'}`}
-                            >
-                                <div className="flex items-center justify-between w-full">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${theme === 'spotify' ? 'bg-[#FF0000] text-white' : 'bg-[#1f1f1f]'}`}>
-                                        <PlayCircle className="w-7 h-7" />
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {[
+                                { id: 'auto', label: 'Tự Động', desc: 'Linh hoạt' },
+                                { id: 'lossless', label: 'Lossless', desc: 'FLAC / 320kbps' },
+                                { id: 'high', label: 'Cao (256k)', desc: 'Chất lượng cao' },
+                                { id: 'standard', label: 'Tiêu Chuẩn', desc: 'Tiết kiệm data' },
+                            ].map(q => (
+                                <button
+                                    key={q.id}
+                                    onClick={() => setQualityPreference(q.id as any)}
+                                    className={`p-3 rounded-xl border text-left transition ${qualityPreference === q.id ? 'bg-gradient-to-br from-[#00a8ff]/20 to-[#2e86de]/30 border-cyan-400 text-white shadow-md' : 'bg-[#0b132d]/60 border-cyan-500/10 text-neutral-400 hover:text-white'}`}
+                                >
+                                    <div className="flex items-center justify-between">
+                                        <span className="text-xs font-bold text-white">{q.label}</span>
+                                        {qualityPreference === q.id && <Check className="w-3.5 h-3.5 text-cyan-400" />}
                                     </div>
-                                    {theme === 'spotify' && <CheckCircle2 className="w-6 h-6 text-[#FF0000]" />}
-                                </div>
-                                <div>
-                                    <div className="font-bold text-lg text-white">YouTube Music</div>
-                                    <div className="text-xs text-neutral-400">Default dark mode with red accent</div>
-                                </div>
-                            </button>
-
-                            {/* Pitch Black Theme */}
-                            <button
-                                onClick={() => toggleTheme('apple')}
-                                className={`relative group p-4 rounded-2xl border-2 transition-all duration-300 flex flex-col gap-3 text-left ${theme === 'apple' ? 'border-white/30 bg-white/5' : 'border-transparent bg-white/5 hover:bg-white/10'}`}
-                            >
-                                <div className="flex items-center justify-between w-full">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg transition-transform group-hover:scale-110 ${theme === 'apple' ? 'bg-white text-black' : 'bg-[#1f1f1f]'}`}>
-                                        <PlayCircle className="w-7 h-7" />
-                                    </div>
-                                    {theme === 'apple' && <CheckCircle2 className="w-6 h-6 text-white" />}
-                                </div>
-                                <div>
-                                    <div className="font-bold text-lg text-white">Pitch Black</div>
-                                    <div className="text-xs text-neutral-400">Deep black for OLED screens</div>
-                                </div>
-                            </button>
+                                    <p className="text-[10px] text-neutral-400 mt-1">{q.desc}</p>
+                                </button>
+                            ))}
                         </div>
                     </section>
 
-                    {/* Audio Section */}
-                    <section>
-                        <div className="flex items-center gap-2 mb-4 opacity-50">
-                            <Volume2 className="w-3 h-3 text-white" />
-                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Audio Experience</span>
+                    {/* SECTION 2: Device Pair Code Sync */}
+                    <section className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                            <QrCode className="w-4 h-4 text-cyan-400" />
+                            <h3 className="text-sm font-black text-white uppercase tracking-wider">Đồng Bộ Mã Pair Code Thiết Bị</h3>
                         </div>
 
-                        <div className="p-5 rounded-2xl border bg-[#1f1f1f]/30 border-white/5">
-                            <label className="block text-sm font-semibold mb-3 text-white">Audio Quality</label>
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                                {(['auto', 'high', 'normal', 'low'] as const).map((q) => (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="bg-[#0b132d]/80 p-4 rounded-xl border border-cyan-500/20 text-center flex flex-col items-center justify-center">
+                                <p className="text-[11px] text-neutral-400 font-bold mb-1">Mã Pair Code Hiện Tại</p>
+                                <div className="flex items-center gap-2 mb-2">
+                                    <span className="text-2xl font-black text-cyan-400 tracking-widest">{currentUser?.pairCode || 'KV-849201'}</span>
                                     <button
-                                        key={q}
-                                        onClick={() => setQualityPreference(q)}
-                                        className={`py-2.5 px-3 rounded-xl text-[10px] md:text-xs font-black capitalize transition-all ${qualityPreference === q
-                                            ? 'bg-[#FF0000] text-white shadow-lg shadow-[#FF0000]/20'
-                                            : 'bg-white/5 hover:bg-white/10 text-neutral-400'}`}
+                                        onClick={handleCopyPairCode}
+                                        className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition"
                                     >
-                                        {q}
+                                        {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                                     </button>
-                                ))}
+                                </div>
+                                <button
+                                    onClick={() => generatePairCode()}
+                                    className="text-[11px] font-bold text-cyan-400 hover:underline"
+                                >
+                                    Tạo Mã Mới
+                                </button>
                             </div>
+
+                            <form onSubmit={handleLinkPairCodeSubmit} className="bg-[#0b132d]/80 p-4 rounded-xl border border-cyan-500/20 space-y-2">
+                                <label className="block text-[11px] font-bold text-neutral-300">Nhập Mã Pair Để Ghép Nối</label>
+                                <input
+                                    type="text"
+                                    value={pairInput}
+                                    onChange={e => setPairInput(e.target.value)}
+                                    placeholder="VD: KV-849201"
+                                    className="w-full bg-[#142044] border border-cyan-500/30 rounded-lg px-3 py-2 text-center text-sm font-bold text-cyan-300 placeholder-neutral-500 uppercase focus:border-cyan-400 focus:outline-none"
+                                />
+                                {pairMsg && <p className="text-[11px] font-bold text-cyan-400">{pairMsg}</p>}
+                                <button
+                                    type="submit"
+                                    className="w-full py-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold text-xs rounded-lg transition"
+                                >
+                                    Đồng Bộ Ngay
+                                </button>
+                            </form>
                         </div>
                     </section>
 
-                    {/* System Section */}
-                    <section>
-                        <div className="flex items-center gap-2 mb-4 opacity-50">
-                            <Database className="w-3 h-3 text-white" />
-                            <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">System & Storage</span>
+                    {/* SECTION 3: Storage & Core Update */}
+                    <section className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4 space-y-4">
+                        <div className="flex items-center gap-2">
+                            <Cpu className="w-4 h-4 text-cyan-400" />
+                            <h3 className="text-sm font-black text-white uppercase tracking-wider">Hệ Thống & Bộ Nhớ Cache</h3>
                         </div>
 
-                        <div className="space-y-3">
-                            {/* Core Update */}
-                            <div className="p-4 md:p-5 rounded-2xl border bg-[#1f1f1f]/30 border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-bold text-sm flex items-center gap-2 mb-1 text-white">
-                                        Core Update
-                                        <span className="text-[8px] md:text-[9px] bg-white/10 px-1.5 py-0.5 rounded-full text-neutral-400 font-mono flex-shrink-0">yt-dlp nightly</span>
-                                    </div>
-                                    <p className="text-[10px] md:text-[11px] text-neutral-400">Keep the extraction engine fresh for new content.</p>
+                        <div className="flex items-center justify-between p-3 bg-[#0b132d]/80 border border-cyan-500/10 rounded-xl">
+                            <div>
+                                <h4 className="text-xs font-bold text-white">Xóa Bộ Nhớ Đệm Cache</h4>
+                                <p className="text-[10px] text-neutral-400">Xóa dữ liệu duyệt tạm thời để làm mới danh sách bài hát</p>
+                            </div>
+                            <button
+                                onClick={handleClearCache}
+                                disabled={isClearingCache}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold hover:bg-red-500/30 transition disabled:opacity-50"
+                            >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span>Xóa Cache</span>
+                            </button>
+                        </div>
+
+                        <div className="p-3 bg-[#0b132d]/80 border border-cyan-500/10 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-bold text-white">Cập Nhật Engine YouTube (yt-dlp)</h4>
+                                    <p className="text-[10px] text-neutral-400">Cập nhật công cụ bóc tách nhạc mượt mà hơn</p>
                                 </div>
                                 <button
                                     onClick={handleUpdateYtdlp}
                                     disabled={isUpdating}
-                                    className={`w-full sm:w-auto px-6 py-2.5 rounded-full font-black text-[10px] md:text-xs flex items-center justify-center gap-2 transition-all flex-shrink-0 ${isUpdating ? 'opacity-50 cursor-not-allowed' : 'active:scale-95'} bg-[#FF0000] text-white hover:bg-[#d60000]`}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white rounded-lg text-xs font-bold hover:brightness-110 transition disabled:opacity-50"
                                 >
                                     <RefreshCcw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-                                    {isUpdating ? 'Updating...' : 'Check Update'}
+                                    <span>{isUpdating ? 'Đang Cập Nhật...' : 'Check Update'}</span>
                                 </button>
                             </div>
-
-                            {/* Clear Cache */}
-                            <div className="p-4 md:p-5 rounded-2xl border bg-[#1f1f1f]/30 border-white/5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                                <div className="flex-1 min-w-0">
-                                    <div className="font-bold text-sm mb-1 text-white">Clear Local Cache</div>
-                                    <p className="text-[10px] md:text-[11px] text-neutral-400">Wipe browse and image caches if data feels stale.</p>
-                                </div>
-                                <button
-                                    onClick={handleClearCache}
-                                    disabled={isClearingCache}
-                                    className={`w-full sm:w-auto px-6 py-2.5 rounded-full font-black text-[10px] md:text-xs flex items-center justify-center gap-2 transition-all hover:bg-neutral-800 border border-white/10 flex-shrink-0 ${isClearingCache ? 'animate-pulse' : 'active:scale-95'}`}
-                                >
-                                    <Trash2 className="w-3.5 h-3.5 text-white" />
-                                    {isClearingCache ? 'Clearing...' : 'Wipe Cache'}
-                                </button>
-                            </div>
+                            {updateLog && (
+                                <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-cyan-300 font-mono overflow-x-auto max-h-24 no-scrollbar border border-cyan-500/20">
+                                    {updateLog}
+                                </pre>
+                            )}
                         </div>
-
-                        {/* Logs Reveal */}
-                        {(updateStatus !== 'idle' || updateLog) && (
-                            <div className="mt-4 p-4 bg-black/80 rounded-2xl font-mono text-[10px] text-[#FF0000]/80 border border-[#FF0000]/10 max-h-32 overflow-y-auto no-scrollbar">
-                                <div className="mb-2 opacity-50 uppercase tracking-widest text-[8px] text-neutral-400">Operation Log</div>
-                                {updateLog || 'Initializing...'}
-                                {updateStatus === 'loading' && <span className="animate-pulse ml-1 text-white">_</span>}
-                            </div>
-                        )}
                     </section>
+                </div>
 
-                    <div className="pt-6 flex flex-col items-center gap-2 opacity-30 group cursor-default">
-                        <div className="h-px w-24 bg-white/20 group-hover:w-full transition-all duration-700" />
-                        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-neutral-500">KV YouTube Music Clone v1.0.0</span>
-                    </div>
-
+                {/* Footer */}
+                <div className="p-4 border-t border-cyan-500/20 bg-[#0f1938] text-center">
+                    <p className="text-[11px] font-extrabold text-cyan-400">kv-music v2.5.0 PRO VIP</p>
+                    <p className="text-[10px] text-neutral-400 mt-0.5">Rust Axum & Tokio High-Performance Audio Engine</p>
                 </div>
             </div>
         </div>

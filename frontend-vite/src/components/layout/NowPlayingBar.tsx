@@ -377,16 +377,27 @@ export default function NowPlayingBar() {
 
 function IdleTrendingWidget({ onPlayTrack }: { onPlayTrack: (track: Track, list: Track[]) => void }) {
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [reason, setReason] = useState<string>('BÀI HÁT HOT NỔI BẬT');
   const [loading, setLoading] = useState(true);
+  const playHistory = usePlayerStore(s => s.playHistory);
+  const likedTracksData = usePlayerStore(s => s.likedTracksData);
 
   useEffect(() => {
-    libraryService.getCharts('trending')
+    libraryService.getSmartSuggestions(playHistory, likedTracksData)
       .then(res => {
-        if (res && res.length > 0) setTracks(res.slice(0, 20));
+        if (res && res.tracks.length > 0) {
+          setTracks(res.tracks.slice(0, 20));
+          if (res.reason) setReason(res.reason);
+        }
         setLoading(false);
       })
-      .catch(() => setLoading(false));
-  }, []);
+      .catch(() => {
+        libraryService.getCharts('trending').then(res => {
+          if (res) setTracks(res.slice(0, 20));
+          setLoading(false);
+        });
+      });
+  }, [playHistory.length, likedTracksData.length]);
 
   if (loading) {
     return (
@@ -401,8 +412,10 @@ function IdleTrendingWidget({ onPlayTrack }: { onPlayTrack: (track: Track, list:
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between mb-2">
-        <h5 className="text-xs font-extrabold text-cyan-400 uppercase tracking-wider">BÀI HÁT HOT NỔI BẬT</h5>
-        <span className="text-[10px] text-cyan-300/70 font-semibold">{tracks.length} bài</span>
+        <h5 className="text-[11px] font-extrabold text-cyan-400 uppercase tracking-wider truncate max-w-[210px]" title={reason}>
+          {reason}
+        </h5>
+        <span className="text-[10px] text-cyan-300/70 font-semibold flex-shrink-0">{tracks.length} bài</span>
       </div>
       <div className="flex flex-col gap-2 max-h-[580px] overflow-y-auto pr-1 no-scrollbar">
         {tracks.map((track, idx) => (

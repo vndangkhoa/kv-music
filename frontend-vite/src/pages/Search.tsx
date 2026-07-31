@@ -129,29 +129,14 @@ export default function Search() {
 
     return (
         <div className="h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-24">
-            {/* Search Input */}
-            <div className="relative mb-6">
-                <SearchIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400 pointer-events-none" />
-                <input
-                    type="text"
-                    value={inputValue}
-                    onChange={(e) => {
-                        const val = e.target.value;
-                        setInputValue(val);
-                        if (debounceRef.current) clearTimeout(debounceRef.current);
-                        debounceRef.current = setTimeout(() => {
-                            if (val.trim()) {
-                                navigate(`/search?q=${encodeURIComponent(val)}`, { replace: true });
-                            } else {
-                                navigate('/search', { replace: true });
-                                setResults([]);
-                            }
-                        }, 300);
-                    }}
-                    placeholder="Search songs, albums, artists"
-                    autoFocus
-                    className="w-full bg-white/10 text-white placeholder-neutral-400 rounded-full pl-11 pr-4 py-3 text-sm font-medium outline-none focus:ring-2 focus:ring-white/20 transition"
-                />
+            {/* Search Header Info */}
+            <div className="flex items-center justify-between mb-6 border-b border-cyan-500/15 pb-4">
+                <div>
+                    <h1 className="text-xl md:text-2xl font-black text-white">
+                        {query ? `Kết quả tìm kiếm cho "${query}"` : 'Tìm Kiếm Khám Phá Âm Nhạc'}
+                    </h1>
+                    <p className="text-xs text-neutral-400 mt-1">Dữ liệu bài hát, ca sĩ, album từ kho nhạc KV Music</p>
+                </div>
             </div>
 
             {/* Results */}

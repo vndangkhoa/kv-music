@@ -9,6 +9,7 @@ import Album from './pages/Album';
 import Collection from './pages/Collection';
 import Section from './pages/Section';
 import ChartsSection from './pages/ChartsSection';
+import ArtistsPage from './pages/ArtistsPage';
 import { useEffect } from 'react';
 import { useLibraryStore } from './stores/libraryStore';
 import { usePlayerStore } from './stores/playerStore';
@@ -37,6 +38,7 @@ function App() {
           <Route path="playlist/:id" element={<Playlist />} />
           <Route path="album/:id" element={<Album />} />
           <Route path="artist/:id" element={<Artist />} />
+          <Route path="artists" element={<ArtistsPage />} />
           <Route path="collection/tracks" element={<Collection />} />
           <Route path="section" element={<Section />} />
           <Route path="charts" element={<ChartsSection />} />
