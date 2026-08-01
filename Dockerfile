@@ -43,6 +43,8 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs
+# Force upgrade yt-dlp to latest on every build (bypass layer cache)
+RUN pip install --no-cache-dir --upgrade yt-dlp "yt-dlp[default]"
 
 # Copy artifacts
 COPY --from=backend-builder /app/backend-rust-bin /app/server

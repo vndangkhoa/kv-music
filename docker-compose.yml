@@ -14,9 +14,11 @@ services:
       - PORT=8080
       - RUST_LOG=info
       - PYTHONUNBUFFERED=1
+      - COOKIE_FILE=/app/cookies.txt
     volumes:
       - ./data:/tmp/kv-music-downloads
       - ./cache:/tmp/kv-music-cache
+      - ./cookies.txt:/app/cookies.txt:ro
     logging:
       driver: "json-file"
       options:

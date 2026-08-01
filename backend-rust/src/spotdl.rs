@@ -123,7 +123,7 @@ impl SpotdlService {
     }
     
     fn js_runtime_args() -> Vec<String> {
-        Vec::new()
+        vec!["--js-runtimes".to_string(), "nodejs".to_string()]
     }
 
     pub fn start_background_preload(&self) {
@@ -221,9 +221,11 @@ impl SpotdlService {
         let mut all_data: HashMap<String, Vec<StaticPlaylist>> = HashMap::new();
 
         for (category, search_query) in queries {
-            let mut cmd_args = Self::build_yt_dlp_base_args();
-            let extra = vec![&search_query as &str, "--dump-json", "--no-playlist", "--flat-playlist"];
-            cmd_args.extend(extra);
+            let mut cmd_args = Self::build_yt_dlp_base_args_vec();
+            cmd_args.push(search_query);
+            cmd_args.push("--dump-json".to_string());
+            cmd_args.push("--no-playlist".to_string());
+            cmd_args.push("--flat-playlist".to_string());
             
             let output = Command::new(&path)
                 .args(&cmd_args)
@@ -242,7 +244,6 @@ impl SpotdlService {
                         
                         let artist = res.uploader.replace(" - Topic", "");
                         
-                        // Decide if it's treated as Album or Playlist
                         let is_album = category == "Top Albums";
                         let p_type = if is_album { "Album" } else { "Playlist" };
                         let title = if is_album { 
@@ -277,9 +278,10 @@ impl SpotdlService {
             _ => "ytmusicsearch30:Official Channel",
         };
         
-        let mut artist_cmd_args = Self::build_yt_dlp_base_args();
-        let artist_extra: Vec<&str> = vec![&artists_query, "--dump-json", "--flat-playlist"];
-        artist_cmd_args.extend(artist_extra);
+        let mut artist_cmd_args = Self::build_yt_dlp_base_args_vec();
+        artist_cmd_args.push(artists_query.to_string());
+        artist_cmd_args.push("--dump-json".to_string());
+        artist_cmd_args.push("--flat-playlist".to_string());
         
         if let Ok(o) = Command::new(&path)
             .args(&artist_cmd_args)
@@ -329,118 +331,128 @@ impl SpotdlService {
         let search_query = format!("ytsearch30:{} audio", query);
 
         let output_args = vec![
-            &search_query, "--dump-json", "--no-playlist", "--flat-playlist",
+            search_query.as_str(), "--dump-json", "--no-playlist", "--flat-playlist",
         ];
-        let all_args = self.yt_dlp_args_with_cookies(output_args);
+        let all_args = self.yt_dlp_args_with_cookies_vec(&output_args);
 
-        let output = match Command::new(&path)
-            .args(&all_args)
-            .output() {
-            Ok(o) => o,
-            Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
-        };
+        // Retry up to 2 times with backoff for transient 429 errors
+        let mut last_err = String::new();
+        for attempt in 0..3 {
+            let output = match Command::new(&path).args(&all_args).output() {
+                Ok(o) => o,
+                Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
+            };
 
-        if !output.status.success() {
-            return Err(format!("Search failed. stderr: {}", String::from_utf8_lossy(&output.stderr)));
-        }
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut tracks = Vec::new();
 
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let mut tracks = Vec::new();
-
-        for line in stdout.lines() {
-            if line.trim().is_empty() {
-                continue;
-            }
-
-            if let Ok(res) = serde_json::from_str::<YTResult>(line) {
-                let duration = res.duration.unwrap_or(0.0);
-                
-                // FILTER: channel, playlist, short, long, or ZERO duration
-                                if res.id.starts_with("UC") || res.id.starts_with("PL") || duration < 1.0 || duration > 1200.0 {
-                                    continue;
+                for line in stdout.lines() {
+                    if line.trim().is_empty() { continue; }
+                    if let Ok(res) = serde_json::from_str::<YTResult>(line) {
+                        let duration = res.duration.unwrap_or(0.0);
+                        if res.id.starts_with("UC") || res.id.starts_with("PL") || duration < 1.0 || duration > 1200.0 {
+                            continue;
+                        }
+                        let artist = res.uploader.replace(" - Topic", "");
+                        let mut cover_url = String::new();
+                        if !res.thumbnails.is_empty() {
+                            let mut best_score = -1.0;
+                            for thumb in &res.thumbnails {
+                                let w = thumb.width.unwrap_or(0) as f64;
+                                let h = thumb.height.unwrap_or(0) as f64;
+                                if w == 0.0 || h == 0.0 { continue; }
+                                let ratio = w / h;
+                                let diff = (ratio - 1.0).abs();
+                                let mut score = w * h;
+                                if diff < 0.1 { score *= 10.0; }
+                                if score > best_score {
+                                    best_score = score;
+                                    cover_url = thumb.url.clone();
                                 }
-
-                let artist = res.uploader.replace(" - Topic", "");
-                
-                // Select thumbnail
-                let mut cover_url = String::new();
-                if !res.thumbnails.is_empty() {
-                    let mut best_score = -1.0;
-                    
-                    for thumb in &res.thumbnails {
-                        let w = thumb.width.unwrap_or(0) as f64;
-                        let h = thumb.height.unwrap_or(0) as f64;
-                        
-                        if w == 0.0 || h == 0.0 { continue; }
-                        
-                        let ratio = w / h;
-                        let diff = (ratio - 1.0).abs();
-                        let mut score = w * h;
-                        
-                        if diff < 0.1 {
-                            score *= 10.0;
+                            }
+                            if cover_url.is_empty() {
+                                cover_url = res.thumbnails.last().unwrap().url.clone();
+                            }
+                        } else {
+                            cover_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id);
                         }
-                        
-                        if score > best_score {
-                            best_score = score;
-                            cover_url = thumb.url.clone();
-                        }
+                        tracks.push(Track {
+                            id: res.id.clone(),
+                            title: res.title.clone(),
+                            artist,
+                            album: "YouTube Music".to_string(),
+                            duration: duration as i32,
+                            cover_url,
+                            url: format!("/api/stream/{}", res.id),
+                            view_count: res.view_count,
+                            like_count: res.like_count,
+                            comment_count: res.comment_count,
+                            bitrate: res.abr.map(|b| b as i32),
+                            codec: res.acodec,
+                        });
                     }
-                    
-                    if cover_url.is_empty() {
-                        cover_url = res.thumbnails.last().unwrap().url.clone();
-                    }
-                } else {
-                    cover_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id);
                 }
 
-                tracks.push(Track {
-                    id: res.id.clone(),
-                    title: res.title.clone(),
-                    artist,
-                    album: "YouTube Music".to_string(),
-                    duration: duration as i32,
-                    cover_url,
-                    url: format!("/api/stream/{}", res.id),
-                    view_count: res.view_count,
-                    like_count: res.like_count,
-                    comment_count: res.comment_count,
-                    bitrate: res.abr.map(|b| b as i32),
-                    codec: res.acodec,
-                });
+                if !tracks.is_empty() {
+                    let mut cache = self.search_cache.write().await;
+                    cache.insert(query.to_string(), CacheItem {
+                        tracks: tracks.clone(),
+                        timestamp: Instant::now(),
+                    });
+                }
+                return Ok(tracks);
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_err = stderr.to_string();
+            let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
+            if is_rate_limit && attempt < 2 {
+                let delay_secs = (attempt + 1) * 3;
+                println!("[Search] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
+                tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+            } else {
+                break;
             }
         }
 
-        // 2. Save cache
-        if !tracks.is_empty() {
-            let mut cache = self.search_cache.write().await;
-            cache.insert(query.to_string(), CacheItem {
-                tracks: tracks.clone(),
-                timestamp: Instant::now(),
-            });
-        }
-
-        Ok(tracks)
+        Err(format!("Search failed after retries. stderr: {}", last_err))
     }
 
     fn cookies_file_path() -> PathBuf {
+        if let Ok(env_path) = env::var("COOKIE_FILE") {
+            let p = PathBuf::from(&env_path);
+            if p.exists() {
+                return p;
+            }
+        }
+        let docker_path = PathBuf::from("/app/cookies.txt");
+        if docker_path.exists() {
+            return docker_path;
+        }
         PathBuf::from("cookies.txt")
     }
 
-    fn build_yt_dlp_base_args() -> Vec<&'static str> {
+    pub fn build_yt_dlp_base_args_vec() -> Vec<String> {
         let mut args = vec![];
 
-        if Self::cookies_file_path().exists() {
-            args.push("--cookies");
-            args.push("cookies.txt");
+        args.push("--js-runtimes".to_string());
+        args.push("nodejs".to_string());
+
+        let cookie_path = Self::cookies_file_path();
+        if cookie_path.exists() {
+            args.push("--cookies".to_string());
+            args.push(cookie_path.to_string_lossy().into_owned());
         }
 
         args
     }
 
-    fn yt_dlp_args_with_cookies<'a>(&self, extra_args: Vec<&'a str>) -> Vec<&'a str> {
-        let mut args = Self::build_yt_dlp_base_args();
-        args.extend(extra_args);
+    fn yt_dlp_args_with_cookies_vec(&self, extra_args: &[&str]) -> Vec<String> {
+        let mut args = Self::build_yt_dlp_base_args_vec();
+        for arg in extra_args {
+            args.push(arg.to_string());
+        }
         args
     }
 
@@ -453,7 +465,6 @@ impl SpotdlService {
         
         let video_id = Self::extract_id(&target_url);
         
-        // Already downloaded? (just check if anything starts with id in temp dir)
         if let Ok(entries) = fs::read_dir(&self.download_dir) {
             for entry in entries.flatten() {
                 if let Some(file_name) = entry.file_name().to_str() {
@@ -470,41 +481,53 @@ impl SpotdlService {
             "--output", &output_pattern,
             &target_url,
         ];
-        let all_args = self.yt_dlp_args_with_cookies(output_args);
+        let all_args = self.yt_dlp_args_with_cookies_vec(&output_args);
         
-        let output = match Command::new(Self::yt_dlp_path())
-            .current_dir(&self.download_dir)
-            .args(&all_args)
-            .output() {
-            Ok(o) => o,
-            Err(e) => {
-                println!("[Stream] yt-dlp spawn error: {}", e);
-                return Err(format!("Download spawn failed: {}", e));
-            }
-        };
-        
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            println!("[Stream] yt-dlp download failed: {}", stderr);
-             return Err(format!("Download failed. stderr: {}", stderr));
-        }
-        
-        // Find downloaded file again
-        if let Ok(entries) = fs::read_dir(&self.download_dir) {
-            for entry in entries.flatten() {
-                if let Some(file_name) = entry.file_name().to_str() {
-                    if file_name.starts_with(&format!("{}.", video_id)) {
-                        return Ok(entry.path().to_string_lossy().into_owned());
+        // Retry up to 2 times with backoff for transient 429 errors
+        let mut last_err = String::new();
+        for attempt in 0..3 {
+            let output = match Command::new(Self::yt_dlp_path())
+                .current_dir(&self.download_dir)
+                .args(&all_args)
+                .output() {
+                Ok(o) => o,
+                Err(e) => {
+                    println!("[Stream] yt-dlp spawn error: {}", e);
+                    return Err(format!("Download spawn failed: {}", e));
+                }
+            };
+            
+            if output.status.success() {
+                if let Ok(entries) = fs::read_dir(&self.download_dir) {
+                    for entry in entries.flatten() {
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            if file_name.starts_with(&format!("{}.", video_id)) {
+                                return Ok(entry.path().to_string_lossy().into_owned());
+                            }
+                        }
                     }
                 }
+                return Err("File not found after download".to_string());
+            }
+            
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_err = stderr.to_string();
+            println!("[Stream] yt-dlp download failed (attempt {}): {}", attempt + 1, stderr);
+            
+            let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
+            if is_rate_limit && attempt < 2 {
+                let delay_secs = (attempt + 1) * 5;
+                println!("[Stream] Rate limited, retrying in {}s...", delay_secs);
+                std::thread::sleep(Duration::from_secs(delay_secs as u64));
+            } else {
+                break;
             }
         }
         
-        Err("File not found after download".to_string())
+        Err(format!("Download failed. stderr: {}", last_err))
     }
     
     pub async fn search_artist(&self, query: &str) -> Result<String, String> {
-        // Check cache first for quick response
         {
             let cache = self.search_cache.read().await;
             if let Some(cached) = cache.get(query) {
@@ -516,16 +539,16 @@ impl SpotdlService {
             }
         }
 
-        // Try to fetch actual artist photo from YouTube
         let path = Self::yt_dlp_path();
         let search_query = format!("ytsearch5:{} artist", query);
         
-        let mut artist_search_args = Self::build_yt_dlp_base_args();
-        let artist_search_extra: Vec<&str> = vec![&search_query, "--dump-json", "--flat-playlist"];
-        artist_search_args.extend(artist_search_extra);
+        let artist_search_args = vec![
+            search_query.as_str(), "--dump-json", "--flat-playlist",
+        ];
+        let all_args = self.yt_dlp_args_with_cookies_vec(&artist_search_args);
         
         let output = Command::new(&path)
-            .args(&artist_search_args)
+            .args(&all_args)
             .output();
         
         if let Ok(o) = output {

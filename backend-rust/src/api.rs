@@ -451,9 +451,14 @@ pub async fn video_stats_handler(
 
     let url = format!("https://www.youtube.com/watch?v={}", video_id);
     let path = crate::spotdl::SpotdlService::yt_dlp_path_static();
+    let mut args = crate::spotdl::SpotdlService::build_yt_dlp_base_args_vec();
+    args.push("--dump-json".to_string());
+    args.push("--no-playlist".to_string());
+    args.push("--flat-playlist".to_string());
+    args.push(url);
 
     let output = std::process::Command::new(&path)
-        .args(["--dump-json", "--no-playlist", "--flat-playlist", &url])
+        .args(&args)
         .output();
 
     match output {
