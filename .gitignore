@@ -23,6 +23,10 @@ target/
 backend-rust/target/
 backend-rust/cookies.txt
 
+# Local binaries / toolchains
+.tools/
+*.deb
+
 # IDE
 .idea/
 .vscode/
@@ -35,6 +39,3 @@ cache/
 *_backup.*
 nul
 *.pid
-scripts/debug_*.py
-scripts/debug_*.ps1
-scripts/ngrok_*.ps1

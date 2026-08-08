@@ -7,12 +7,10 @@ dist/
 *.log
 *.pid
 nul
-backend-go/
 data/
 cache/
 backend-rust/target/
 .tools/
-scripts/
-*.bat
+*.deb
 *.md
 package-lock.json
