@@ -672,76 +672,23 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
     },
 
     async getCharts(chartType: string): Promise<Track[]> {
-        const regionalArtistsList: Record<string, string[]> = {
-            'vn': [
-                'Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Den Vau', 'SOOBIN',
-                'Erik', 'Vũ', 'Hoang Dung', 'Grey D', 'Wren Evans',
-                'tlinh', 'Madihu', 'Phuc Du', 'Duc Phuc', 'Hoa Minzy',
-                'Bich Phuong', 'Phan Manh Quynh', 'Jack J97', 'Amee', 'Min'
-            ],
-            'us': [
-                'Taylor Swift', 'The Weeknd', 'Bruno Mars', 'Billie Eilish', 'Sabrina Carpenter',
-                'Ariana Grande', 'Post Malone', 'Drake', 'Dua Lipa', 'Justin Bieber',
-                'Ed Sheeran', 'Olivia Rodrigo'
-            ],
-            'kr': [
-                'NewJeans', 'BLACKPINK', 'BTS', 'AESPA', 'ILLIT',
-                'TWICE', 'Stray Kids', 'IVE', 'IU', 'SEVENTEEN',
-                'LE SSERAFIM', 'ENHYPEN'
-            ],
-            'cn': [
-                'Jay Chou', 'Eric Chou', 'GEM Deng Ziqi', 'JJ Lin', 'Teresa Teng', 'Nhạc Hoa Lời Việt'
-            ],
-            'top-hits': ['Son Tung M-TP', 'Taylor Swift', 'The Weeknd', 'HIEUTHUHAI', 'NewJeans', 'Bruno Mars', 'MONO'],
-            'trending': ['Son Tung M-TP', 'HIEUTHUHAI', 'MONO', 'Den Vau', 'SOOBIN', 'Wren Evans', 'tlinh'],
-            'top-albums': ['Son Tung M-TP', 'Taylor Swift', 'BTS', 'Jay Chou', 'The Weeknd', 'NewJeans'],
-            'hits-collection': ['Son Tung M-TP', 'The Weeknd', 'NewJeans', 'Eric Chou', 'HIEUTHUHAI', 'Bruno Mars']
-        };
+        const res = await apiFetch(`/charts?chart_type=${encodeURIComponent(chartType)}`);
+        if (!res) return [];
+        const data = res as { tracks?: Track[] };
+        return (data.tracks || []).map(t => ({
+            ...t,
+            url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+        }));
+    },
 
-        const artistQueries = regionalArtistsList[chartType] || regionalArtistsList['vn'];
-        
-        // Query each artist and pick the top valid song (round-robin interleave)
-        const artistResults = await Promise.all(
-            artistQueries.map(async (query) => {
-                try {
-                    const tracks = await this.search(query);
-                    return tracks.filter(t => {
-                        const titleLower = t.title.toLowerCase();
-                        return !titleLower.includes('megamix') &&
-                            !titleLower.includes('top 100') &&
-                            !titleLower.includes('top 50') &&
-                            !titleLower.includes('hơn 50') &&
-                            !titleLower.includes('tổng kết') &&
-                            !titleLower.includes('tuyển tập') &&
-                            !titleLower.includes('full album');
-                    });
-                } catch {
-                    return [];
-                }
-            })
-        );
-
-        const combined: Track[] = [];
-        const seenIds = new Set<string>();
-        const seenArtists = new Set<string>();
-
-        // Round-robin pick 1 song per artist first to guarantee artist diversity
-        for (let round = 0; round < 3; round++) {
-            for (const tracks of artistResults) {
-                if (tracks[round]) {
-                    const t = tracks[round];
-                    if (!seenIds.has(t.id)) {
-                        seenIds.add(t.id);
-                        combined.push({
-                            ...t,
-                            url: `/api/stream/${t.id}`
-                        });
-                    }
-                }
-            }
-        }
-
-        return combined.slice(0, 20);
+    async getNewReleases(region: 'vn' | 'us' = 'vn'): Promise<Track[]> {
+        const res = await apiFetch(`/new-releases?region=${region}`);
+        if (!res) return [];
+        const data = res as { tracks?: Track[] };
+        return (data.tracks || []).map(t => ({
+            ...t,
+            url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+        }));
     },
 
     async getArtists(region: 'vn' | 'us' | 'kr' | 'cn' = 'vn'): Promise<Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string; topTrack: string }>> {

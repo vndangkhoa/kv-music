@@ -510,27 +510,164 @@ pub struct ChartsQuery {
     pub chart_type: String, // "top-hits", "trending", "top-albums", "hits-collection"
 }
 
+// Real YouTube Music chart playlists for Vietnam (from music.youtube.com/charts, gl=VN)
+fn chart_playlist_url(chart_type: &str) -> Option<&'static str> {
+    match chart_type {
+        // BXH REALTIME BÀI HÁT HOT - Trending 20 Vietnam
+        "top-hits" => Some("https://music.youtube.com/playlist?list=OLAK5uy_lEos0zuYBvGC9C0FSGG3pZ6gO4a82P6zg"),
+        // BXH NHẠC TRẺ VIỆT NAM - Daily Top Music Videos - Vietnam
+        "trending" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn57DkisEwlIpcs9FAt5yudJ"),
+        // BXH TOP 100 - Top 100 Music Videos Vietnam
+        "top-albums" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn4FPCRZtojwqQro5GPY6cuV"),
+        // Global chart - Trending 20 Global
+        "hits-collection" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn6O1LS0XSdF3RyO0Rq_LDeI"),
+        _ => None,
+    }
+}
+
 pub async fn charts_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ChartsQuery>,
 ) -> impl IntoResponse {
     let chart_type = params.chart_type.trim();
-    
-    let query = match chart_type {
-        "top-hits" => "Son Tung M-TP HIEUTHUHAI Den Vau MONO Tlinh Binz",
-        "trending" => "Rap Viet V-Pop 2024 Nhạc trẻ Amee Erik",
-        "top-albums" => "Vũ Tlinh Binz JustaTee Suboi Low G",
-        "hits-collection" => "Vietnamese pop hits Nhạc Việt MONO Son Tung Tlinh Binz Den Vau HIEUTHUHAI V-pop",
-        _ => {
-            return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid chart_type"})));
-        }
+
+    let Some(chart_url) = chart_playlist_url(chart_type) else {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Invalid chart_type"})));
     };
 
-    match state.spotdl.search_tracks(query).await {
+    match state.spotdl.fetch_chart_tracks(chart_url, 100).await {
         Ok(tracks) => {
-            let results: Vec<_> = tracks.into_iter().take(20).collect();
+            let results: Vec<_> = tracks.into_iter().take(50).collect();
             (StatusCode::OK, Json(serde_json::json!({"tracks": results})))
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
+    }
+}
+
+// Real "MỚI PHÁT HÀNH" (New Releases) from YouTube Music browse API
+#[derive(Deserialize)]
+pub struct NewReleasesQuery {
+    #[serde(default = "default_region")]
+    pub region: String, // "vn" | "us"
+}
+
+fn default_region() -> String {
+    "vn".to_string()
+}
+
+pub async fn new_releases_handler(
+    Query(params): Query<NewReleasesQuery>,
+) -> impl IntoResponse {
+    let gl = match params.region.as_str() {
+        "us" => "US",
+        _ => "VN",
+    };
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+
+    let body = serde_json::json!({
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20240701.01.00",
+                "hl": "en",
+                "gl": gl
+            }
+        },
+        "browseId": "FEmusic_new_releases"
+    });
+
+    let url = "https://music.youtube.com/youtubei/v1/browse";
+    let res = match client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://music.youtube.com")
+        .header("Referer", "https://music.youtube.com/")
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("Request failed: {}", e)}))),
+    };
+
+    let json: serde_json::Value = match res.json().await {
+        Ok(j) => j,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Invalid response"}))),
+    };
+
+    let mut tracks = Vec::new();
+    collect_release_videos(&json, &mut tracks);
+
+    if tracks.is_empty() {
+        return (StatusCode::OK, Json(serde_json::json!({"tracks": []})));
+    }
+
+    (StatusCode::OK, Json(serde_json::json!({"tracks": tracks})))
+}
+
+// Walk the browse response for video renderers (title + videoId), skip section headers
+fn collect_release_videos(value: &serde_json::Value, tracks: &mut Vec<crate::models::Track>) {
+    use serde_json::Value;
+
+    if tracks.len() >= 30 { return; }
+
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                collect_release_videos(item, tracks);
+            }
+        }
+        Value::Object(map) => {
+            // musicTwoRowItemRenderer: title.runs[0].text, thumbnail in thumbnailRenderer, artist in subtitle
+            let title = map.get("title")
+                .and_then(|t| t.get("runs"))
+                .and_then(|r| r.as_array())
+                .and_then(|runs| runs.first())
+                .and_then(|r| r.get("text"))
+                .and_then(|t| t.as_str());
+
+            let video_id = map.get("navigationEndpoint")
+                .and_then(|ne| ne.get("watchEndpoint"))
+                .and_then(|we| we.get("videoId"))
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string());
+
+            if let (Some(t), Some(vid)) = (title, video_id) {
+                if vid.len() == 11 && !vid.starts_with("UC") && !vid.starts_with("PL") && !t.starts_with("Music videos") {
+                    let artist = map.get("subtitle")
+                        .and_then(|s| s.get("runs"))
+                        .and_then(|r| r.as_array())
+                        .and_then(|runs| runs.iter().find_map(|r| {
+                            r.get("text").and_then(|t| t.as_str())
+                        }))
+                        .unwrap_or("")
+                        .to_string();
+                    let cover_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", vid);
+                    tracks.push(crate::models::Track {
+                        id: vid.clone(),
+                        title: t.to_string(),
+                        artist,
+                        album: "YouTube Music".to_string(),
+                        duration: 0,
+                        cover_url,
+                        url: format!("/api/stream/{}", vid),
+                        view_count: None,
+                        like_count: None,
+                        comment_count: None,
+                        bitrate: None,
+                        codec: None,
+                    });
+                }
+            }
+            for v in map.values() {
+                collect_release_videos(v, tracks);
+            }
+        }
+        _ => {}
     }
 }

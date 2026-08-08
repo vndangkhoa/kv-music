@@ -419,6 +419,111 @@ impl SpotdlService {
         Err(format!("Search failed after retries. stderr: {}", last_err))
     }
 
+    /// Fetch real YouTube Music chart tracks from a chart playlist URL.
+    /// `chart_url` is a music.youtube.com playlist link (e.g. https://music.youtube.com/playlist?list=PL...)
+    pub async fn fetch_chart_tracks(&self, chart_url: &str, limit: usize) -> Result<Vec<Track>, String> {
+        let cache_key = chart_url.to_string();
+        {
+            let cache = self.search_cache.read().await;
+            if let Some(item) = cache.get(&cache_key) {
+                if item.timestamp.elapsed() < Duration::from_secs(1800) {
+                    println!("Cache Hit (chart): {}", chart_url);
+                    return Ok(item.tracks.clone());
+                }
+            }
+        }
+
+        let path = Self::yt_dlp_path();
+        let output_args = vec![
+            chart_url, "--dump-json", "--flat-playlist",
+        ];
+        let all_args = self.yt_dlp_args_with_cookies_vec(&output_args);
+
+        let mut last_err = String::new();
+        for attempt in 0..3 {
+            let output = match Command::new(&path).args(&all_args).output() {
+                Ok(o) => o,
+                Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
+            };
+
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let mut tracks = Vec::new();
+
+                for line in stdout.lines() {
+                    if line.trim().is_empty() { continue; }
+                    if let Ok(res) = serde_json::from_str::<YTResult>(line) {
+                        let duration = res.duration.unwrap_or(0.0);
+                        // Skip channels/playlists and odd durations
+                        if res.id.starts_with("UC") || res.id.starts_with("PL") || duration < 1.0 || duration > 1200.0 {
+                            continue;
+                        }
+                        let artist = res.uploader.replace(" - Topic", "");
+                        let mut cover_url = String::new();
+                        if !res.thumbnails.is_empty() {
+                            let mut best_score = -1.0;
+                            for thumb in &res.thumbnails {
+                                let w = thumb.width.unwrap_or(0) as f64;
+                                let h = thumb.height.unwrap_or(0) as f64;
+                                if w == 0.0 || h == 0.0 { continue; }
+                                let ratio = w / h;
+                                let diff = (ratio - 1.0).abs();
+                                let mut score = w * h;
+                                if diff < 0.1 { score *= 10.0; }
+                                if score > best_score {
+                                    best_score = score;
+                                    cover_url = thumb.url.clone();
+                                }
+                            }
+                            if cover_url.is_empty() {
+                                cover_url = res.thumbnails.last().unwrap().url.clone();
+                            }
+                        } else {
+                            cover_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id);
+                        }
+                        tracks.push(Track {
+                            id: res.id.clone(),
+                            title: res.title.clone(),
+                            artist,
+                            album: "YouTube Music".to_string(),
+                            duration: duration as i32,
+                            cover_url,
+                            url: format!("/api/stream/{}", res.id),
+                            view_count: res.view_count,
+                            like_count: res.like_count,
+                            comment_count: res.comment_count,
+                            bitrate: res.abr.map(|b| b as i32),
+                            codec: res.acodec,
+                        });
+                        if tracks.len() >= limit { break; }
+                    }
+                }
+
+                if !tracks.is_empty() {
+                    let mut cache = self.search_cache.write().await;
+                    cache.insert(cache_key, CacheItem {
+                        tracks: tracks.clone(),
+                        timestamp: Instant::now(),
+                    });
+                }
+                return Ok(tracks);
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_err = stderr.to_string();
+            let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
+            if is_rate_limit && attempt < 2 {
+                let delay_secs = (attempt + 1) * 3;
+                println!("[Chart] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
+                tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+            } else {
+                break;
+            }
+        }
+
+        Err(format!("Chart fetch failed after retries. stderr: {}", last_err))
+    }
+
     fn cookies_file_path() -> PathBuf {
         if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);

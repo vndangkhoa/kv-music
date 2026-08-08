@@ -1,32 +1,29 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star, Loader2, Music, Volume2 } from 'lucide-react';
+import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star, Volume2 } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
+import { formatCount } from '../utils/format';
 import type { Track } from '../types';
 
-const CHART_CONFIG: Record<string, { title: string; icon: React.ReactNode; queries: string[] }> = {
+const CHART_CONFIG: Record<string, { title: string; icon: React.ReactNode }> = {
     'top-hits': { 
         title: 'BXH REALTIME BÀI HÁT HOT', 
-        icon: <Flame className="w-6 h-6 text-cyan-400 fill-cyan-400" />,
-        queries: ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'MONO', 'Binz', 'Tlinh', 'JustaTee', 'Hoang Dung']
+        icon: <Flame className="w-6 h-6 text-cyan-400 fill-cyan-400" />
     },
     'trending': { 
         title: 'BXH NHẠC TRẺ VIỆT NAM', 
-        icon: <TrendingUp className="w-6 h-6 text-[#00d2d3]" />,
-        queries: ['Rap Viet', 'V-Pop 2024', 'Nhạc trẻ', 'Amee', 'Erik', 'Viral TikTok Vietnam', 'Low G', 'MCK']
+        icon: <TrendingUp className="w-6 h-6 text-[#00d2d3]" />
     },
     'top-albums': { 
-        title: 'BXH ALBUM / PLAYLIST HOT', 
-        icon: <Disc className="w-6 h-6 text-blue-400" />,
-        queries: ['Son Tung M-TP', 'HIEUTHUHAI', 'Den Vau', 'Hoang Dung', 'Vũ', 'MONO', 'Tlinh', 'Binz']
+        title: 'BXH TOP 100 BÀI HÁT VIỆT NAM', 
+        icon: <Disc className="w-6 h-6 text-blue-400" />
     },
     'hits-collection': { 
         title: 'BXH ÂU MỸ & QUỐC TẾ', 
-        icon: <Star className="w-6 h-6 text-amber-400 fill-amber-400" />,
-        queries: ['Nhạc Việt hay nhất', 'Vietnamese hits', 'V-Pop hits', 'Nhạc Trẻ', 'Top nhạc Việt']
+        icon: <Star className="w-6 h-6 text-amber-400 fill-amber-400" />
     },
 };
 
@@ -35,8 +32,6 @@ export default function ChartsSection() {
     const chartType = searchParams.get('chart_type') || 'top-hits';
     const [tracks, setTracks] = useState<Track[]>([]);
     const [loading, setLoading] = useState(true);
-    const [loadingMore, setLoadingMore] = useState(false);
-    const [currentQueryIndex, setCurrentQueryIndex] = useState(0);
     const playTrack = usePlayerStore(s => s.playTrack);
 
     const config = CHART_CONFIG[chartType] || CHART_CONFIG['top-hits'];
@@ -44,7 +39,6 @@ export default function ChartsSection() {
     useEffect(() => {
         setLoading(true);
         setTracks([]);
-        setCurrentQueryIndex(0);
         
         libraryService.getCharts(chartType)
             .then(data => {
@@ -53,25 +47,6 @@ export default function ChartsSection() {
             })
             .catch(() => setLoading(false));
     }, [chartType]);
-
-    const loadMore = useCallback(async () => {
-        if (loadingMore || currentQueryIndex >= config.queries.length - 1) return;
-        setLoadingMore(true);
-        const nextQuery = config.queries[currentQueryIndex + 1];
-        
-        try {
-            const moreTracks = await libraryService.search(nextQuery);
-            setTracks(prev => {
-                const existingIds = new Set(prev.map(t => t.id));
-                const newTracks = moreTracks.filter(t => !existingIds.has(t.id));
-                return [...prev, ...newTracks];
-            });
-            setCurrentQueryIndex(prev => prev + 1);
-        } catch (err) {
-            console.error('Failed to load more:', err);
-        }
-        setLoadingMore(false);
-    }, [loadingMore, currentQueryIndex, config.queries]);
 
     return (
         <div className="h-full bg-[#0b132d] text-white overflow-y-auto no-scrollbar pb-28 p-4 md:p-8">
@@ -151,9 +126,9 @@ export default function ChartsSection() {
                                     </p>
                                 </div>
 
-                                {/* Rank trend badge */}
+                                {/* Views badge */}
                                 <div className="hidden sm:flex items-center gap-1 px-3 py-1 bg-[#0b132d] rounded-lg border border-cyan-500/15 text-xs font-bold text-cyan-400">
-                                    <span>▲ {Math.floor(Math.random() * 15) + 1}</span>
+                                    <span>{track.view_count ? formatCount(track.view_count) : ''}</span>
                                 </div>
 
                                 <button className="p-2 rounded-full text-neutral-400 hover:text-cyan-400 transition">
@@ -162,23 +137,6 @@ export default function ChartsSection() {
                             </div>
                         );
                     })}
-
-                    {loadingMore && (
-                        <div className="flex justify-center py-6">
-                            <Loader2 className="w-7 h-7 text-cyan-400 animate-spin" />
-                        </div>
-                    )}
-
-                    {!loadingMore && currentQueryIndex < config.queries.length - 1 && (
-                        <div className="flex justify-center py-6">
-                            <button
-                                onClick={loadMore}
-                                className="px-6 py-2.5 bg-[#142044] hover:bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30 rounded-full text-xs uppercase tracking-wider transition"
-                            >
-                                Xem Thêm Bài Hát
-                            </button>
-                        </div>
-                    )}
                 </div>
             )}
         </div>

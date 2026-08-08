@@ -42,6 +42,7 @@ let app = Router::new()
         .route("/api/lyrics/zingmp3", get(api::zingmp3_lyrics_handler))
         .route("/api/video-stats", get(api::video_stats_handler))
         .route("/api/charts", get(api::charts_handler))
+        .route("/api/new-releases", get(api::new_releases_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(cors)
         .with_state(app_state);

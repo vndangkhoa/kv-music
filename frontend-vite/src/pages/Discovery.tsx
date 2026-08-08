@@ -420,8 +420,8 @@ function NewReleasesGrid({ filter, onPlayTrack }: { filter: 'all' | 'vn' | 'us';
     const fetchNewReleases = async () => {
       setLoading(true);
       try {
-        const type = filter === 'vn' ? 'trending' : filter === 'us' ? 'top-hits' : 'hits-collection';
-        const res = await libraryService.getCharts(type);
+        const region = filter === 'us' ? 'us' : 'vn';
+        const res = await libraryService.getNewReleases(region);
         if (res && res.length > 0) {
           setTracks(res.slice(0, 12));
         }
