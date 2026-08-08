@@ -510,16 +510,23 @@ pub struct ChartsQuery {
     pub chart_type: String, // "top-hits", "trending", "top-albums", "hits-collection"
 }
 
-// Real YouTube Music chart playlists for Vietnam (from music.youtube.com/charts, gl=VN)
+// Real YouTube Music chart playlists (verified via YT Music charts API)
 fn chart_playlist_url(chart_type: &str) -> Option<&'static str> {
     match chart_type {
+        // Main-page widget regions (Trending 20 chart per country)
+        "vn" => Some("https://music.youtube.com/playlist?list=OLAK5uy_lEos0zuYBvGC9C0FSGG3pZ6gO4a82P6zg"),
+        "kr" => Some("https://music.youtube.com/playlist?list=OLAK5uy_kdG4yl_RFDiVHXaqZaSFX1Gqenh8A98pM"),
+        "us" => Some("https://music.youtube.com/playlist?list=OLAK5uy_kNWGJvgWVqlt5LsFDL9Sdluly4M8TvGkM"),
+        // China has no regional chart - use Global Top 100
+        "cn" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn5kI81J1fYWK5eZRl1zJ5kM"),
+        // Charts page tabs
         // BXH REALTIME BÀI HÁT HOT - Trending 20 Vietnam
         "top-hits" => Some("https://music.youtube.com/playlist?list=OLAK5uy_lEos0zuYBvGC9C0FSGG3pZ6gO4a82P6zg"),
         // BXH NHẠC TRẺ VIỆT NAM - Daily Top Music Videos - Vietnam
         "trending" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn57DkisEwlIpcs9FAt5yudJ"),
         // BXH TOP 100 - Top 100 Music Videos Vietnam
         "top-albums" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn4FPCRZtojwqQro5GPY6cuV"),
-        // Global chart - Trending 20 Global
+        // Global chart - Top 100 Songs United States
         "hits-collection" => Some("https://music.youtube.com/playlist?list=PL4fGSI1pDJn6O1LS0XSdF3RyO0Rq_LDeI"),
         _ => None,
     }

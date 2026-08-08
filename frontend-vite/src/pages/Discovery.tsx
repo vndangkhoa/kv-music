@@ -6,6 +6,7 @@ import { libraryService } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
+import { formatCount } from '../utils/format';
 
 export default function Discovery() {
   const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
@@ -358,7 +359,7 @@ export default function Discovery() {
 
                         {/* Play count / trend */}
                         <div className="text-[10px] text-cyan-400/70 font-semibold flex flex-col items-end">
-                          <span>▲ {Math.floor(Math.random() * 10) + 1}</span>
+                          <span>{track.view_count ? formatCount(track.view_count) : ''}</span>
                         </div>
                       </div>
                     );
