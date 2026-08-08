@@ -479,26 +479,14 @@ function NewReleasesGrid({ filter, onPlayTrack }: { filter: 'all' | 'vn' | 'us';
 
 // Subcomponent for Artist Spotlight Carousel
 function ArtistSpotlightSection() {
-  const [artists, setArtists] = useState<string[]>([]);
-  const [photos, setPhotos] = useState<Record<string, string>>({});
-
-  const POPULAR_ARTISTS = [
-    "Sơn Tùng M-TP", "HIEUTHUHAI", "Đen Vâu", "Hoàng Dũng",
-    "Vũ.", "MONO", "Tlinh", "Erik", "Binz", "JustaTee",
-    "MCK", "Min", "Amee", "Karik", "Suboi", "Bích Phương"
-  ];
+  const [artists, setArtists] = useState<Array<{ name: string; photo?: string }>>([]);
 
   useEffect(() => {
-    setArtists(POPULAR_ARTISTS);
-    Promise.all(POPULAR_ARTISTS.slice(0, 10).map(async (name) => {
-      try {
-        const data = await libraryService.getArtistInfo(name);
-        const photoUrl = data.photo;
-        if (photoUrl) {
-          setPhotos(prev => ({ ...prev, [name]: photoUrl }));
-        }
-      } catch {}
-    }));
+    libraryService.getArtists('vn').then((res) => {
+      if (res && res.length > 0) {
+        setArtists(res.slice(0, 12).map(a => ({ name: a.name, photo: a.photo })));
+      }
+    }).catch(() => {});
   }, []);
 
   return (
@@ -511,17 +499,17 @@ function ArtistSpotlightSection() {
       </div>
 
       <div className="flex gap-4 overflow-x-auto pb-2 no-scrollbar">
-        {artists.map((name, i) => (
-          <Link to={`/artist/${encodeURIComponent(name)}`} key={i} className="flex-shrink-0 w-28 text-center group cursor-pointer">
+        {artists.map((a, i) => (
+          <Link to={`/artist/${encodeURIComponent(a.name)}`} key={i} className="flex-shrink-0 w-28 text-center group cursor-pointer">
             <div className="relative mb-2 w-28 h-28 mx-auto">
               <CoverImage 
-                src={photos[name]} 
-                alt={name} 
+                src={a.photo} 
+                alt={a.name} 
                 className="w-full h-full rounded-full shadow-lg group-hover:scale-105 transition object-cover border-2 border-cyan-500/20 group-hover:border-cyan-400" 
-                fallbackText={name.substring(0, 2).toUpperCase()} 
+                fallbackText={a.name.substring(0, 2).toUpperCase()} 
               />
             </div>
-            <h3 className="font-bold text-white text-xs truncate px-1 group-hover:text-cyan-300 transition">{name}</h3>
+            <h3 className="font-bold text-white text-xs truncate px-1 group-hover:text-cyan-300 transition">{a.name}</h3>
             <p className="text-[10px] text-neutral-400">Ca sĩ</p>
           </Link>
         ))}

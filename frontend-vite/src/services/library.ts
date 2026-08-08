@@ -692,93 +692,19 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
     },
 
     async getArtists(region: 'vn' | 'us' | 'kr' | 'cn' = 'vn'): Promise<Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string; topTrack: string }>> {
-        const regionalArtists = {
-            vn: [
-                { id: 'son-tung-m-tp', name: 'Sơn Tùng M-TP', followers: '10.5M', topTrack: 'Đừng Làm Trái Tim Anh Đau', photo: 'https://i.scdn.co/image/ab67616100055174092b77a7605d15c7210e7408' },
-                { id: 'hieuthuhai', name: 'HIEUTHUHAI', followers: '5.2M', topTrack: 'Không Phải Gu', photo: 'https://i.scdn.co/image/ab67616100055174411fb264f333333333333333' },
-                { id: 'mono', name: 'MONO', followers: '3.8M', topTrack: 'Waiting For You', photo: 'https://i.scdn.co/image/ab67616100055174828b49e49a15b3c3c1ffcf46' },
-                { id: 'den-vau', name: 'Đen Vâu', followers: '4.9M', topTrack: 'Nấu Ăn Cho Em', photo: 'https://i.scdn.co/image/ab67616100055174ec7ebbcadbbec5cbceb2b35b' },
-                { id: 'soobin-hoang-son', name: 'SOOBIN', followers: '3.1M', topTrack: 'BlackJack', photo: 'https://i.scdn.co/image/ab67616100055174542ee4ed57dfbf0cefa4aaeb' },
-                { id: 'vu', name: 'Vũ.', followers: '2.7M', topTrack: 'Bước Qua Nhau', photo: 'https://i.scdn.co/image/ab67616100055174b2f2d9ef1fb0c8a666ad63d3' },
-                { id: 'erik', name: 'ERIK', followers: '2.9M', topTrack: 'Em Không Sai Chúng Ta Sai', photo: 'https://i.scdn.co/image/ab67616100055174b71bf9e6583907c1340656a8' },
-                { id: 'min', name: 'MIN', followers: '2.5M', topTrack: 'Ghen', photo: 'https://i.scdn.co/image/ab676161000551742ef89d81d2f78ea7f2c2ffab' },
-                { id: 'amee', name: 'AMEE', followers: '2.4M', topTrack: 'Anh Nhà Ở Đâu Thế', photo: 'https://i.scdn.co/image/ab676161000551746c19f5a052ff135ef00a0cfb' },
-                { id: 'hoang-dung', name: 'Hoàng Dũng', followers: '2.1M', topTrack: 'Nàng Thơ', photo: 'https://i.scdn.co/image/ab67616100055174e2d31295ea5bc8e8bb353cfc' },
-                { id: 'wren-evans', name: 'Wren Evans', followers: '2.0M', topTrack: 'Từng Quen', photo: 'https://i.scdn.co/image/ab676161000551740f9518e388ee3b92d6e3557e' },
-                { id: 'tlinh', name: 'tlinh', followers: '1.9M', topTrack: 'nếu lúc đó', photo: 'https://i.scdn.co/image/ab676161000551748bb70ae4f46927bb4dd16ef0' },
-                { id: 'madihu', name: 'Madihu', followers: '1.7M', topTrack: 'Có Em', photo: 'https://i.scdn.co/image/ab67616100055174d8985162a8ab2e4b0c79e607' },
-                { id: 'phuc-du', name: 'Phúc Du', followers: '1.5M', topTrack: 'Yêu Anh Đi Mẹ Anh Bán Bánh Mì', photo: 'https://i.scdn.co/image/ab67616100055174a7b57fbdf8d2c206edbd29ef' },
-                { id: 'rhyder', name: 'Rhyder', followers: '1.8M', topTrack: 'Dấu Chân Mây', photo: 'https://i.scdn.co/image/ab676161000551743a4e98fecbbce91500000000' },
-                { id: 'duc-phuc', name: 'Đức Phúc', followers: '2.3M', topTrack: 'Ngày Đầu Tiên', photo: 'https://i.scdn.co/image/ab67616100055174c8bc8083815340026e676662' },
-                { id: 'hoa-minzy', name: 'Hòa Minzy', followers: '2.2M', topTrack: 'Thị Mầu', photo: 'https://i.scdn.co/image/ab67616100055174fa9ceae4f71a938c8230589d' },
-                { id: 'bich-phuong', name: 'Bích Phương', followers: '2.6M', topTrack: 'Bùa Yêu', photo: 'https://i.scdn.co/image/ab67616100055174151752ab9a4f7e53f1aa2f23' },
-                { id: 'phan-manh-quynh', name: 'Phan Mạnh Quỳnh', followers: '2.4M', topTrack: 'Có Chàng Trai Viết Trên Cây', photo: 'https://i.scdn.co/image/ab67616100055174fb24eefec25e59fffa0865a9' },
-                { id: 'jack-j97', name: 'Jack J97', followers: '3.5M', topTrack: 'Sóng Gió', photo: 'https://i.scdn.co/image/ab6761610005517495fc9f59fbf668e1aa7fb1eb' }
-            ],
-            us: [
-                { id: 'taylor-swift', name: 'Taylor Swift', followers: '112M', topTrack: 'Cruel Summer', photo: 'https://i.scdn.co/image/ab6761610005517485222e10b1154c15926c483a' },
-                { id: 'the-weeknd', name: 'The Weeknd', followers: '108M', topTrack: 'Blinding Lights', photo: 'https://i.scdn.co/image/ab67616100055174214c3be0136359683e356247' },
-                { id: 'bruno-mars', name: 'Bruno Mars', followers: '78M', topTrack: 'Die With A Smile', photo: 'https://i.scdn.co/image/ab67616100055174c36f0eb54194098651a2d596' },
-                { id: 'billie-eilish', name: 'Billie Eilish', followers: '95M', topTrack: 'BIRDS OF A FEATHER', photo: 'https://i.scdn.co/image/ab67616100055174e2d416b9b3e100375f4d1e2e' },
-                { id: 'sabrina-carpenter', name: 'Sabrina Carpenter', followers: '42M', topTrack: 'Espresso', photo: 'https://i.scdn.co/image/ab676161000551743e498c1995805d76d911b3be' },
-                { id: 'ariana-grande', name: 'Ariana Grande', followers: '98M', topTrack: 'we can\'t be friends', photo: 'https://i.scdn.co/image/ab67616100055174cdceb2a7587efc8a58a74ec4' },
-                { id: 'post-malone', name: 'Post Malone', followers: '64M', topTrack: 'Sunflower', photo: 'https://i.scdn.co/image/ab676161000551746be730d1d64c0552d431cdd8' },
-                { id: 'drake', name: 'Drake', followers: '86M', topTrack: 'God\'s Plan', photo: 'https://i.scdn.co/image/ab6761610005517442921864070a221f5bc9d59c' },
-                { id: 'dua-lipa', name: 'Dua Lipa', followers: '52M', topTrack: 'Levitating', photo: 'https://i.scdn.co/image/ab6761610005517415494d4d622f676063b27b9c' },
-                { id: 'justin-bieber', name: 'Justin Bieber', followers: '76M', topTrack: 'Stay', photo: 'https://i.scdn.co/image/ab676161000551748ae7f2ef9817a72b54c0fb24' },
-                { id: 'ed-sheeran', name: 'Ed Sheeran', followers: '115M', topTrack: 'Shape of You', photo: 'https://i.scdn.co/image/ab6761610005517412a2ef08d7af1747d87a1a27' },
-                { id: 'olivia-rodrigo', name: 'Olivia Rodrigo', followers: '38M', topTrack: 'vampire', photo: 'https://i.scdn.co/image/ab67616100055174a622557c6b986a422501a357' },
-                { id: 'rihanna', name: 'Rihanna', followers: '62M', topTrack: 'Umbrella', photo: 'https://i.scdn.co/image/ab6761610005517424bc446a8b792193b0475308' },
-                { id: 'beyonce', name: 'Beyoncé', followers: '48M', topTrack: 'TEXAS HOLD \'EM', photo: 'https://i.scdn.co/image/ab676161000551744e4a0558bcf7c89f5a5c68f2' },
-                { id: 'eminem', name: 'Eminem', followers: '84M', topTrack: 'Houdini', photo: 'https://i.scdn.co/image/ab67616100055174a00b11c129b27a88fc72f36b' },
-                { id: 'coldplay', name: 'Coldplay', followers: '58M', topTrack: 'Yellow', photo: 'https://i.scdn.co/image/ab676161000551745441c29e64e1017d23d8c199' },
-                { id: 'adele', name: 'Adele', followers: '54M', topTrack: 'Someone Like You', photo: 'https://i.scdn.co/image/ab676161000551742e970b556b694b8e72ef013d' },
-                { id: 'katy-perry', name: 'Katy Perry', followers: '35M', topTrack: 'Roar', photo: 'https://i.scdn.co/image/ab67616100055174092b77a7605d15c7210e7408' },
-                { id: 'maroon-5', name: 'Maroon 5', followers: '45M', topTrack: 'Memories', photo: 'https://i.scdn.co/image/ab67616100055174411fb264f333333333333333' },
-                { id: 'kendrick-lamar', name: 'Kendrick Lamar', followers: '49M', topTrack: 'Not Like Us', photo: 'https://i.scdn.co/image/ab67616100055174cdceb2a7587efc8a58a74ec4' }
-            ],
-            kr: [
-                { id: 'bts', name: 'BTS', followers: '74M', topTrack: 'Dynamite', photo: 'https://i.scdn.co/image/ab676161000551740e08ea2c4d6789fbf5cbe0d2' },
-                { id: 'blackpink', name: 'BLACKPINK', followers: '68M', topTrack: 'Pink Venom', photo: 'https://i.scdn.co/image/ab67616100055174f885994273ee0a1f0547781b' },
-                { id: 'newjeans', name: 'NewJeans', followers: '22M', topTrack: 'Super Shy', photo: 'https://i.scdn.co/image/ab676161000551749d282b0e6ed60742f451f2d2' },
-                { id: 'aespa', name: 'aespa', followers: '18M', topTrack: 'Supernova', photo: 'https://i.scdn.co/image/ab67616100055174f1b539c3620f4c0260492828' },
-                { id: 'illit', name: 'ILLIT', followers: '14M', topTrack: 'Magnetic', photo: 'https://i.scdn.co/image/ab676161000551745778848f06059d64f02a6c8b' },
-                { id: 'twice', name: 'TWICE', followers: '34M', topTrack: 'What is Love?', photo: 'https://i.scdn.co/image/ab676161000551740f9518e388ee3b92d6e3557e' },
-                { id: 'stray-kids', name: 'Stray Kids', followers: '28M', topTrack: 'S-Class', photo: 'https://i.scdn.co/image/ab6761610005517415494d4d622f676063b27b9c' },
-                { id: 'iu', name: 'IU', followers: '25M', topTrack: 'Love wins all', photo: 'https://i.scdn.co/image/ab67616100055174828b49e49a15b3c3c1ffcf46' },
-                { id: 'seventeen', name: 'SEVENTEEN', followers: '19M', topTrack: 'Super', photo: 'https://i.scdn.co/image/ab67616100055174411fb264f333333333333333' },
-                { id: 'le-sserafim', name: 'LE SSERAFIM', followers: '16M', topTrack: 'EASY', photo: 'https://i.scdn.co/image/ab6761610005517485222e10b1154c15926c483a' },
-                { id: 'enhypen', name: 'ENHYPEN', followers: '12M', topTrack: 'Bite Me', photo: 'https://i.scdn.co/image/ab67616100055174214c3be0136359683e356247' },
-                { id: 'red-velvet', name: 'Red Velvet', followers: '15M', topTrack: 'Psycho', photo: 'https://i.scdn.co/image/ab67616100055174c36f0eb54194098651a2d596' },
-                { id: 'exo', name: 'EXO', followers: '21M', topTrack: 'Love Shot', photo: 'https://i.scdn.co/image/ab676161000551743e498c1995805d76d911b3be' },
-                { id: 'bigbang', name: 'BIGBANG', followers: '26M', topTrack: 'BANG BANG BANG', photo: 'https://i.scdn.co/image/ab67616100055174cdceb2a7587efc8a58a74ec4' },
-                { id: 'taeyeon', name: 'Taeyeon', followers: '11M', topTrack: 'To. X', photo: 'https://i.scdn.co/image/ab676161000551746be730d1d64c0552d431cdd8' }
-            ],
-            cn: [
-                { id: 'jay-chou', name: 'JAY CHOU (Châu Kiệt Luân)', followers: '45M', topTrack: 'Dạ Khúc (Nocturne)', photo: 'https://i.scdn.co/image/ab67616100055174092b77a7605d15c7210e7408' },
-                { id: 'eric-chou', name: 'ERIC CHOU (Châu Hưng Triết)', followers: '16M', topTrack: 'Anh Ấy Nói (He Says)', photo: 'https://i.scdn.co/image/ab67616100055174411fb264f333333333333333' },
-                { id: 'gem-deng', name: 'G.E.M. (Đặng Tử Kỳ)', followers: '29M', topTrack: 'Bong Bóng (Bubbles)', photo: 'https://i.scdn.co/image/ab67616100055174828b49e49a15b3c3c1ffcf46' },
-                { id: 'jj-lin', name: 'JJ LIN (Lâm Tuấn Kiệt)', followers: '24M', topTrack: 'Giang Hồ', photo: 'https://i.scdn.co/image/ab67616100055174ec7ebbcadbbec5cbceb2b35b' },
-                { id: 'teresa-teng', name: 'TERESA TENG (Đặng Lệ Quân)', followers: '19M', topTrack: 'Ánh Trăng Nói Hộ Lòng Tôi', photo: 'https://i.scdn.co/image/ab67616100055174542ee4ed57dfbf0cefa4aaeb' },
-                { id: 'li-ronghao', name: 'Lý Vinh Hạo (Li Ronghao)', followers: '14M', topTrack: 'Model (Mô Phỏng)', photo: 'https://i.scdn.co/image/ab67616100055174b2f2d9ef1fb0c8a666ad63d3' },
-                { id: 'joker-xue', name: 'Tiết Chi Khiêm (Joker Xue)', followers: '18M', topTrack: 'Diễn Viên (Actor)', photo: 'https://i.scdn.co/image/ab67616100055174b71bf9e6583907c1340656a8' },
-                { id: 'jason-zhang', name: 'Trương Kiệt (Jason Zhang)', followers: '12M', topTrack: 'Thiên Không', photo: 'https://i.scdn.co/image/ab676161000551742ef89d81d2f78ea7f2c2ffab' },
-                { id: 'charlie-zhou', name: 'Châu Thâm (Charlie Zhou)', followers: '15M', topTrack: 'Đại Ngư (Big Fish)', photo: 'https://i.scdn.co/image/ab676161000551746c19f5a052ff135ef00a0cfb' },
-                { id: 'faye-wong', name: 'Vương Phi (Faye Wong)', followers: '11M', topTrack: 'Hồng Đậu', photo: 'https://i.scdn.co/image/ab67616100055174e2d31295ea5bc8e8bb353cfc' },
-                { id: 'jacky-cheung', name: 'Trương Học Hữu (Jacky Cheung)', followers: '20M', topTrack: 'Nụ Hôn Vĩnh Biệt', photo: 'https://i.scdn.co/image/ab676161000551740f9518e388ee3b92d6e3557e' },
-                { id: 'andy-lau', name: 'Lưu Đức Hoa (Andy Lau)', followers: '22M', topTrack: 'Cảm Ơn Tình Yêu Của Em', photo: 'https://i.scdn.co/image/ab676161000551748bb70ae4f46927bb4dd16ef0' }
-            ]
-        };
-
-        const list = regionalArtists[region] || regionalArtists['vn'];
-
+        const res = await apiFetch(`/artists?region=${region}`);
+        const data = res as { artists?: Array<{ name: string; photo: string; followers: string }> } | null;
+        const list = data?.artists || [];
         return list.map((art, index) => {
             const avatarUrl = art.photo || `https://ui-avatars.com/api/?name=${encodeURIComponent(art.name)}&background=00a8ff&color=fff&size=128&rounded=true&bold=true`;
             return {
-                ...art,
+                id: `artist-${art.name.replace(/[^a-zA-Z0-9 ]/g, '').replace(/\s+/g, '-').toLowerCase()}`,
+                name: art.name,
                 photo: avatarUrl,
                 region,
-                rank: index + 1
+                rank: index + 1,
+                followers: art.followers.replace(/\s*subscribers?/i, '').trim(),
+                topTrack: ''
             };
         });
     },

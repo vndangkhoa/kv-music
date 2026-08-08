@@ -43,6 +43,7 @@ let app = Router::new()
         .route("/api/video-stats", get(api::video_stats_handler))
         .route("/api/charts", get(api::charts_handler))
         .route("/api/new-releases", get(api::new_releases_handler))
+        .route("/api/artists", get(api::artists_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(cors)
         .with_state(app_state);

@@ -27,9 +27,9 @@ export default function ArtistsPage() {
         return () => { isMounted = false; };
     }, [region]);
 
-    const playArtistTrack = async (artistName: string, trackName: string) => {
+    const playArtistTrack = async (artistName: string) => {
         try {
-            const tracks = await libraryService.search(`${artistName} ${trackName}`);
+            const tracks = await libraryService.search(artistName);
             if (tracks && tracks.length > 0) {
                 playTrack(tracks[0], tracks);
             }
@@ -114,14 +114,14 @@ export default function ArtistsPage() {
                                     <span>{artist.followers} người nghe</span>
                                 </p>
                                 <p className="text-[10px] text-neutral-400 truncate mt-0.5">
-                                    HOT: {artist.topTrack}
+                                    {artist.topTrack ? `HOT: ${artist.topTrack}` : 'YouTube Music Chart Artist'}
                                 </p>
                             </div>
                         </div>
 
                         {/* Play button */}
                         <button
-                            onClick={() => playArtistTrack(artist.name, artist.topTrack)}
+                            onClick={() => playArtistTrack(artist.name)}
                             className="w-9 h-9 rounded-full bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white flex items-center justify-center shadow-lg shadow-cyan-500/30 hover:scale-110 active:scale-95 transition flex-shrink-0 ml-2"
                             title={`Phát nhạc ${artist.name}`}
                         >

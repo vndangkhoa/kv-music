@@ -678,3 +678,150 @@ fn collect_release_videos(value: &serde_json::Value, tracks: &mut Vec<crate::mod
         _ => {}
     }
 }
+
+// Real "Top Nghệ Sĩ Nổi Bật" (Top artists chart) from YouTube Music browse API
+#[derive(Serialize)]
+pub struct ArtistChartEntry {
+    pub id: String,
+    pub name: String,
+    pub photo: String,
+    pub followers: String,
+}
+
+#[derive(Deserialize)]
+pub struct ArtistsQuery {
+    pub region: String, // "vn" | "us" | "kr" | "cn"
+}
+
+fn chart_gl(region: &str) -> &'static str {
+    match region {
+        "us" => "US",
+        "kr" => "KR",
+        // China has no regional chart on YT Music - use Global (ZZ)
+        "cn" => "ZZ",
+        _ => "VN",
+    }
+}
+
+pub async fn artists_handler(
+    Query(params): Query<ArtistsQuery>,
+) -> impl IntoResponse {
+    let region = params.region.trim().to_lowercase();
+    let gl = chart_gl(&region);
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+
+    let body = serde_json::json!({
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20260808.01.00",
+                "hl": "en"
+            }
+        },
+        "browseId": "FEmusic_charts",
+        "formData": {
+            "selectedValues": [gl]
+        }
+    });
+
+    let url = "https://music.youtube.com/youtubei/v1/browse";
+    let res = match client
+        .post(url)
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://music.youtube.com")
+        .header("Referer", "https://music.youtube.com/charts")
+        .json(&body)
+        .send()
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("Request failed: {}", e)}))),
+    };
+
+    let json: serde_json::Value = match res.json().await {
+        Ok(j) => j,
+        Err(_) => return (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": "Invalid response"}))),
+    };
+
+    let artists = collect_artists_from_charts(&json);
+
+    (StatusCode::OK, Json(serde_json::json!({"artists": artists})))
+}
+
+// Walk the charts browse response for the "Top artists" section items
+fn collect_artists_from_charts(value: &serde_json::Value) -> Vec<ArtistChartEntry> {
+    use serde_json::Value;
+    let mut artists = Vec::new();
+
+    fn walk(value: &Value, artists: &mut Vec<ArtistChartEntry>) {
+        if artists.len() >= 50 { return; }
+
+        match value {
+            Value::Array(arr) => {
+                for item in arr {
+                    walk(item, artists);
+                }
+            }
+            Value::Object(map) => {
+                // musicResponsiveListItemRenderer: name in flexColumns[0], subs in flexColumns[1], photo in thumbnail
+                let name = map.get("flexColumns")
+                    .and_then(|fc| fc.as_array())
+                    .and_then(|cols| cols.first())
+                    .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
+                    .and_then(|r| r.get("text"))
+                    .and_then(|t| t.get("runs"))
+                    .and_then(|runs| runs.as_array())
+                    .and_then(|runs| runs.first())
+                    .and_then(|r| r.get("text"))
+                    .and_then(|t| t.as_str());
+
+                let followers = map.get("flexColumns")
+                    .and_then(|fc| fc.as_array())
+                    .and_then(|cols| cols.get(1))
+                    .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
+                    .and_then(|r| r.get("text"))
+                    .and_then(|t| t.get("runs"))
+                    .and_then(|runs| runs.as_array())
+                    .and_then(|runs| runs.first())
+                    .and_then(|r| r.get("text"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                let photo = map.get("thumbnail")
+                    .and_then(|th| th.get("musicThumbnailRenderer"))
+                    .and_then(|r| r.get("thumbnail"))
+                    .and_then(|th| th.get("thumbnails"))
+                    .and_then(|t| t.as_array())
+                    .and_then(|arr| arr.last())
+                    .and_then(|th| th.get("url"))
+                    .and_then(|u| u.as_str())
+                    .unwrap_or("")
+                    .to_string();
+
+                if let Some(n) = name {
+                    if !n.is_empty() && !followers.is_empty() && photo.starts_with("http") && !n.starts_with("Top artists") {
+                        artists.push(ArtistChartEntry {
+                            id: format!("artist-{}", n.replace(|c: char| !c.is_alphanumeric() && c != ' ', "-").to_lowercase()),
+                            name: n.to_string(),
+                            photo,
+                            followers,
+                        });
+                    }
+                }
+                for v in map.values() {
+                    walk(v, artists);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    walk(value, &mut artists);
+    artists
+}
