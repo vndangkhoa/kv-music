@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Settings, LogOut, Menu, PanelRightOpen, PanelRightClose } from 'lucide-react';
-import { useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Search, Settings, LogOut, Menu, PanelRightOpen, PanelRightClose, X } from 'lucide-react';
+import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-dom';
 import Logo from './Logo';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
@@ -23,9 +23,11 @@ function getAvatarGradient(avatarColor: string): string {
 
 export default function Header() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [searchParams] = useSearchParams();
   const urlQuery = searchParams.get('q') || '';
   const [query, setQuery] = useState(urlQuery);
+  const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const setIsSettingsOpen = usePlayerStore(s => s.setIsSettingsOpen);
   const addRecentSearch = usePlayerStore(s => s.addRecentSearch);
   const user = useAuthStore(s => s.user);
@@ -40,6 +42,12 @@ export default function Header() {
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { setQuery(urlQuery); }, [urlQuery]);
+
+  useEffect(() => {
+    setIsMobileSearchOpen(false);
+  }, [location.pathname]);
+
+  const isHomePage = location.pathname === '/';
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -118,6 +126,12 @@ export default function Header() {
               {isNowPlayingOpen ? <PanelRightClose className="w-5 h-5 text-cyan-400" /> : <PanelRightOpen className="w-5 h-5" />}
             </button>
 
+            {!isHomePage && (
+              <button onClick={() => setIsMobileSearchOpen(true)} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10 md:hidden" aria-label="Search" title="Search">
+                <Search className="w-5 h-5" />
+              </button>
+            )}
+
             <button onClick={() => setIsSettingsOpen(true)} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10">
               <Settings className="w-5 h-5" />
             </button>
@@ -146,18 +160,20 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Mobile Search Bar (full width, always visible on mobile) */}
-        <form onSubmit={handleFormSubmit} className="md:hidden px-3 pb-2.5">
-          <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
-            <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
-            <input type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
-              placeholder="Tìm bài hát, ca sĩ, album, playlist..."
-              className="w-full pl-11 pr-20 py-2.5 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
-            <button type="submit" className="absolute right-1.5 px-3 py-1.5 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white text-xs font-semibold rounded-full shadow transition">
-              Tìm kiếm
-            </button>
-          </div>
-        </form>
+        {/* Mobile Search Bar (icon-triggered, hidden on home page) */}
+        {!isHomePage && isMobileSearchOpen && (
+          <form onSubmit={handleFormSubmit} className="md:hidden px-3 pb-2.5">
+            <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
+              <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
+              <input autoFocus type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Tìm bài hát, ca sĩ, album, playlist..."
+                className="w-full pl-11 pr-10 py-2.5 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
+              <button type="button" onClick={() => { setIsMobileSearchOpen(false); setQuery(''); }} className="absolute right-1.5 p-1.5 text-neutral-400 hover:text-white transition" aria-label="Close search">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </form>
+        )}
 
         {/* Sub-Navigation Category Bar (NCT Header Menu) */}
         <div className="hidden fold:flex items-center gap-1 md:gap-6 px-4 md:px-8 py-1.5 border-t border-cyan-500/10 text-xs md:text-sm font-bold text-neutral-300 overflow-x-auto no-scrollbar">
