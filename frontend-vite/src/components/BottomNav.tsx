@@ -1,4 +1,4 @@
-import { Play, Pause, AudioWaveform, User, Search } from 'lucide-react';
+import { Play, Pause, AudioWaveform, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 
@@ -53,16 +53,6 @@ export default function BottomNav() {
         >
           <AudioWaveform className="w-6 h-6 mb-1" strokeWidth={isActive('/') ? 2.5 : 2} />
           <span className="text-[10px] uppercase font-medium tracking-wide">Discovery</span>
-        </button>
-
-        <button
-          onClick={() => handleNav('/search')}
-          className={`flex flex-col items-center justify-center transition-colors ${
-            path.startsWith('/search') ? 'text-white' : 'text-neutral-500'
-          }`}
-        >
-          <Search className="w-6 h-6 mb-1" strokeWidth={path.startsWith('/search') ? 2.5 : 2} />
-          <span className="text-[10px] uppercase font-medium tracking-wide">Search</span>
         </button>
 
         <button
