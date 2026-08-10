@@ -71,16 +71,23 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         }
     };
 
-    const handleLinkPairCodeSubmit = (e: React.FormEvent) => {
+    const handleLinkPairCodeSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setPairMsg('');
         if (!pairInput.trim()) return;
-        const ok = linkPairCode(pairInput.trim());
+        const ok = await linkPairCode(pairInput.trim());
         if (ok) {
             setPairMsg('✅ Đã đồng bộ tài khoản thành công!');
             setPairInput('');
         } else {
             setPairMsg('❌ Mã Pair Code không đúng.');
+        }
+    };
+
+    const handleGeneratePairCode = async () => {
+        const code = await generatePairCode();
+        if (code) {
+            setPairMsg('✅ Đã tạo mã mới: ' + code);
         }
     };
 
@@ -154,7 +161,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                     </button>
                                 </div>
                                 <button
-                                    onClick={() => generatePairCode()}
+                                    onClick={handleGeneratePairCode}
                                     className="text-[11px] font-bold text-cyan-400 hover:underline"
                                 >
                                     Tạo Mã Mới

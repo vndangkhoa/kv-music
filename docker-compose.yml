@@ -19,6 +19,7 @@ services:
       - ./data:/tmp/kv-music-downloads
       - ./cache:/tmp/kv-music-cache
       - ./cookies.txt:/app/cookies.txt:ro
+      - ./users:/app/data
     logging:
       driver: "json-file"
       options:

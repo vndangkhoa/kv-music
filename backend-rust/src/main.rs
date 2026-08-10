@@ -1,9 +1,10 @@
 pub mod api;
+pub mod auth;
 pub mod models;
 mod spotdl;
 
 use axum::{
-    routing::get,
+    routing::{get, post},
     Router,
 };
 use std::net::SocketAddr;
@@ -15,6 +16,7 @@ use tower_http::{
 use std::io::Write;
 
 use crate::api::AppState;
+use crate::auth::AuthStore;
 use crate::spotdl::SpotdlService;
 
 #[tokio::main]
@@ -24,8 +26,18 @@ async fn main() {
     
     let spotdl = SpotdlService::new();
     spotdl.start_background_preload();
+
+    // Account store: Docker -> /app/data/users.json (mounted volume on NAS), local -> ./data/users.json
+    let auth_file = if std::path::Path::new("/app/data").exists() {
+        "/app/data/users.json".to_string()
+    } else {
+        "data/users.json".to_string()
+    };
+    let auth = AuthStore::new(auth_file.clone());
+    println!("Auth store ready. Accounts persist at: {}", auth_file);
+    std::io::stdout().flush().unwrap();
     
-    let app_state = Arc::new(AppState { spotdl });
+    let app_state = Arc::new(AppState { spotdl, auth });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -46,6 +58,13 @@ let app = Router::new()
         .route("/api/charts", get(api::charts_handler))
         .route("/api/new-releases", get(api::new_releases_handler))
         .route("/api/artists", get(api::artists_handler))
+        .route("/api/settings/update-ytdlp", post(api::update_ytdlp_handler))
+        .route("/api/auth/register", post(api::register_handler))
+        .route("/api/auth/login", post(api::login_handler))
+        .route("/api/auth/logout", post(api::logout_handler))
+        .route("/api/auth/me", post(api::me_handler))
+        .route("/api/auth/pair/generate", post(api::pair_generate_handler))
+        .route("/api/auth/pair/link", post(api::pair_link_handler))
         .fallback_service(ServeDir::new("static"))
         .layer(cors)
         .with_state(app_state);

@@ -7,10 +7,120 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+use crate::auth::AuthStore;
 use crate::spotdl::SpotdlService;
 
 pub struct AppState {
     pub spotdl: SpotdlService,
+    pub auth: AuthStore,
+}
+
+// ── Auth handlers ────────────────────────────────────────────────────────────
+
+pub async fn register_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::auth::RegisterPayload>,
+) -> impl IntoResponse {
+    let avatar_color = if payload.avatar_color.is_empty() {
+        serde_json::json!({"from": "#00a8ff", "to": "#2e86de"}).to_string()
+    } else {
+        payload.avatar_color
+    };
+    match state.auth.register(&payload.name, &payload.email, &payload.password, &avatar_color).await {
+        Ok((user, token)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "user": crate::auth::public_user(&user),
+                "token": token,
+            })),
+        ),
+        Err(e) => (StatusCode::CONFLICT, Json(serde_json::json!({"error": e}))),
+    }
+}
+
+pub async fn login_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::auth::LoginPayload>,
+) -> impl IntoResponse {
+    match state.auth.login(&payload.email, &payload.password).await {
+        Ok((user, token)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "user": crate::auth::public_user(&user),
+                "token": token,
+            })),
+        ),
+        Err(e) => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e}))),
+    }
+}
+
+pub async fn logout_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::auth::AuthToken>,
+) -> impl IntoResponse {
+    state.auth.logout(&payload.token).await;
+    (StatusCode::OK, Json(serde_json::json!({"ok": true})))
+}
+
+pub async fn me_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::auth::AuthToken>,
+) -> impl IntoResponse {
+    match state.auth.me(&payload.token).await {
+        Some(user) => (StatusCode::OK, Json(serde_json::json!({"user": crate::auth::public_user(&user)}))),
+        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Phiên đăng nhập hết hạn"}))),
+    }
+}
+
+pub async fn pair_generate_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::auth::AuthToken>,
+) -> impl IntoResponse {
+    match state.auth.generate_pair_code_for(&payload.token).await {
+        Ok(code) => (StatusCode::OK, Json(serde_json::json!({"pair_code": code}))),
+        Err(e) => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e}))),
+    }
+}
+
+pub async fn pair_link_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<crate::auth::PairLinkPayload>,
+) -> impl IntoResponse {
+    match state.auth.link_pair_code(&payload.code).await {
+        Some((user, token)) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "user": crate::auth::public_user(&user),
+                "token": token,
+            })),
+        ),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Mã Pair Code không hợp lệ"}))),
+    }
+}
+
+pub async fn update_ytdlp_handler() -> impl IntoResponse {
+    // Run yt-dlp self-update (writes /tmp/yt-dlp which SpotdlService prefers)
+    let output = std::process::Command::new("yt-dlp")
+        .arg("-U")
+        .output();
+
+    match output {
+        Ok(o) => {
+            let stdout = String::from_utf8_lossy(&o.stdout);
+            let stderr = String::from_utf8_lossy(&o.stderr);
+            let combined = format!("{}{}", stdout, stderr);
+            if o.status.success() {
+                (StatusCode::OK, Json(serde_json::json!({"output": combined})))
+            } else {
+                println!("[yt-dlp] update failed: {}", combined);
+                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": combined})))
+            }
+        }
+        Err(e) => {
+            println!("[yt-dlp] update spawn error: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("Failed to run yt-dlp: {}", e)})))
+        }
+    }
 }
 
 #[derive(Deserialize)]

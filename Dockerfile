@@ -43,15 +43,13 @@ RUN apt-get update && apt-get install -y \
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs
-# Force upgrade yt-dlp to latest on every build (bypass layer cache)
-RUN pip install --no-cache-dir --upgrade yt-dlp "yt-dlp[default]"
 
 # Copy artifacts
 COPY --from=backend-builder /app/backend-rust-bin /app/server
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
 # Permissions and Directories
-RUN mkdir -p /tmp/kv-music-cache /tmp/kv-music-downloads && chmod 777 /tmp/kv-music-cache /tmp/kv-music-downloads
+RUN mkdir -p /tmp/kv-music-cache /tmp/kv-music-downloads /app/data && chmod 777 /tmp/kv-music-cache /tmp/kv-music-downloads /app/data
 RUN chmod +x /app/server
 
 ENV PORT=8080
@@ -61,4 +59,5 @@ EXPOSE 8080
 
 USER 0
 
-CMD ["sh", "-c", "echo 'Starting KV Music...' && /app/server 2>&1"]
+# Update yt-dlp to the latest version on every container start
+CMD ["sh", "-c", "echo 'Starting KV Music...' && (yt-dlp -U >/dev/null 2>&1 || true) && echo 'yt-dlp ready.' && /app/server 2>&1"]

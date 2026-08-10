@@ -13,17 +13,43 @@ export interface UserProfile {
 interface AuthState {
   user: UserProfile | null;
   isLoggedIn: boolean;
-  login: (name: string, avatarColor: string, email?: string) => void;
-  register: (name: string, email: string, avatarColor: string) => void;
-  logout: () => void;
-  generatePairCode: () => string;
-  linkPairCode: (code: string) => boolean;
+  token: string | null;
+  loading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<boolean>;
+  register: (name: string, email: string, password: string, avatarColor: string) => Promise<boolean>;
+  logout: () => Promise<void>;
+  generatePairCode: () => Promise<string | null>;
+  linkPairCode: (code: string) => Promise<boolean>;
   updateProfile: (updates: Partial<UserProfile>) => void;
+  clearError: () => void;
 }
 
-function createRandomPairCode(): string {
-  const num = Math.floor(100000 + Math.random() * 900000);
-  return `KV-${num}`;
+const API_BASE = '/api/auth';
+
+async function post(path: string, body: unknown): Promise<{ ok: boolean; data: any }> {
+  try {
+    const res = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    return { ok: res.ok, data };
+  } catch (e) {
+    return { ok: false, data: { error: 'Không thể kết nối máy chủ' } };
+  }
+}
+
+function mapUser(u: any): UserProfile {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    avatarColor: u.avatar_color || '{"from":"#00a8ff","to":"#2e86de"}',
+    pairCode: u.pair_code || '',
+    createdAt: u.created_at || Date.now(),
+  };
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -31,90 +57,76 @@ export const useAuthStore = create<AuthState>()(
     (set, get) => ({
       user: null,
       isLoggedIn: false,
+      token: null,
+      loading: false,
+      error: null,
 
-      login: (name, avatarColor, email) => {
-        const existing = get().user;
-        const pairCode = existing?.pairCode || createRandomPairCode();
-        const user: UserProfile = {
-          id: existing?.id || `user_${Date.now()}`,
-          name,
-          email: email || `${name.toLowerCase().replace(/\s+/g, '')}@kvmusic.com`,
-          avatarColor,
-          pairCode,
-          createdAt: existing?.createdAt || Date.now(),
-        };
-        localStorage.setItem(`pair_account_${pairCode}`, JSON.stringify(user));
-        set({ user, isLoggedIn: true });
-      },
-
-      register: (name, email, avatarColor) => {
-        const pairCode = createRandomPairCode();
-        const user: UserProfile = {
-          id: `user_${Date.now()}`,
-          name,
-          email,
-          avatarColor,
-          pairCode,
-          createdAt: Date.now(),
-        };
-        localStorage.setItem(`pair_account_${pairCode}`, JSON.stringify(user));
-        set({ user, isLoggedIn: true });
-      },
-
-      logout: () => {
-        set({ user: null, isLoggedIn: false });
-      },
-
-      generatePairCode: () => {
-        const code = createRandomPairCode();
-        set(state => {
-          if (!state.user) return state;
-          const updated = { ...state.user, pairCode: code };
-          localStorage.setItem(`pair_account_${code}`, JSON.stringify(updated));
-          return { user: updated };
-        });
-        return code;
-      },
-
-      linkPairCode: (code: string) => {
-        const formattedCode = code.trim().toUpperCase();
-        const saved = localStorage.getItem(`pair_account_${formattedCode}`);
-        if (saved) {
-          try {
-            const user: UserProfile = JSON.parse(saved);
-            set({ user, isLoggedIn: true });
-            return true;
-          } catch (e) {
-            return false;
-          }
+      login: async (email, password) => {
+        set({ loading: true, error: null });
+        const { ok, data } = await post('/login', { email, password });
+        set({ loading: false });
+        if (!ok) {
+          set({ error: data.error || 'Đăng nhập thất bại' });
+          return false;
         }
-        // Fallback: create linked profile for code
-        const user: UserProfile = {
-          id: `paired_${formattedCode}`,
-          name: `Thiết bị (${formattedCode})`,
-          email: `device_${formattedCode.toLowerCase()}@kvmusic.com`,
-          avatarColor: JSON.stringify({ from: '#00a8ff', to: '#2e86de' }),
-          pairCode: formattedCode,
-          createdAt: Date.now()
-        };
-        localStorage.setItem(`pair_account_${formattedCode}`, JSON.stringify(user));
-        set({ user, isLoggedIn: true });
+        set({ user: mapUser(data.user), token: data.token, isLoggedIn: true, error: null });
+        return true;
+      },
+
+      register: async (name, email, password, avatarColor) => {
+        set({ loading: true, error: null });
+        const { ok, data } = await post('/register', { name, email, password, avatar_color: avatarColor });
+        set({ loading: false });
+        if (!ok) {
+          set({ error: data.error || 'Đăng ký thất bại' });
+          return false;
+        }
+        set({ user: mapUser(data.user), token: data.token, isLoggedIn: true, error: null });
+        return true;
+      },
+
+      logout: async () => {
+        const token = get().token;
+        if (token) {
+          await post('/logout', { token });
+        }
+        set({ user: null, isLoggedIn: false, token: null, error: null });
+      },
+
+      generatePairCode: async () => {
+        const token = get().token;
+        if (!token) return null;
+        const { ok, data } = await post('/pair/generate', { token });
+        if (!ok || !data.pair_code) return null;
+        if (get().user) {
+          set({ user: { ...get().user!, pairCode: data.pair_code } });
+        }
+        return data.pair_code;
+      },
+
+      linkPairCode: async (code) => {
+        set({ error: null });
+        const { ok, data } = await post('/pair/link', { code });
+        if (!ok) {
+          set({ error: data.error || 'Mã Pair Code không hợp lệ' });
+          return false;
+        }
+        set({ user: mapUser(data.user), token: data.token, isLoggedIn: true, error: null });
         return true;
       },
 
       updateProfile: (updates) => {
         set(state => {
           if (!state.user) return state;
-          const updated = { ...state.user, ...updates };
-          if (updated.pairCode) {
-            localStorage.setItem(`pair_account_${updated.pairCode}`, JSON.stringify(updated));
-          }
-          return { user: updated };
+          return { user: { ...state.user, ...updates } };
         });
       },
+
+      clearError: () => set({ error: null }),
     }),
     {
       name: 'auth-storage',
+      partialize: (state) => ({ user: state.user, token: state.token, isLoggedIn: state.isLoggedIn }),
     }
   )
 );

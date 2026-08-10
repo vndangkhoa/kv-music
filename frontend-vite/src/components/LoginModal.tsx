@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { User, LogIn, UserPlus, QrCode, Sparkles, X, Check, Copy } from 'lucide-react';
+import { User, LogIn, UserPlus, QrCode, Sparkles, X, Check, Copy, Loader2, AlertCircle } from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -27,15 +27,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const login = useAuthStore(s => s.login);
   const register = useAuthStore(s => s.register);
   const linkPairCode = useAuthStore(s => s.linkPairCode);
+  const loading = useAuthStore(s => s.loading);
+  const error = useAuthStore(s => s.error);
+  const clearError = useAuthStore(s => s.clearError);
   const currentUser = useAuthStore(s => s.user);
 
   const [activeTab, setActiveTab] = useState<'login' | 'register' | 'pair'>('login');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [pairInput, setPairInput] = useState('');
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const [copied, setCopied] = useState(false);
-  const [pairError, setPairError] = useState('');
   const [pairSuccess, setPairSuccess] = useState(false);
 
   if (!isOpen) return null;
@@ -43,33 +47,38 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const selectedColor = AVATAR_COLORS[selectedColorIndex];
   const displayLetter = name.trim().length > 0 ? name.trim()[0].toUpperCase() : '?';
 
-  const handleLoginSubmit = (e: React.FormEvent): void => {
-    e.preventDefault();
-    if (!name.trim()) return;
-    login(name.trim(), JSON.stringify(selectedColor), email.trim());
-    onClose();
+  const handleTabChange = (tab: 'login' | 'register' | 'pair') => {
+    setActiveTab(tab);
+    clearError();
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent): void => {
+  const handleLoginSubmit = async (e: React.FormEvent): Promise<void> => {
+    e.preventDefault();
+    if (!email.trim() || !password) return;
+    const ok = await login(email.trim(), password);
+    if (ok) onClose();
+  };
+
+  const handleRegisterSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
-    register(name.trim(), email.trim(), JSON.stringify(selectedColor));
-    onClose();
+    if (password.length < 6) return;
+    if (password !== confirmPassword) return;
+    const ok = await register(name.trim(), email.trim(), password, JSON.stringify(selectedColor));
+    if (ok) onClose();
   };
 
-  const handlePairSubmit = (e: React.FormEvent): void => {
+  const handlePairSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
-    setPairError('');
+    setPairSuccess(false);
     if (!pairInput.trim()) return;
-    const ok = linkPairCode(pairInput.trim());
+    const ok = await linkPairCode(pairInput.trim());
     if (ok) {
       setPairSuccess(true);
       setTimeout(() => {
         setPairSuccess(false);
         onClose();
       }, 1000);
-    } else {
-      setPairError('Mã Pair Code không hợp lệ. Vui lòng kiểm tra lại!');
     }
   };
 
@@ -80,6 +89,9 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
       setTimeout(() => setCopied(false), 2000);
     }
   };
+
+  const inputCls = "w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition";
+  const labelCls = "block text-xs font-bold text-neutral-300 mb-1.5";
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
@@ -112,21 +124,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         {/* Tab Navigation */}
         <div className="grid grid-cols-3 gap-1 bg-[#142044] p-1 rounded-xl border border-cyan-500/20 mb-6 text-xs font-extrabold text-center">
           <button
-            onClick={() => setActiveTab('login')}
+            onClick={() => handleTabChange('login')}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'login' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
           >
             <LogIn className="w-3.5 h-3.5" />
             <span>Đăng Nhập</span>
           </button>
           <button
-            onClick={() => setActiveTab('register')}
+            onClick={() => handleTabChange('register')}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'register' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
           >
             <UserPlus className="w-3.5 h-3.5" />
             <span>Đăng Ký</span>
           </button>
           <button
-            onClick={() => setActiveTab('pair')}
+            onClick={() => handleTabChange('pair')}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'pair' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
           >
             <QrCode className="w-3.5 h-3.5" />
@@ -134,9 +146,55 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           </button>
         </div>
 
+        {/* Error banner */}
+        {error && (
+          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-semibold">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <span>{error}</span>
+          </div>
+        )}
+
         {/* TAB 1: LOGIN */}
         {activeTab === 'login' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
+            <div>
+              <label className={labelCls}>Email</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="khoavo@kvmusic.com"
+                className={inputCls}
+              />
+            </div>
+
+            <div>
+              <label className={labelCls}>Mật khẩu</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className={inputCls}
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={loading || !email.trim() || !password}
+              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              Đăng Nhập
+            </button>
+          </form>
+        )}
+
+        {/* TAB 2: REGISTER */}
+        {activeTab === 'register' && (
+          <form onSubmit={handleRegisterSubmit} className="space-y-4">
             <div className="flex justify-center mb-2">
               <div
                 className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-cyan-400/40"
@@ -147,26 +205,57 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Tên hiển thị / Username</label>
+              <label className={labelCls}>Họ và Tên</label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Nhập tên của bạn (VD: Khoa Vo)"
-                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
+                placeholder="Tên thành viên mới"
+                className={inputCls}
               />
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Email (không bắt buộc)</label>
+              <label className={labelCls}>Địa chỉ Email</label>
               <input
                 type="email"
+                required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="khoavo@kvmusic.com"
-                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
+                placeholder="user@kvmusic.com"
+                className={inputCls}
               />
+            </div>
+
+            <div>
+              <label className={labelCls}>Mật khẩu (tối thiểu 6 ký tự)</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className={inputCls}
+              />
+              {password.length > 0 && password.length < 6 && (
+                <p className="text-[11px] text-red-400 mt-1">Mật khẩu phải có ít nhất 6 ký tự</p>
+              )}
+            </div>
+
+            <div>
+              <label className={labelCls}>Xác nhận mật khẩu</label>
+              <input
+                type="password"
+                required
+                value={confirmPassword}
+                onChange={e => setConfirmPassword(e.target.value)}
+                placeholder="••••••••"
+                className={inputCls}
+              />
+              {confirmPassword.length > 0 && confirmPassword !== password && (
+                <p className="text-[11px] text-red-400 mt-1">Mật khẩu không khớp</p>
+              )}
             </div>
 
             <div>
@@ -190,56 +279,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
             <button
               type="submit"
-              disabled={!name.trim()}
-              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
+              disabled={loading || !name.trim() || !email.trim() || password.length < 6 || confirmPassword !== password}
+              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
-              Đăng Nhập Ngay
-            </button>
-          </form>
-        )}
-
-        {/* TAB 2: REGISTER */}
-        {activeTab === 'register' && (
-          <form onSubmit={handleRegisterSubmit} className="space-y-4">
-            <div className="flex justify-center mb-2">
-              <div
-                className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-cyan-400/40"
-                style={{ background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})` }}
-              >
-                {displayLetter}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Họ và Tên</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={e => setName(e.target.value)}
-                placeholder="Tên thành viên mới"
-                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-bold text-neutral-300 mb-1.5">Địa chỉ Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                placeholder="user@kvmusic.com"
-                className="w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={!name.trim() || !email.trim()}
-              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
-            >
-              Đăng Ký & Nhận Mã Pair
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              Đăng Ký Tài Khoản
             </button>
           </form>
         )}
@@ -276,14 +320,14 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className="w-full bg-[#142044] border border-cyan-500/30 rounded-xl px-4 py-3 text-center text-lg font-black tracking-widest text-cyan-300 placeholder-neutral-500 uppercase focus:border-cyan-400 focus:outline-none transition"
               />
 
-              {pairError && <p className="text-xs text-red-400 text-center font-semibold">{pairError}</p>}
               {pairSuccess && <p className="text-xs text-green-400 text-center font-bold">✅ Đồng bộ thành công!</p>}
 
               <button
                 type="submit"
-                disabled={!pairInput.trim()}
-                className="w-full bg-gradient-to-r from-teal-400 to-cyan-500 hover:brightness-110 text-black font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50"
+                disabled={loading || !pairInput.trim()}
+                className="w-full bg-gradient-to-r from-teal-400 to-cyan-500 hover:brightness-110 text-black font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               >
+                {loading && <Loader2 className="w-4 h-4 animate-spin" />}
                 Kết Nối & Đồng Bộ Thiết Bị
               </button>
             </form>
