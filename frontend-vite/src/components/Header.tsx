@@ -97,7 +97,7 @@ export default function Header() {
 
   return (
     <>
-      <header className="bg-[#0f1938]/95 backdrop-blur-md border-b border-cyan-500/20 hidden md:flex flex-col z-[60] relative select-none sticky top-0 shadow-lg shadow-black/20">
+      <header className={`bg-[#0f1938]/95 backdrop-blur-md border-b border-cyan-500/20 ${isHomePage ? 'hidden' : 'flex'} md:flex flex-col z-[60] relative select-none sticky top-0 shadow-lg shadow-black/20`}>
         {/* Top Navbar */}
         <div className="h-14 md:h-16 flex items-center justify-between px-3 md:px-6">
           <div className="flex items-center gap-2 md:gap-4">
