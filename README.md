@@ -366,6 +366,16 @@ See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 
+## Support
+
+If you find this project helpful, consider buying me a coffee! Your support helps keep this project alive and maintained.
+
+<p align="center">
+  <img src="frontend-vite/public/donation.jpg" alt="Donate via MoMo / VietQR" width="300"/>
+</p>
+
+---
+
 ## License
 
 [MIT License](LICENSE) - Free to use, modify, and distribute.
