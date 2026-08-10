@@ -825,3 +825,353 @@ fn collect_artists_from_charts(value: &serde_json::Value) -> Vec<ArtistChartEntr
     walk(value, &mut artists);
     artists
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Universal Search (songs + albums + playlists + artists) via YT Music API
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct UniversalSearchQuery {
+    pub q: String,
+}
+
+#[derive(Serialize)]
+pub struct AlbumHit {
+    pub id: String,
+    pub title: String,
+    pub artist: String,
+    pub cover_url: String,
+}
+
+#[derive(Serialize)]
+pub struct PlaylistHit {
+    pub id: String,
+    pub title: String,
+    pub cover_url: String,
+}
+
+#[derive(Serialize)]
+pub struct ArtistHit {
+    pub id: String,
+    pub name: String,
+    pub photo: String,
+}
+
+fn ytm_search_params(filter: &str) -> &'static str {
+    match filter {
+        "songs" => "EgWKAQIIAWoMEA4QChADEAQQCRAF",
+        "albums" => "EgWKAQIYAWoMEA4QChADEAQQCRAF",
+        "artists" => "EgWKAQIgAWoMEA4QChADEAQQCRAF",
+        "playlists" => "Eg-KAQwIABAAGAAgACgBMABqChAEEAMQCRAFEAo=",
+        _ => "EgWKAQIIAWoMEA4QChADEAQQCRAF",
+    }
+}
+
+// Run one YT Music search request and return the raw response
+async fn ytm_search(client: &reqwest::Client, query: &str, filter: &str) -> Option<serde_json::Value> {
+    let body = serde_json::json!({
+        "context": {
+            "client": {
+                "clientName": "WEB_REMIX",
+                "clientVersion": "1.20260808.01.00",
+                "hl": "en"
+            }
+        },
+        "query": query,
+        "params": ytm_search_params(filter)
+    });
+
+    let res = client
+        .post("https://music.youtube.com/youtubei/v1/search")
+        .header("Content-Type", "application/json")
+        .header("Origin", "https://music.youtube.com")
+        .json(&body)
+        .send()
+        .await
+        .ok()?;
+
+    res.json::<serde_json::Value>().await.ok()
+}
+
+// Extract a string from nested run objects
+fn run_text(value: &serde_json::Value) -> Option<String> {
+    value
+        .get("text")
+        .and_then(|t| t.as_str())
+        .map(|s| s.to_string())
+}
+
+// Parse a musicResponsiveListItemRenderer into a Track (songs search)
+fn parse_song_item(item: &serde_json::Value) -> Option<crate::models::Track> {
+    let col0 = item.get("flexColumns")?.as_array()?
+        .first()?
+        .get("musicResponsiveListItemFlexColumnRenderer")?;
+
+    let title = col0.get("text")?
+        .get("runs")?
+        .as_array()?
+        .first()
+        .and_then(run_text)?;
+
+    // videoId lives inside the first run's navigationEndpoint
+    let video_id = col0.get("text")?
+        .get("runs")?
+        .as_array()?
+        .first()?
+        .get("navigationEndpoint")?
+        .get("watchEndpoint")?
+        .get("videoId")?
+        .as_str()?;
+
+    let artist = item.get("flexColumns").and_then(|c| c.as_array())
+        .and_then(|cols| cols.get(1))
+        .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
+        .and_then(|r| r.get("text"))
+        .and_then(|t| t.get("runs"))
+        .and_then(|r| r.as_array())
+        .and_then(|runs| runs.iter().find_map(|r| r.get("text").and_then(|t| t.as_str())))
+        .unwrap_or("")
+        .to_string();
+
+    let cover_url = item.get("thumbnail")
+        .and_then(|th| th.get("musicThumbnailRenderer"))
+        .and_then(|r| r.get("thumbnail"))
+        .and_then(|th| th.get("thumbnails"))
+        .and_then(|t| t.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|th| th.get("url"))
+        .and_then(|u| u.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    if video_id.len() != 11 { return None; }
+
+    Some(crate::models::Track {
+        id: video_id.to_string(),
+        title,
+        artist,
+        album: "YouTube Music".to_string(),
+        duration: 0,
+        cover_url,
+        url: format!("/api/stream/{}", video_id),
+        view_count: None,
+        like_count: None,
+        comment_count: None,
+        bitrate: None,
+        codec: None,
+    })
+}
+
+// Parse album/playlist/artist hits (shared two-line renderer structure)
+fn parse_hit(item: &serde_json::Value) -> Option<(String, String, String, String, String)> {
+    // returns (title, artist_or_sub, browse_id, cover_url, page_type)
+    let title = item.get("flexColumns")?
+        .as_array()?
+        .first()?
+        .get("musicResponsiveListItemFlexColumnRenderer")?
+        .get("text")?
+        .get("runs")?
+        .as_array()?
+        .first()
+        .and_then(run_text)?;
+
+    let sub = item.get("flexColumns").and_then(|c| c.as_array())
+        .and_then(|cols| cols.get(1))
+        .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
+        .and_then(|r| r.get("text"))
+        .and_then(|t| t.get("runs"))
+        .and_then(|r| r.as_array())
+        .and_then(|runs| runs.iter().find_map(|r| r.get("text").and_then(|t| t.as_str())))
+        .unwrap_or("")
+        .to_string();
+
+    let nav = item.get("navigationEndpoint")?;
+    let browse = nav.get("browseEndpoint")?;
+    let browse_id = browse.get("browseId")?.as_str()?.to_string();
+    let page_type = browse.get("browseEndpointContextSupportedConfigs")
+        .and_then(|c| c.get("browseEndpointContextMusicConfig"))
+        .and_then(|c| c.get("pageType"))
+        .and_then(|p| p.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let cover_url = item.get("thumbnail")
+        .and_then(|th| th.get("musicThumbnailRenderer"))
+        .and_then(|r| r.get("thumbnail"))
+        .and_then(|th| th.get("thumbnails"))
+        .and_then(|t| t.as_array())
+        .and_then(|arr| arr.last())
+        .and_then(|th| th.get("url"))
+        .and_then(|u| u.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    Some((title, sub, browse_id, cover_url, page_type))
+}
+
+// Walk search response for items of a specific renderer key, collecting hits
+fn collect_hits(value: &serde_json::Value, renderer_key: &str, out: &mut Vec<(String, String, String, String, String)>) {
+    use serde_json::Value;
+
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                collect_hits(item, renderer_key, out);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(renderer) = map.get(renderer_key) {
+                if let Some(hit) = parse_hit(renderer) {
+                    out.push(hit);
+                }
+            }
+            for v in map.values() {
+                collect_hits(v, renderer_key, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+// Walk search response for song items
+fn collect_songs(value: &serde_json::Value, out: &mut Vec<crate::models::Track>) {
+    use serde_json::Value;
+
+    match value {
+        Value::Array(arr) => {
+            for item in arr {
+                collect_songs(item, out);
+            }
+        }
+        Value::Object(map) => {
+            if let Some(renderer) = map.get("musicResponsiveListItemRenderer") {
+                if let Some(track) = parse_song_item(renderer) {
+                    out.push(track);
+                }
+            }
+            for v in map.values() {
+                collect_songs(v, out);
+            }
+        }
+        _ => {}
+    }
+}
+
+pub async fn universal_search_handler(
+    Query(params): Query<UniversalSearchQuery>,
+) -> impl IntoResponse {
+    let query = params.q.trim();
+    if query.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Query required"})));
+    }
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .unwrap_or_default();
+
+    // Run all 4 category searches in parallel
+    let (songs_res, albums_res, playlists_res, artists_res) = tokio::join!(
+        ytm_search(&client, query, "songs"),
+        ytm_search(&client, query, "albums"),
+        ytm_search(&client, query, "playlists"),
+        ytm_search(&client, query, "artists"),
+    );
+
+    // ── Songs ──
+    let mut songs: Vec<crate::models::Track> = Vec::new();
+    if let Some(resp) = songs_res {
+        let mut collected = Vec::new();
+        collect_songs(&resp, &mut collected);
+        // dedupe by id
+        let mut seen = std::collections::HashSet::new();
+        for t in collected {
+            if seen.insert(t.id.clone()) {
+                songs.push(t);
+            }
+        }
+    }
+    songs.truncate(20);
+
+    // ── Albums / Playlists / Artists ──
+    let mut albums: Vec<AlbumHit> = Vec::new();
+    let mut playlists: Vec<PlaylistHit> = Vec::new();
+    let mut artists: Vec<ArtistHit> = Vec::new();
+
+    if let Some(resp) = albums_res {
+        let mut hits = Vec::new();
+        collect_hits(&resp, "musicResponsiveListItemRenderer", &mut hits);
+        let mut seen = std::collections::HashSet::new();
+        for (title, sub, browse_id, cover_url, _page_type) in hits {
+            if browse_id.starts_with("MPRE") && seen.insert(browse_id.clone()) {
+                let artist = sub.split(" • ").next().unwrap_or(&sub).to_string();
+                albums.push(AlbumHit { id: browse_id, title, artist, cover_url });
+            }
+        }
+    }
+    albums.truncate(10);
+
+    if let Some(resp) = playlists_res {
+        let mut hits = Vec::new();
+        collect_hits(&resp, "musicResponsiveListItemRenderer", &mut hits);
+        let mut seen = std::collections::HashSet::new();
+        for (title, _sub, browse_id, cover_url, _page_type) in hits {
+            if browse_id.starts_with("VLPL") && seen.insert(browse_id.clone()) {
+                playlists.push(PlaylistHit { id: browse_id, title, cover_url });
+            }
+        }
+    }
+    playlists.truncate(10);
+
+    if let Some(resp) = artists_res {
+        let mut hits = Vec::new();
+        collect_hits(&resp, "musicResponsiveListItemRenderer", &mut hits);
+        let mut seen = std::collections::HashSet::new();
+        for (name, _sub, browse_id, photo, _page_type) in hits {
+            if browse_id.starts_with("UC") && seen.insert(browse_id.clone()) {
+                artists.push(ArtistHit { id: browse_id, name, photo });
+            }
+        }
+    }
+    artists.truncate(10);
+
+    (StatusCode::OK, Json(serde_json::json!({
+        "songs": songs,
+        "albums": albums,
+        "playlists": playlists,
+        "artists": artists,
+    })))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Collection (album/playlist) track listing
+// ─────────────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct CollectionQuery {
+    pub id: String,
+}
+
+pub async fn collection_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<CollectionQuery>,
+) -> impl IntoResponse {
+    let id = params.id.trim();
+    if id.is_empty() {
+        return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "ID required"})));
+    }
+
+    match state.spotdl.fetch_collection_tracks(id, 100).await {
+        Ok(tracks) => {
+            let cover_url = tracks.first().map(|t| t.cover_url.clone()).unwrap_or_default();
+            (StatusCode::OK, Json(serde_json::json!({
+                "id": id,
+                "title": "Collection",
+                "cover_url": cover_url,
+                "tracks": tracks
+            })))
+        }
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
+    }
+}

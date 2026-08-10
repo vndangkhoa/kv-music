@@ -128,6 +128,43 @@ export const libraryService = {
         return [];
     },
 
+    async universalSearch(query: string): Promise<{
+        songs: Track[];
+        albums: Array<{ id: string; title: string; artist: string; cover_url: string }>;
+        playlists: Array<{ id: string; title: string; cover_url: string }>;
+        artists: Array<{ id: string; name: string; photo: string }>;
+    }> {
+        const data = await apiFetch(`/universal-search?q=${encodeURIComponent(query)}`);
+        if (!data) {
+            return { songs: [], albums: [], playlists: [], artists: [] };
+        }
+        return {
+            songs: (data.songs || []).map((t: Track) => ({
+                ...t,
+                url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+            })),
+            albums: data.albums || [],
+            playlists: data.playlists || [],
+            artists: data.artists || [],
+        };
+    },
+
+    async getCollection(id: string): Promise<StaticPlaylist | null> {
+        const res = await apiFetch(`/collection?id=${encodeURIComponent(id)}`);
+        if (!res || !res.tracks || res.tracks.length === 0) return null;
+        return {
+            id,
+            title: res.title || 'Collection',
+            description: `${res.tracks.length} bài hát`,
+            cover_url: res.cover_url || '',
+            tracks: (res.tracks as Track[]).map(t => ({
+                ...t,
+                url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+            })),
+            type: id.startsWith('MPRE') ? 'Album' : 'Playlist',
+        };
+    },
+
     async getInitialTrendingTracks(): Promise<Track[]> {
         const cached = localStorage.getItem(CACHE_KEY_INITIAL);
         const cacheTime = localStorage.getItem(`${CACHE_KEY_INITIAL}_time`);
@@ -261,6 +298,12 @@ export const libraryService = {
     },
 
     async getPlaylist(id: string): Promise<StaticPlaylist | null> {
+        // 0. Real YT Music playlist IDs (VLPL.../PL...) - fetch directly
+        if (id.startsWith('VLPL') || id.startsWith('PL')) {
+            const real = await this.getCollection(id);
+            if (real) return real;
+        }
+
         // 1. Try to find in GENERATED_CONTENT first (Fast/Instant)
         const found = Object.values(GENERATED_CONTENT).find(p => p.id === id);
 
@@ -349,6 +392,12 @@ export const libraryService = {
     },
 
     async getAlbum(id: string): Promise<StaticPlaylist | null> {
+        // Real YT Music album IDs (MPRE...) - fetch directly
+        if (id.startsWith('MPRE') || id.startsWith('OLAK')) {
+            const real = await this.getCollection(id);
+            if (real) return real;
+        }
+
         // Same logic for Album
         const found = Object.values(GENERATED_CONTENT).find(p => p.id === id);
         if (found) {

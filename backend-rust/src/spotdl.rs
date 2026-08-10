@@ -524,6 +524,29 @@ impl SpotdlService {
         Err(format!("Chart fetch failed after retries. stderr: {}", last_err))
     }
 
+    /// Fetch tracks of a YouTube Music album/playlist by its browse ID.
+    /// Handles: MPRE... (album -> music.youtube.com/browse/), VLPL... (strip VL -> youtube.com/playlist), PL... (direct).
+    pub async fn fetch_collection_tracks(&self, id: &str, limit: usize) -> Result<Vec<Track>, String> {
+        let collection_id = id.trim().to_string();
+        if collection_id.is_empty() {
+            return Err("Empty collection id".to_string());
+        }
+
+        // Resolve to a yt-dlp friendly URL
+        let url = if collection_id.starts_with("MPRE") {
+            format!("https://music.youtube.com/browse/{}", collection_id)
+        } else if collection_id.starts_with("VLPL") {
+            format!("https://www.youtube.com/playlist?list={}", collection_id.trim_start_matches("VL"))
+        } else if collection_id.starts_with("PL") || collection_id.starts_with("OLAK") || collection_id.starts_with("RD") {
+            format!("https://music.youtube.com/playlist?list={}", collection_id)
+        } else {
+            return Err(format!("Unsupported collection id: {}", collection_id));
+        };
+
+        // Reuse chart playlist fetching (same yt-dlp flow)
+        self.fetch_chart_tracks(&url, limit).await
+    }
+
     fn cookies_file_path() -> PathBuf {
         if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);

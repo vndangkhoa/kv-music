@@ -59,7 +59,7 @@ export default function AppLayout() {
     <div className="h-screen w-screen flex flex-col overflow-hidden bg-spotify-base text-spotify-text-main transition-colors duration-500 relative">
       <AnimatedBackground />
 
-      {!isMobile && <Header />}
+      <Header />
 
       <div className="flex-1 flex overflow-hidden relative">
         {!isMobile && <Sidebar />}

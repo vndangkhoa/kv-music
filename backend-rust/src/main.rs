@@ -34,6 +34,8 @@ async fn main() {
 
 let app = Router::new()
         .route("/api/search", get(api::search_handler))
+        .route("/api/universal-search", get(api::universal_search_handler))
+        .route("/api/collection", get(api::collection_handler))
         .route("/api/stream/{id}", get(api::stream_handler))
         .route("/api/artist/info", get(api::artist_info_handler))
         .route("/api/browse", get(api::browse_handler))

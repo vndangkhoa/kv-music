@@ -101,7 +101,7 @@ export default function Header() {
             </Link>
           </div>
 
-          <form onSubmit={handleFormSubmit} className="flex-1 max-w-[540px] mx-3 md:mx-6 relative">
+          <form onSubmit={handleFormSubmit} className="flex-1 max-w-[540px] mx-3 md:mx-6 relative hidden md:flex">
             <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
               <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
               <input type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
@@ -145,6 +145,19 @@ export default function Header() {
             </div>
           </div>
         </div>
+
+        {/* Mobile Search Bar (full width, always visible on mobile) */}
+        <form onSubmit={handleFormSubmit} className="md:hidden px-3 pb-2.5">
+          <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
+            <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
+            <input type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
+              placeholder="Tìm bài hát, ca sĩ, album, playlist..."
+              className="w-full pl-11 pr-20 py-2.5 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
+            <button type="submit" className="absolute right-1.5 px-3 py-1.5 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white text-xs font-semibold rounded-full shadow transition">
+              Tìm kiếm
+            </button>
+          </div>
+        </form>
 
         {/* Sub-Navigation Category Bar (NCT Header Menu) */}
         <div className="hidden fold:flex items-center gap-1 md:gap-6 px-4 md:px-8 py-1.5 border-t border-cyan-500/10 text-xs md:text-sm font-bold text-neutral-300 overflow-x-auto no-scrollbar">
