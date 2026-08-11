@@ -654,11 +654,12 @@ impl SpotdlService {
     }
 
     fn cookies_file_path() -> PathBuf {
-        // Auto-refreshed cookies take priority (freshest session)
-        let managed = Self::managed_cookie_path();
-        if managed.exists() {
-            return managed;
-        }
+        // Priority:
+        // 1. Explicit COOKIE_FILE env (usually a mounted logged-in cookies.txt)
+        // 2. /app/cookies.txt (docker-compose read-only mount, logged-in)
+        // 3. Managed auto-refreshed file (anonymous fallback - never shadows
+        //    a user-provided logged-in session)
+        // 4. Local cookies.txt
         if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);
             if p.exists() {
@@ -668,6 +669,10 @@ impl SpotdlService {
         let docker_path = PathBuf::from("/app/cookies.txt");
         if docker_path.exists() {
             return docker_path;
+        }
+        let managed = Self::managed_cookie_path();
+        if managed.exists() {
+            return managed;
         }
         PathBuf::from("cookies.txt")
     }
