@@ -15,9 +15,60 @@ pub struct CacheItem {
     pub timestamp: Instant,
 }
 
+/// Cookie jar shared between the reqwest client and Netscape file serialization.
+/// Wraps `cookie_store::CookieStore` so we can both feed reqwest requests and
+/// dump the fresh session to the yt-dlp cookies file.
+pub struct SharedCookieStore {
+    inner: std::sync::Mutex<cookie_store::CookieStore>,
+}
+
+impl SharedCookieStore {
+    pub fn new() -> Self {
+        Self {
+            inner: std::sync::Mutex::new(cookie_store::CookieStore::new()),
+        }
+    }
+
+    /// All unexpired cookies currently in the jar
+    pub fn iter_unexpired(&self) -> Vec<cookie_store::Cookie<'static>> {
+        if let Ok(inner) = self.inner.lock() {
+            inner.iter_unexpired().cloned().collect()
+        } else {
+            Vec::new()
+        }
+    }
+}
+
+impl reqwest::cookie::CookieStore for SharedCookieStore {
+    fn set_cookies(&self, cookie_headers: &mut dyn Iterator<Item = &reqwest::header::HeaderValue>, url: &reqwest::Url) {
+        let cookies = cookie_headers
+            .filter_map(|v| std::str::from_utf8(v.as_bytes()).ok())
+            .filter_map(|s| cookie_store::RawCookie::parse(s).ok())
+            .map(|c| c.into_owned());
+        if let Ok(mut inner) = self.inner.lock() {
+            inner.store_response_cookies(cookies, url);
+        }
+    }
+
+    fn cookies(&self, url: &reqwest::Url) -> Option<reqwest::header::HeaderValue> {
+        let inner = self.inner.lock().ok()?;
+        let s = inner
+            .get_request_values(url)
+            .map(|(n, v)| format!("{n}={v}"))
+            .collect::<Vec<_>>()
+            .join("; ");
+        if s.is_empty() {
+            return None;
+        }
+        reqwest::header::HeaderValue::from_str(&s).ok()
+    }
+}
+
 #[derive(Clone)]
 pub struct SpotdlService {
     download_dir: PathBuf,
+    yt_client: reqwest::Client,
+    cookie_jar: Arc<SharedCookieStore>,
     pub search_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
     pub browse_cache: Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>,
 }
@@ -31,11 +82,28 @@ impl SpotdlService {
         // Ensure node is in PATH for yt-dlp
         let _ = Self::js_runtime_args();
 
+        // Shared cookie-aware client: keeps a persistent jar of fresh YouTube
+        // session cookies so innerTube API calls avoid bot detection (429s).
+        let cookie_jar = Arc::new(SharedCookieStore::new());
+        let yt_client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .cookie_provider(cookie_jar.clone())
+            .timeout(Duration::from_secs(30))
+            .build()
+            .unwrap_or_default();
+
         Self {
             download_dir,
+            yt_client,
+            cookie_jar,
             search_cache: Arc::new(RwLock::new(HashMap::new())),
             browse_cache: Arc::new(RwLock::new(HashMap::new())),
         }
+    }
+
+    /// Shared cookie-aware HTTP client used for all direct YouTube innerTube calls.
+    pub fn yt_client(&self) -> &reqwest::Client {
+        &self.yt_client
     }
 
     fn get_placeholder_image(&self, seed: &str) -> String {
@@ -53,6 +121,20 @@ impl SpotdlService {
 
     pub fn yt_dlp_path_static() -> String {
         Self::yt_dlp_path()
+    }
+
+    /// True if any cookie file (managed, COOKIE_FILE, docker, local) exists.
+    pub fn has_cookies_file() -> bool {
+        let managed = Self::managed_cookie_path();
+        if managed.exists() {
+            return true;
+        }
+        if let Ok(env_path) = env::var("COOKIE_FILE") {
+            if PathBuf::from(&env_path).exists() {
+                return true;
+            }
+        }
+        Path::new("/app/cookies.txt").exists() || Path::new("cookies.txt").exists()
     }
 
     fn yt_dlp_path() -> String {
@@ -123,7 +205,7 @@ impl SpotdlService {
     }
     
     fn js_runtime_args() -> Vec<String> {
-        vec!["--js-runtimes".to_string(), "nodejs".to_string()]
+        vec!["--js-runtimes".to_string(), "node".to_string()]
     }
 
     pub fn start_background_preload(&self) {
@@ -547,7 +629,22 @@ impl SpotdlService {
         self.fetch_chart_tracks(&url, limit).await
     }
 
+    /// Writable location for auto-refreshed cookies (persists next to users.json).
+    /// Docker -> /app/data/cookies.txt (writable NAS volume), local -> data/cookies.txt.
+    fn managed_cookie_path() -> PathBuf {
+        if Path::new("/app/data").exists() {
+            PathBuf::from("/app/data/cookies.txt")
+        } else {
+            PathBuf::from("data/cookies.txt")
+        }
+    }
+
     fn cookies_file_path() -> PathBuf {
+        // Auto-refreshed cookies take priority (freshest session)
+        let managed = Self::managed_cookie_path();
+        if managed.exists() {
+            return managed;
+        }
         if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);
             if p.exists() {
@@ -561,11 +658,43 @@ impl SpotdlService {
         PathBuf::from("cookies.txt")
     }
 
+    /// True when the host has a usable (non-loopback) IPv6 address.
+    fn has_ipv6() -> bool {
+        if let Ok(content) = fs::read_to_string("/proc/net/if_inet6") {
+            // Format: <addr32hex>  <index>  <prefix>  <scope>  <flags>
+            for line in content.lines() {
+                let mut parts = line.split_whitespace();
+                let addr = parts.next().unwrap_or("");
+                let scope = parts.nth(2).unwrap_or("");
+                let flags = parts.next().unwrap_or("");
+                // scope 0x20 = global, 0x10 = link-local; flags 02 = tentative
+                if !addr.is_empty()
+                    && !flags.contains('2') // skip tentative/DAD addresses
+                    && (scope == "20" || scope == "10")
+                {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
     pub fn build_yt_dlp_base_args_vec() -> Vec<String> {
         let mut args = vec![];
 
         args.push("--js-runtimes".to_string());
-        args.push("nodejs".to_string());
+        args.push("node".to_string());
+
+        // Prefer IPv6 when the host supports it - YouTube bot detection blocks
+        // many IPv4 routes but allows IPv6. Override with FORCE_IPV6=1 (always)
+        // or FORCE_IPV6=0 (never).
+        let force_ipv6 = match env::var("FORCE_IPV6") {
+            Ok(v) => v != "0",
+            Err(_) => Self::has_ipv6(),
+        };
+        if force_ipv6 {
+            args.push("--force-ipv6".to_string());
+        }
 
         let cookie_path = Self::cookies_file_path();
         if cookie_path.exists() {
@@ -574,6 +703,93 @@ impl SpotdlService {
         }
 
         args
+    }
+
+    /// Visit YouTube anonymously through the shared cookie-aware client, collect the
+    /// fresh session cookies (VISITOR_INFO1_LIVE, YSC, PREF, SOCS, ...) issued by
+    /// YouTube, and persist them in Netscape format for yt-dlp.
+    pub async fn refresh_cookies(&self) -> Result<String, String> {
+        let urls = [
+            "https://www.youtube.com/",
+            "https://music.youtube.com/",
+            "https://consent.youtube.com/",
+        ];
+
+        for url in urls {
+            let res = self
+                .yt_client
+                .get(url)
+                .send()
+                .await
+                .map_err(|e| format!("Cannot reach {}: {}", url, e))?;
+            println!("[Cookies] GET {} -> HTTP {}", url, res.status().as_u16());
+        }
+
+        let cookies = self.cookie_jar.iter_unexpired();
+        if cookies.is_empty() {
+            return Err("YouTube did not return any cookies - possible bot detection. Try again later.".to_string());
+        }
+
+        let mut lines = vec![
+            "# Netscape HTTP Cookie File".to_string(),
+            "# Generated by KV Music automatic cookie refresh.".to_string(),
+            "# This file is generated automatically - do not edit manually.".to_string(),
+        ];
+
+        let mut names: Vec<String> = Vec::new();
+        for cookie in cookies {
+            let include_sub = matches!(cookie.domain, cookie_store::CookieDomain::Suffix(_));
+            let domain = match &cookie.domain {
+                cookie_store::CookieDomain::HostOnly(d) => d.clone(),
+                cookie_store::CookieDomain::Suffix(d) => {
+                    // Netscape convention: domain cookies are written with a leading dot
+                    format!(".{}", d)
+                }
+                _ => continue,
+            };
+            if domain.is_empty() {
+                continue;
+            }
+            let path = cookie.path.as_ref().to_string();
+            let secure = if cookie.secure().unwrap_or(false) { "TRUE" } else { "FALSE" };
+            let expiry = match &cookie.expires {
+                cookie_store::CookieExpiration::AtUtc(t) => t.unix_timestamp().to_string(),
+                cookie_store::CookieExpiration::SessionEnd => "0".to_string(),
+            };
+            let name = cookie.name().to_string();
+            let value = cookie.value().to_string();
+            lines.push(format!(
+                "{}\t{}\t{}\t{}\t{}\t{}\t{}",
+                domain,
+                if include_sub { "TRUE" } else { "FALSE" },
+                path,
+                secure,
+                expiry,
+                name,
+                value
+            ));
+            names.push(name);
+        }
+
+        if names.is_empty() {
+            return Err("YouTube did not return any usable cookies. Try again later.".to_string());
+        }
+
+        let path = Self::managed_cookie_path();
+        if let Some(parent) = path.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&path, lines.join("\n")).map_err(|e| format!("Failed to write cookie file: {}", e))?;
+
+        println!("[Cookies] Fetched {} fresh cookies -> {}", names.len(), path.display());
+        Ok(format!("Đã lấy {} cookie mới từ YouTube và lưu vào {}", names.len(), path.display()))
+    }
+
+    /// Drop all in-memory caches so the next fetches re-query YouTube with the new cookies.
+    pub async fn clear_caches(&self) {
+        self.search_cache.write().await.clear();
+        self.browse_cache.write().await.clear();
+        println!("[Cookies] All caches cleared - next fetches will use fresh cookies.");
     }
 
     fn yt_dlp_args_with_cookies_vec(&self, extra_args: &[&str]) -> Vec<String> {

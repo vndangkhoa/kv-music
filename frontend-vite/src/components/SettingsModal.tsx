@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, RefreshCcw, Check, Trash2, Volume2, QrCode, Copy, Cpu } from 'lucide-react';
+import { X, RefreshCcw, Check, Trash2, Volume2, QrCode, Copy, Cpu, Cookie } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import Logo from './Logo';
@@ -19,6 +19,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [isUpdating, setIsUpdating] = useState(false);
     const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [updateLog, setUpdateLog] = useState<string>('');
+    const [isFetchingCookies, setIsFetchingCookies] = useState(false);
+    const [cookieStatus, setCookieStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+    const [cookieLog, setCookieLog] = useState<string>('');
     const [isClearingCache, setIsClearingCache] = useState(false);
     const [pairInput, setPairInput] = useState('');
     const [pairMsg, setPairMsg] = useState('');
@@ -48,6 +51,31 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             setUpdateLog('Lỗi kết nối máy chủ.');
         } finally {
             setIsUpdating(false);
+        }
+    };
+
+    const handleFetchCookies = async () => {
+        if (isFetchingCookies) return;
+        setIsFetchingCookies(true);
+        setCookieStatus('loading');
+        setCookieLog('');
+
+        try {
+            const response = await fetch('/api/settings/fetch-cookies', { method: 'POST' });
+            const data = await response.json();
+
+            if (response.ok) {
+                setCookieStatus('success');
+                setCookieLog(data.output || 'Đã lấy cookie mới thành công!');
+            } else {
+                setCookieStatus('error');
+                setCookieLog(data.error || 'Không thể lấy cookie mới.');
+            }
+        } catch (e) {
+            setCookieStatus('error');
+            setCookieLog('Lỗi kết nối máy chủ.');
+        } finally {
+            setIsFetchingCookies(false);
         }
     };
 
@@ -228,6 +256,28 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                             {updateLog && (
                                 <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-cyan-300 font-mono overflow-x-auto max-h-24 no-scrollbar border border-cyan-500/20">
                                     {updateLog}
+                                </pre>
+                            )}
+                        </div>
+
+                        <div className="p-3 bg-[#0b132d]/80 border border-cyan-500/10 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <h4 className="text-xs font-bold text-white">Lấy Cookie YouTube Tự Động</h4>
+                                    <p className="text-[10px] text-neutral-400">Tự động lấy phiên cookie mới để tránh bị YouTube chặn (lỗi 429 / bot detection)</p>
+                                </div>
+                                <button
+                                    onClick={handleFetchCookies}
+                                    disabled={isFetchingCookies}
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white rounded-lg text-xs font-bold hover:brightness-110 transition disabled:opacity-50"
+                                >
+                                    <Cookie className={`w-3.5 h-3.5 ${isFetchingCookies ? 'animate-spin' : ''}`} />
+                                    <span>{isFetchingCookies ? 'Đang Lấy...' : 'Lấy Cookie Mới'}</span>
+                                </button>
+                            </div>
+                            {cookieLog && (
+                                <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-cyan-300 font-mono overflow-x-auto max-h-24 no-scrollbar border border-cyan-500/20">
+                                    {cookieLog}
                                 </pre>
                             )}
                         </div>

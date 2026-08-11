@@ -8,7 +8,7 @@ COPY frontend-vite/ .
 RUN npm run build
 
 # Layer 2: Backend (with cargo cache mounts for fast rebuilds)
-FROM rust:1.85-slim-bookworm AS backend-builder
+FROM rust:1.88-slim-bookworm AS backend-builder
 WORKDIR /app/backend
 RUN apt-get update && apt-get install -y pkg-config libssl-dev libc6-dev && rm -rf /var/lib/apt/lists/*
 COPY backend-rust/Cargo.toml backend-rust/Cargo.lock ./

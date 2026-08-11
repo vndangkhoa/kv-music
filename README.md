@@ -10,7 +10,7 @@
 
 <p align="center">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react" alt="React"/>
-  <img src="https://img.shields.io/badge/Rust-1.85-000000?style=flat&logo=rust" alt="Rust"/>
+  <img src="https://img.shields.io/badge/Rust-1.88-000000?style=flat&logo=rust" alt="Rust"/>
   <img src="https://img.shields.io/badge/Vite-5.4-646CFF?style=flat&logo=vite" alt="Vite"/>
   <img src="https://img.shields.io/badge/TailwindCSS-3.4-06B6D4?style=flat&logo=tailwindcss" alt="TailwindCSS"/>
   <img src="https://img.shields.io/badge/Axum-0.8-000000?style=flat" alt="Axum"/>
@@ -88,7 +88,11 @@ KV Music is a self-hosted music streaming web application that pulls content fro
 ```yaml
 services:
   kv-music:
-    image: git.khoavo.myds.me/vndangkhoa/kv-music:latest
+    # Pull from any of these registries:
+    # docker.io/vndangkhoa/kv-music:latest
+    # ghcr.io/vndangkhoa/kv-music:latest
+    # git.khoavo.myds.me/vndangkhoa/kv-music:latest
+    image: vndangkhoa/kv-music:latest
     container_name: kv-music
     restart: unless-stopped
     ports:
@@ -98,16 +102,30 @@ services:
       - RUST_LOG=info
       - PYTHONUNBUFFERED=1
       - COOKIE_FILE=/app/cookies.txt
+      # - FORCE_IPV6=0   # uncomment to force IPv4 for yt-dlp
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./data:/tmp/kv-music-downloads
       - ./cache:/tmp/kv-music-cache
       - ./cookies.txt:/app/cookies.txt:ro
       - ./users:/app/data
+    networks:
+      - kvnet
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  kvnet:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+        - subnet: fd00:1::/64
 ```
 
 ```bash
@@ -117,7 +135,7 @@ docker compose up -d
 
 Open **http://localhost:3110** and start listening!
 
-> **Note:** The `cookies.txt` file is optional but strongly recommended to avoid YouTube bot detection (see [YouTube Cookies](#-youtube-cookies)).
+> **IPv6 & DNS note:** YouTube's bot detection blocks many IPv4 routes but allows IPv6. The compose file above gives the container IPv6 (requires Docker with IPv6 enabled: `"ipv6": true, "fixed-cidr-v6": "fd00::/64"` in `/etc/docker/daemon.json` or Docker Desktop Engine settings) and uses external DNS (Docker's embedded DNS strips AAAA records). The backend auto-detects IPv6 and adds `--force-ipv6` to yt-dlp; set `FORCE_IPV6=0` to disable.
 
 ### 1-Click Docker Deploy (no cookies)
 
@@ -128,6 +146,11 @@ docker run -d --name kv-music -p 3110:8080 \
   -v kv-music-users:/app/data \
   git.khoavo.myds.me/vndangkhoa/kv-music:latest
 ```
+
+> **Note:** the `docker run` one-liner uses Docker's default bridge network (IPv4-only).
+> If YouTube bot-blocks your IPv4 route, prefer the [docker-compose](#-docker-compose-recommended)
+> setup above (IPv6-enabled network + external DNS), or add:
+> `--network host --dns 8.8.8.8`
 
 ---
 
@@ -149,6 +172,7 @@ docker run -d --name kv-music -p 3110:8080 \
 | `RUST_LOG` | `info` | Log level (`info`, `debug`, `warn`, `error`) |
 | `PYTHONUNBUFFERED` | `1` | Python stdout buffering (recommended) |
 | `COOKIE_FILE` | `/app/cookies.txt` | Path to the Netscape-format cookies file for YouTube |
+| `FORCE_IPV6` | auto | Force yt-dlp to use IPv6 (`1` = always, `0` = never; default: auto-detect if the host has IPv6) |
 
 ### Volumes
 
@@ -156,8 +180,14 @@ docker run -d --name kv-music -p 3110:8080 \
 |----------------|---------|
 | `/tmp/kv-music-downloads` | Downloaded audio files (auto-cleaned) |
 | `/tmp/kv-music-cache` | Search and metadata cache |
-| `/app/data` | **Persistent user accounts** (`users.json`) |
-| `/app/cookies.txt` | YouTube cookies file (optional, read-only mount) |
+| `/app/data` | **Persistent user accounts** (`users.json`) and auto-refreshed cookies (`cookies.txt`) |
+| `/app/cookies.txt` | YouTube cookies file (optional, read-only mount; auto-refreshed file in `/app/data` takes priority) |
+
+### Networks
+
+| Network | Purpose |
+|---------|---------|
+| `kvnet` | Dual-stack (IPv4 + IPv6) bridge network required so yt-dlp can connect to YouTube over IPv6 (see [Automatic Cookie Refresh](#automatic-cookie-refresh) note on bot detection) |
 
 ### Build from Source
 
@@ -169,10 +199,25 @@ docker run -d -p 3110:8080 -v kv-music-users:/app/data kv-music:latest
 ```
 
 > **Note:** BuildKit is required for cargo cache mounts. Enable with `export DOCKER_BUILDKIT=1` or use Docker Desktop.
+>
+> **Note:** the simple `docker run` above uses the default IPv4-only bridge network. If YouTube bot-blocks your IPv4 route, add `--network host --dns 8.8.8.8` (or use the [docker-compose](#-docker-compose-recommended) setup with the IPv6 `kvnet` network).
 
 ### yt-dlp Updates
 
 yt-dlp is **auto-updated on every container start** (`yt-dlp -U` runs in the entrypoint before the server starts), and you can also click **Cài Đặt → Check Update** in the app to update it on demand.
+
+### Automatic Cookie Refresh
+
+YouTube increasingly rate-limits server-side requests (HTTP 429 / "Sign in to confirm you're not a bot"). KV Music can fetch **fresh YouTube session cookies automatically** — no manual export needed:
+
+- Click **Cài Đặt → Lấy Cookie Mới** (Settings → Fetch Fresh Cookies) in the app, or
+- On server start, if no cookie file exists at all, fresh cookies are fetched automatically.
+
+Fresh cookies are written to a **writable, persistent** location (`/app/data/cookies.txt` in Docker, `data/cookies.txt` locally), which takes priority over a mounted `cookies.txt` (so mounted read-only files are never overwritten). After a refresh, **all in-memory caches are cleared**, so every subsequent fetch (search, charts, new releases, artists, streams, browse) uses the new cookies.
+
+> **IPv6 matters too:** YouTube's bot detection also blocks many residential **IPv4** routes while allowing IPv6. The docker-compose `kvnet` network is dual-stack so yt-dlp connects over IPv6 when the host supports it (the backend auto-adds `--force-ipv6`; set `FORCE_IPV6=0` to disable). Docker's embedded DNS strips `AAAA` records, so the compose file points at `8.8.8.8` / `1.1.1.1` instead.
+
+> Still recommend exporting a **logged-in** `cookies.txt` from your browser for the strongest session (see below), but the automatic refresh covers the common anonymous case.
 
 ---
 
@@ -214,8 +259,10 @@ The backend automatically picks up `/app/cookies.txt` (via `COOKIE_FILE`). After
 ### Verify it works
 
 ```bash
-docker exec kv-music yt-dlp --cookies /app/cookies.txt "ytsearch1:test audio" --dump-json --flat-playlist | head -c 200
+docker exec kv-music yt-dlp --js-runtimes node --cookies /app/cookies.txt "ytsearch1:test audio" --dump-json --flat-playlist | head -c 200
 ```
+
+If you see `HTTP Error 429` / `Sign in to confirm you're not a bot`, make sure the container has IPv6 (dual-stack `kvnet` network from docker-compose) — see [Automatic Cookie Refresh](#automatic-cookie-refresh).
 
 ---
 
@@ -230,7 +277,7 @@ docker exec kv-music yt-dlp --cookies /app/cookies.txt "ytsearch1:test audio" --
 | **Streaming** | yt-dlp + Node.js 22 | YouTube audio extraction |
 | **Lyrics** | LRCLIB, SimpMusic, lyrics.ovh | Free synced lyrics APIs |
 | **Auth** | argon2 + bearer tokens | Password hashing & sessions |
-| **Storage** | JSON file (`/app/data/users.json`) | Server-side user accounts (NAS volume) |
+| **Storage** | JSON file (`/app/data/users.json`) | Server-side user accounts + auto-refreshed cookies (NAS volume) |
 | **Container** | Docker, Debian | Deployment packaging |
 
 ---
@@ -242,7 +289,7 @@ docker exec kv-music yt-dlp --cookies /app/cookies.txt "ytsearch1:test audio" --
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Node.js | 22+ | Frontend build & yt-dlp JS runtime |
-| Rust | 1.85+ | Backend compilation |
+| Rust | 1.88+ | Backend compilation |
 | Python | 3.11+ | yt-dlp dependency |
 | ffmpeg | Any | Audio processing |
 | yt-dlp | Latest | YouTube audio extraction |
@@ -344,6 +391,7 @@ kv-music/
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/api/settings/update-ytdlp` | Run `yt-dlp -U` self-update, returns output |
+| `POST` | `/api/settings/fetch-cookies` | Automatically fetch fresh YouTube session cookies (writes Netscape cookie file, clears all caches so every fetch re-uses the new cookies) |
 
 ---
 

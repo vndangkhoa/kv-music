@@ -1,4 +1,3 @@
-version: "3"
 services:
   kv-music:
     # Pull from any of these registries:
@@ -15,13 +14,27 @@ services:
       - RUST_LOG=info
       - PYTHONUNBUFFERED=1
       - COOKIE_FILE=/app/cookies.txt
+      # - FORCE_IPV6=0   # uncomment to force IPv4 for yt-dlp
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
     volumes:
       - ./data:/tmp/kv-music-downloads
       - ./cache:/tmp/kv-music-cache
       - ./cookies.txt:/app/cookies.txt:ro
       - ./users:/app/data
+    networks:
+      - kvnet
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
+
+networks:
+  kvnet:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+        - subnet: fd00:1::/64

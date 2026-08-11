@@ -27,6 +27,18 @@ async fn main() {
     let spotdl = SpotdlService::new();
     spotdl.start_background_preload();
 
+    // Auto-fetch fresh YouTube cookies at startup when no cookie file exists,
+    // so the server is protected from bot detection out of the box.
+    if !SpotdlService::has_cookies_file() {
+        let spotdl_clone = spotdl.clone();
+        tokio::spawn(async move {
+            match spotdl_clone.refresh_cookies().await {
+                Ok(msg) => println!("[Cookies] Startup auto-refresh: {}", msg),
+                Err(e) => println!("[Cookies] Startup auto-refresh failed: {}", e),
+            }
+        });
+    }
+
     // Account store: Docker -> /app/data/users.json (mounted volume on NAS), local -> ./data/users.json
     let auth_file = if std::path::Path::new("/app/data").exists() {
         "/app/data/users.json".to_string()
@@ -59,6 +71,7 @@ let app = Router::new()
         .route("/api/new-releases", get(api::new_releases_handler))
         .route("/api/artists", get(api::artists_handler))
         .route("/api/settings/update-ytdlp", post(api::update_ytdlp_handler))
+        .route("/api/settings/fetch-cookies", post(api::fetch_cookies_handler))
         .route("/api/auth/register", post(api::register_handler))
         .route("/api/auth/login", post(api::login_handler))
         .route("/api/auth/logout", post(api::logout_handler))

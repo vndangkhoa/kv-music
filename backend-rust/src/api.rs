@@ -123,6 +123,22 @@ pub async fn update_ytdlp_handler() -> impl IntoResponse {
     }
 }
 
+pub async fn fetch_cookies_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    match state.spotdl.refresh_cookies().await {
+        Ok(message) => {
+            // Fresh cookies - drop caches so every fetch re-queries YouTube with them
+            state.spotdl.clear_caches().await;
+            (StatusCode::OK, Json(serde_json::json!({"output": message, "success": true})))
+        }
+        Err(e) => {
+            println!("[Cookies] refresh failed: {}", e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
+        }
+    }
+}
+
 #[derive(Deserialize)]
 pub struct SearchQuery {
     pub q: String,
@@ -673,6 +689,7 @@ fn default_region() -> String {
 }
 
 pub async fn new_releases_handler(
+    State(state): State<Arc<AppState>>,
     Query(params): Query<NewReleasesQuery>,
 ) -> impl IntoResponse {
     let gl = match params.region.as_str() {
@@ -680,11 +697,7 @@ pub async fn new_releases_handler(
         _ => "VN",
     };
 
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_default();
+    let client = state.spotdl.yt_client();
 
     let body = serde_json::json!({
         "context": {
@@ -814,16 +827,13 @@ fn chart_gl(region: &str) -> &'static str {
 }
 
 pub async fn artists_handler(
+    State(state): State<Arc<AppState>>,
     Query(params): Query<ArtistsQuery>,
 ) -> impl IntoResponse {
     let region = params.region.trim().to_lowercase();
     let gl = chart_gl(&region);
 
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_default();
+    let client = state.spotdl.yt_client();
 
     let body = serde_json::json!({
         "context": {
@@ -1168,6 +1178,7 @@ fn collect_songs(value: &serde_json::Value, out: &mut Vec<crate::models::Track>)
 }
 
 pub async fn universal_search_handler(
+    State(state): State<Arc<AppState>>,
     Query(params): Query<UniversalSearchQuery>,
 ) -> impl IntoResponse {
     let query = params.q.trim();
@@ -1175,18 +1186,14 @@ pub async fn universal_search_handler(
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Query required"})));
     }
 
-    let client = reqwest::Client::builder()
-        .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-        .timeout(std::time::Duration::from_secs(20))
-        .build()
-        .unwrap_or_default();
+    let client = state.spotdl.yt_client();
 
     // Run all 4 category searches in parallel
     let (songs_res, albums_res, playlists_res, artists_res) = tokio::join!(
-        ytm_search(&client, query, "songs"),
-        ytm_search(&client, query, "albums"),
-        ytm_search(&client, query, "playlists"),
-        ytm_search(&client, query, "artists"),
+        ytm_search(client, query, "songs"),
+        ytm_search(client, query, "albums"),
+        ytm_search(client, query, "playlists"),
+        ytm_search(client, query, "artists"),
     );
 
     // ── Songs ──
