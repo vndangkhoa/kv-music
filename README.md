@@ -204,7 +204,7 @@ docker run -d -p 3110:8080 -v kv-music-users:/app/data kv-music:latest
 
 ### yt-dlp Updates
 
-yt-dlp is **auto-updated on every container start** (`yt-dlp -U` runs in the entrypoint before the server starts), and you can also click **Cài Đặt → Check Update** in the app to update it on demand.
+yt-dlp is **auto-updated to the latest nightly binary on every container start** (nightly builds include the newest YouTube anti-bot workarounds such as PO tokens), and you can also click **Cài Đặt → Check Update** in the app to update it on demand.
 
 ### Automatic Cookie Refresh
 

@@ -42,7 +42,10 @@ RUN apt-get update && apt-get install -y \
 # Fix for PEP 668 (externally managed environment)
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
-RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs
+# curl_cffi (Chrome TLS fingerprint impersonation) + yt-dlp-ejs help bypass
+# YouTube bot detection. The nightly standalone yt-dlp binary is downloaded at
+# container start (pip-installed yt-dlp cannot self-update across channels).
+RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs "curl_cffi==0.15.0"
 
 # Copy artifacts
 COPY --from=backend-builder /app/backend-rust-bin /app/server
@@ -59,5 +62,6 @@ EXPOSE 8080
 
 USER 0
 
-# Update yt-dlp to the latest version on every container start
-CMD ["sh", "-c", "echo 'Starting KV Music...' && (yt-dlp -U >/dev/null 2>&1 || true) && echo 'yt-dlp ready.' && /app/server 2>&1"]
+# Update yt-dlp to the latest nightly binary on every container start
+# (nightly has the newest YouTube anti-bot workarounds, e.g. PO tokens)
+CMD ["sh", "-c", "echo 'Starting KV Music...' && (curl -fsSL https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -o /opt/venv/bin/yt-dlp && chmod +x /opt/venv/bin/yt-dlp || true) && yt-dlp --version && echo 'yt-dlp ready.' && /app/server 2>&1"]
