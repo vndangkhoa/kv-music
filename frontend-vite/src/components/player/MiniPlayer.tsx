@@ -16,13 +16,18 @@ export default function MiniPlayer() {
 
   useEffect(() => {
     if (currentTrack && audioRef.current && currentTrack.url) {
+      const hasError = audioRef.current.error !== null;
       const isSameUrl = audioRef.current.src === currentTrack.url ||
         (currentTrack.url.startsWith('/') && audioRef.current.src.endsWith(currentTrack.url)) ||
         (audioRef.current.src.includes(currentTrack.id));
 
-      if (isSameUrl) return;
+      // Always reload when the element is in an error state - a previously
+      // failed source (e.g. unsupported WebM) must be retried even if the URL
+      // is unchanged, otherwise playback stays broken until a full reload.
+      if (isSameUrl && !hasError) return;
 
       audioRef.current.src = currentTrack.url;
+      audioRef.current.load();
       streamFailCount.current = 0;
       if (isPlaying) {
         audioRef.current.play().catch(e => {
@@ -81,6 +86,23 @@ export default function MiniPlayer() {
   const handleAudioError = () => {
     if (!currentTrack) return;
     streamFailCount.current += 1;
+    if (streamFailCount.current >= 3) return;
+    if (!audioRef.current) return;
+    const url = currentTrack.url;
+    if (!url) return;
+    // Auto-retry once by reloading the source (helps after backend format
+    // changes or transient failures); a reload clears the stuck error state.
+    setTimeout(() => {
+      if (audioRef.current && audioRef.current.error !== null && currentTrack.url === url) {
+        audioRef.current.src = url;
+        audioRef.current.load();
+        if (usePlayerStore.getState().isPlaying) {
+          audioRef.current.play().catch(e => {
+            if (e.name !== 'AbortError') console.error("Play error:", e);
+          });
+        }
+      }
+    }, 800);
   };
 
   return (

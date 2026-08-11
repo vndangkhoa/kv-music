@@ -4,7 +4,7 @@ import { Play, Pause, Clock, Heart, PlusCircle, Shuffle, Trash2, ArrowLeft } fro
 import { usePlayerStore } from '../stores/playerStore';
 import { useLibraryStore } from '../stores/libraryStore';
 import { dbService, Playlist as PlaylistType } from '../services/db';
-import { libraryService } from '../services/library';
+import { libraryService, streamUrl } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
@@ -112,7 +112,7 @@ export default function Playlist() {
                                 }
                             }
                         }
-                        return { ...track, id: videoId, url: `/api/stream/${videoId}` };
+                        return { ...track, id: videoId, url: `${streamUrl(videoId)}` };
                     });
                     const normalizedPlaylist = { ...apiPlaylist, tracks: normalizedTracks };
                     setPlaylist(normalizedPlaylist);
@@ -140,7 +140,7 @@ export default function Playlist() {
                             const normalizedTracks = fallbackTracks.map((track: Track) => ({
                                 ...track,
                                 id: track.id.replace(/^discovery-(playlist|album|artist)-/, ''),
-                                url: `/api/stream/${track.id}`
+                                url: `${streamUrl(track.id)}`
                             }));
                             setPlaylist({
                                 id,

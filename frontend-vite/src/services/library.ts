@@ -12,6 +12,27 @@ export function getArtistCoverUrl(name: string): string | undefined {
   return artistCoverMap.get(name.toLowerCase()) || artistCoverMap.get(decodeURIComponent(name).toLowerCase());
 }
 
+// Build the stream URL with the right audio format for the current browser.
+// WebM/Opus (no suffix) is the default - it plays everywhere except Safari and
+// codec-stripped clients. When the browser cannot play WebM/Opus (detected via
+// canPlayType), request m4a (AAC) instead. VS Code's embedded webview ships
+// without an AAC/MP3 decoder, so it must NOT get m4a.
+let cachedSupportsWebmOpus: boolean | null = null;
+export function supportsWebmOpus(): boolean {
+    if (cachedSupportsWebmOpus !== null) return cachedSupportsWebmOpus;
+    try {
+        const a = document.createElement('audio');
+        cachedSupportsWebmOpus = a.canPlayType('audio/webm; codecs="opus"') !== '';
+    } catch {
+        cachedSupportsWebmOpus = false;
+    }
+    return cachedSupportsWebmOpus;
+}
+
+export function streamUrl(id: string): string {
+    return supportsWebmOpus() ? `/api/stream/${id}` : `/api/stream/${id}?fmt=m4a`;
+}
+
 function getUserCountry(): string {
     const cached = localStorage.getItem('user_country');
     if (cached && cached.length === 2) {
@@ -100,7 +121,7 @@ const CACHE_KEY_INITIAL = 'initial_tracks_cache_v1';
 async function preFetchAudio(tracks: Track[]) {
     for (const track of tracks.slice(0, 3)) {
         try {
-            const audio = new Audio(`/api/stream/${track.id}`);
+            const audio = new Audio(`${streamUrl(track.id)}`);
             audio.preload = 'auto';
         } catch {}
     }
@@ -122,7 +143,7 @@ export const libraryService = {
                         }
                     }
                 }
-                return { ...track, id: videoId, url: `/api/stream/${videoId}` };
+                return { ...track, id: videoId, url: `${streamUrl(videoId)}` };
             });
         }
         return [];
@@ -141,7 +162,7 @@ export const libraryService = {
         return {
             songs: (data.songs || []).map((t: Track) => ({
                 ...t,
-                url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+                url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
             })),
             albums: data.albums || [],
             playlists: data.playlists || [],
@@ -159,7 +180,7 @@ export const libraryService = {
             cover_url: res.cover_url || '',
             tracks: (res.tracks as Track[]).map(t => ({
                 ...t,
-                url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+                url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
             })),
             type: id.startsWith('MPRE') ? 'Album' : 'Playlist',
         };
@@ -726,7 +747,7 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
         const data = res as { tracks?: Track[] };
         return (data.tracks || []).map(t => ({
             ...t,
-            url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+            url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
         }));
     },
 
@@ -736,7 +757,7 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
         const data = res as { tracks?: Track[] };
         return (data.tracks || []).map(t => ({
             ...t,
-            url: t.url && t.url.startsWith('/') ? t.url : `/api/stream/${t.id}`
+            url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
         }));
     },
 

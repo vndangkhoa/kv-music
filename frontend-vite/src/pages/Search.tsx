@@ -93,9 +93,9 @@ export default function Search() {
         if (routerQuery !== query) {
             setQuery(routerQuery);
             setInputValue(routerQuery);
-            if (routerQuery.trim()) {
-                performSearch(routerQuery);
-            }
+        }
+        if (routerQuery.trim()) {
+            performSearch(routerQuery);
         } else if (!routerQuery && !query) {
             setResults([]);
             setAlbums([]);

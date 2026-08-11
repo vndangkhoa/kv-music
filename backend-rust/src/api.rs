@@ -144,6 +144,11 @@ pub struct SearchQuery {
     pub q: String,
 }
 
+#[derive(Deserialize, Default)]
+pub struct StreamQuery {
+    pub fmt: Option<String>,
+}
+
 pub async fn search_handler(
     State(state): State<Arc<AppState>>,
     Query(params): Query<SearchQuery>,
@@ -162,10 +167,15 @@ pub async fn search_handler(
 pub async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
+    Query(params): Query<StreamQuery>,
     req: axum::extract::Request,
 ) -> impl IntoResponse {
+    // fmt=webm (default): open codec, plays in Chrome/Firefox/Edge and
+    // codec-restricted clients like VS Code's webview (no AAC/MP3 decoder).
+    // fmt=m4a: AAC - needed for Safari, which cannot play WebM/Opus.
+    let prefer_m4a = params.fmt.as_deref() == Some("m4a");
     // This blocks the async executor slightly, ideally spawn_blocking but it's okay for now
-    match state.spotdl.get_stream_url(&id) {
+    match state.spotdl.get_stream_url(&id, prefer_m4a) {
         Ok(file_path) => {
             let service = tower_http::services::ServeFile::new(&file_path);
             match tower::ServiceExt::oneshot(service, req).await {

@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, PanInfo, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useLyrics } from '../../hooks/useLyrics';
-import { libraryService } from '../../services/library';
+import { libraryService, streamUrl } from '../../services/library';
 import CoverImage from '../CoverImage';
 import VideoPlayer from '../VideoPlayer';
 import type { Track } from '../../types';
@@ -198,7 +198,7 @@ export default function MobileFullPlayer() {
         if (!currentTrack) return;
         setDownloadStatus('downloading');
         try {
-            const response = await fetch(`/api/stream/${currentTrack.id}`);
+            const response = await fetch(`${streamUrl(currentTrack.id)}`);
             const blob = await response.blob();
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');

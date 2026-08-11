@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { libraryService } from '../services/library';
+import { libraryService, streamUrl } from '../services/library';
 import { usePlayerStore } from '../stores/playerStore';
 import { Play, Shuffle, Heart, Clock, ListPlus, Download } from 'lucide-react';
 import { Track } from '../types';
@@ -42,7 +42,7 @@ export default function Album() {
                                 }
                             }
                         }
-                        return { ...track, id: videoId, url: `/api/stream/${videoId}` };
+                        return { ...track, id: videoId, url: `${streamUrl(videoId)}` };
                     });
                     setTracks(normalizedTracks);
                     setAlbumInfo({

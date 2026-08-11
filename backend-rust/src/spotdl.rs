@@ -124,17 +124,20 @@ impl SpotdlService {
     }
 
     /// True if any cookie file (managed, COOKIE_FILE, docker, local) exists.
+    /// Uses `is_file()` so a directory mounted in place of a missing file
+    /// (Docker creates one for `./cookies.txt:/app/cookies.txt:ro` when the
+    /// host file does not exist) is never mistaken for a real cookie file.
     pub fn has_cookies_file() -> bool {
         let managed = Self::managed_cookie_path();
-        if managed.exists() {
+        if managed.is_file() {
             return true;
         }
         if let Ok(env_path) = env::var("COOKIE_FILE") {
-            if PathBuf::from(&env_path).exists() {
+            if PathBuf::from(&env_path).is_file() {
                 return true;
             }
         }
-        Path::new("/app/cookies.txt").exists() || Path::new("cookies.txt").exists()
+        Path::new("/app/cookies.txt").is_file() || Path::new("cookies.txt").is_file()
     }
 
     fn yt_dlp_path() -> String {
@@ -662,7 +665,7 @@ impl SpotdlService {
         // 4. Local cookies.txt
         let chosen = if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);
-            if p.exists() {
+            if p.is_file() {
                 p
             } else {
                 Self::cookies_file_path_fallback()
@@ -675,11 +678,11 @@ impl SpotdlService {
 
     fn cookies_file_path_fallback() -> PathBuf {
         let docker_path = PathBuf::from("/app/cookies.txt");
-        if docker_path.exists() {
+        if docker_path.is_file() {
             return docker_path;
         }
         let managed = Self::managed_cookie_path();
-        if managed.exists() {
+        if managed.is_file() {
             return managed;
         }
         PathBuf::from("cookies.txt")
@@ -689,7 +692,7 @@ impl SpotdlService {
     /// A read-only mount (docker-compose `:ro`) crashes it, so copy the file to
     /// a writable location when needed.
     fn writable_cookie_copy(path: PathBuf) -> PathBuf {
-        if !path.exists() {
+        if !path.is_file() {
             return path;
         }
         let writable = std::fs::OpenOptions::new().append(true).open(&path).is_ok();
@@ -766,9 +769,13 @@ impl SpotdlService {
         }
 
         let cookie_path = Self::cookies_file_path();
-        if cookie_path.exists() {
+        if cookie_path.is_file() {
             args.push("--cookies".to_string());
-            args.push(cookie_path.to_string_lossy().into_owned());
+            // yt-dlp runs with current_dir set to the download dir, so a
+            // relative path (e.g. local "data/cookies.txt") would resolve to
+            // the wrong location. Always pass an absolute path.
+            let absolute = fs::canonicalize(&cookie_path).unwrap_or(cookie_path);
+            args.push(absolute.to_string_lossy().into_owned());
         }
 
         for arg in extra_args {
@@ -869,7 +876,14 @@ impl SpotdlService {
         println!("[Cookies] All caches cleared - next fetches will use fresh cookies.");
     }
 
-    pub fn get_stream_url(&self, video_url: &str) -> Result<String, String> {
+    /// Fetch (or return cached) audio for a video.
+    ///
+    /// `prefer_m4a`: when true, download AAC-in-MP4 (needed by Safari, which
+    /// cannot play WebM/Opus). When false (default), download WebM/Opus - an
+    /// open codec that plays in Chrome/Firefox/Edge and codec-restricted
+    /// clients such as VS Code's embedded webview, which ships without an
+    /// AAC/MP3 decoder.
+    pub fn get_stream_url(&self, video_url: &str, prefer_m4a: bool) -> Result<String, String> {
         let target_url = if video_url.starts_with("http") {
             video_url.to_string()
         } else {
@@ -877,11 +891,12 @@ impl SpotdlService {
         };
         
         let video_id = Self::extract_id(&target_url);
+        let ext = if prefer_m4a { "m4a" } else { "webm" };
         
         if let Ok(entries) = fs::read_dir(&self.download_dir) {
             for entry in entries.flatten() {
                 if let Some(file_name) = entry.file_name().to_str() {
-                    if file_name.starts_with(&format!("{}.", video_id)) {
+                    if file_name.starts_with(&format!("{}.", video_id)) && file_name.ends_with(ext) {
                         return Ok(entry.path().to_string_lossy().into_owned());
                     }
                 }
@@ -889,8 +904,13 @@ impl SpotdlService {
         }
 
         let output_pattern = format!("{}.%(ext)s", video_id);
+        let format_selector = if prefer_m4a {
+            "bestaudio[ext=m4a]/bestaudio[acodec=aac]/bestaudio/best"
+        } else {
+            "bestaudio/best"
+        };
         let output_args = vec![
-            "-f", "bestaudio/best",
+            "-f", format_selector,
             "--output", &output_pattern,
             &target_url,
         ];
@@ -917,7 +937,7 @@ impl SpotdlService {
                 if let Ok(entries) = fs::read_dir(&self.download_dir) {
                     for entry in entries.flatten() {
                         if let Some(file_name) = entry.file_name().to_str() {
-                            if file_name.starts_with(&format!("{}.", video_id)) {
+                            if file_name.starts_with(&format!("{}.", video_id)) && file_name.ends_with(ext) {
                                 return Ok(entry.path().to_string_lossy().into_owned());
                             }
                         }

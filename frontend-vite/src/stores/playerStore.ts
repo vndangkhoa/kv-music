@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { Track, AudioQuality } from '../types';
 import { dbService } from '../services/db';
+import { streamUrl } from '../services/library';
 
 interface PlayerState {
   currentTrack: Track | null;
@@ -96,7 +97,7 @@ export const usePlayerStore = create<PlayerState>()(
             ...track,
             url: track.url && (track.url.startsWith('/') || track.url.startsWith('http'))
               ? track.url
-              : `/api/stream/${track.id}`
+              : `${streamUrl(track.id)}`
           },
           isPlaying: true,
           isRightPanelOpen: true,
@@ -122,7 +123,7 @@ export const usePlayerStore = create<PlayerState>()(
             ...track,
             url: track.url && (track.url.startsWith('/') || track.url.startsWith('http'))
               ? track.url
-              : `/api/stream/${track.id}`
+              : `${streamUrl(track.id)}`
           },
           isPlaying: false,
           isRightPanelOpen: true,
