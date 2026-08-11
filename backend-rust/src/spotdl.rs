@@ -415,11 +415,14 @@ impl SpotdlService {
         let output_args = vec![
             search_query.as_str(), "--dump-json", "--no-playlist", "--flat-playlist",
         ];
-        let all_args = self.yt_dlp_args_with_cookies_vec(&output_args);
+
+        // Try IPv6 first when available; fall back to IPv4 on network errors
+        let mut use_ipv6 = Self::ipv6_connectivity();
 
         // Retry up to 2 times with backoff for transient 429 errors
         let mut last_err = String::new();
         for attempt in 0..3 {
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
             let output = match Command::new(&path).args(&all_args).output() {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
@@ -493,6 +496,10 @@ impl SpotdlService {
                 let delay_secs = (attempt + 1) * 3;
                 println!("[Search] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
                 tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+            } else if use_ipv6 && Self::is_network_error(&stderr) {
+                // IPv6 unrouted/blocked - retry immediately on IPv4
+                println!("[Search] IPv6 network error, falling back to IPv4: {}", stderr.trim().lines().last().unwrap_or(""));
+                use_ipv6 = false;
             } else {
                 break;
             }
@@ -519,10 +526,13 @@ impl SpotdlService {
         let output_args = vec![
             chart_url, "--dump-json", "--flat-playlist",
         ];
-        let all_args = self.yt_dlp_args_with_cookies_vec(&output_args);
+
+        // Try IPv6 first when available; fall back to IPv4 on network errors
+        let mut use_ipv6 = Self::ipv6_connectivity();
 
         let mut last_err = String::new();
         for attempt in 0..3 {
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
             let output = match Command::new(&path).args(&all_args).output() {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
@@ -598,6 +608,10 @@ impl SpotdlService {
                 let delay_secs = (attempt + 1) * 3;
                 println!("[Chart] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
                 tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+            } else if use_ipv6 && Self::is_network_error(&stderr) {
+                // IPv6 unrouted/blocked - retry immediately on IPv4
+                println!("[Chart] IPv6 network error, falling back to IPv4: {}", stderr.trim().lines().last().unwrap_or(""));
+                use_ipv6 = false;
             } else {
                 break;
             }
@@ -658,41 +672,59 @@ impl SpotdlService {
         PathBuf::from("cookies.txt")
     }
 
-    /// True when the host has a usable (non-loopback) IPv6 address.
-    fn has_ipv6() -> bool {
-        if let Ok(content) = fs::read_to_string("/proc/net/if_inet6") {
-            // Format: <addr32hex>  <index>  <prefix>  <scope>  <flags>
-            for line in content.lines() {
-                let mut parts = line.split_whitespace();
-                let addr = parts.next().unwrap_or("");
-                let scope = parts.nth(2).unwrap_or("");
-                let flags = parts.next().unwrap_or("");
-                // scope 0x20 = global, 0x10 = link-local; flags 02 = tentative
-                if !addr.is_empty()
-                    && !flags.contains('2') // skip tentative/DAD addresses
-                    && (scope == "20" || scope == "10")
-                {
-                    return true;
-                }
+    /// True when IPv6 is actually routable (not just an address assigned).
+    /// Probes a well-known IPv6 endpoint with a short timeout. Override with
+    /// FORCE_IPV6=1 (always) or FORCE_IPV6=0 (never).
+    fn ipv6_connectivity() -> bool {
+        use std::net::{SocketAddr, TcpStream};
+        use std::str::FromStr;
+        static IPV6_OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *IPV6_OK.get_or_init(|| {
+            if let Ok(v) = env::var("FORCE_IPV6") {
+                return v != "0";
             }
-        }
-        false
+            // Probe: TCP connect to Google DNS over IPv6 (3s timeout). Some
+            // networks assign IPv6 addresses without routing them (e.g. Synology
+            // Docker), which would make --force-ipv6 hang every request.
+            let Ok(addr) = SocketAddr::from_str("[2001:4860:4860::8888]:443") else {
+                return false;
+            };
+            match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
+                Ok(_) => true,
+                Err(_) => false,
+            }
+        })
     }
 
-    pub fn build_yt_dlp_base_args_vec() -> Vec<String> {
+    /// True when yt-dlp stderr indicates a network-level failure (not a 429),
+    /// meaning the current IP family (IPv6) is unrouted or blocked.
+    fn is_network_error(stderr: &str) -> bool {
+        let lower = stderr.to_lowercase();
+        lower.contains("network is unreachable")
+            || lower.contains("network unreachable")
+            || lower.contains("cannot assign requested address")
+            || lower.contains("no route to host")
+            || lower.contains("connect() timed out")
+            || lower.contains("connection timed out")
+            || lower.contains("temporary failure in name resolution")
+            || lower.contains("name or service not known")
+            || lower.contains("failed to connect")
+            || lower.contains("unable to connect")
+            || lower.contains("error 101")
+            || lower.contains("error 110")
+            || lower.contains("error 111")
+    }
+
+    /// Build yt-dlp args with the IPv6 flag toggleable per attempt (for fallback).
+    fn yt_dlp_args_with_flags_vec(use_ipv6: bool, extra_args: &[&str]) -> Vec<String> {
         let mut args = vec![];
 
         args.push("--js-runtimes".to_string());
         args.push("node".to_string());
 
-        // Prefer IPv6 when the host supports it - YouTube bot detection blocks
-        // many IPv4 routes but allows IPv6. Override with FORCE_IPV6=1 (always)
-        // or FORCE_IPV6=0 (never).
-        let force_ipv6 = match env::var("FORCE_IPV6") {
-            Ok(v) => v != "0",
-            Err(_) => Self::has_ipv6(),
-        };
-        if force_ipv6 {
+        // Prefer IPv6 when it is actually routable - YouTube bot detection
+        // blocks many IPv4 routes but allows IPv6.
+        if use_ipv6 {
             args.push("--force-ipv6".to_string());
         }
 
@@ -702,7 +734,15 @@ impl SpotdlService {
             args.push(cookie_path.to_string_lossy().into_owned());
         }
 
+        for arg in extra_args {
+            args.push(arg.to_string());
+        }
+
         args
+    }
+
+    pub fn build_yt_dlp_base_args_vec() -> Vec<String> {
+        Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), &[])
     }
 
     /// Visit YouTube anonymously through the shared cookie-aware client, collect the
@@ -792,14 +832,6 @@ impl SpotdlService {
         println!("[Cookies] All caches cleared - next fetches will use fresh cookies.");
     }
 
-    fn yt_dlp_args_with_cookies_vec(&self, extra_args: &[&str]) -> Vec<String> {
-        let mut args = Self::build_yt_dlp_base_args_vec();
-        for arg in extra_args {
-            args.push(arg.to_string());
-        }
-        args
-    }
-
     pub fn get_stream_url(&self, video_url: &str) -> Result<String, String> {
         let target_url = if video_url.starts_with("http") {
             video_url.to_string()
@@ -825,11 +857,14 @@ impl SpotdlService {
             "--output", &output_pattern,
             &target_url,
         ];
-        let all_args = self.yt_dlp_args_with_cookies_vec(&output_args);
-        
+
+        // Try IPv6 first when available; fall back to IPv4 on network errors
+        let mut use_ipv6 = Self::ipv6_connectivity();
+
         // Retry up to 2 times with backoff for transient 429 errors
         let mut last_err = String::new();
         for attempt in 0..3 {
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
             let output = match Command::new(Self::yt_dlp_path())
                 .current_dir(&self.download_dir)
                 .args(&all_args)
@@ -863,6 +898,10 @@ impl SpotdlService {
                 let delay_secs = (attempt + 1) * 5;
                 println!("[Stream] Rate limited, retrying in {}s...", delay_secs);
                 std::thread::sleep(Duration::from_secs(delay_secs as u64));
+            } else if use_ipv6 && Self::is_network_error(&stderr) {
+                // IPv6 unrouted/blocked - retry immediately on IPv4
+                println!("[Stream] IPv6 network error, falling back to IPv4: {}", stderr.trim().lines().last().unwrap_or(""));
+                use_ipv6 = false;
             } else {
                 break;
             }
@@ -889,7 +928,7 @@ impl SpotdlService {
         let artist_search_args = vec![
             search_query.as_str(), "--dump-json", "--flat-playlist",
         ];
-        let all_args = self.yt_dlp_args_with_cookies_vec(&artist_search_args);
+        let all_args = Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), &artist_search_args);
         
         let output = Command::new(&path)
             .args(&all_args)

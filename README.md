@@ -135,7 +135,7 @@ docker compose up -d
 
 Open **http://localhost:3110** and start listening!
 
-> **IPv6 & DNS note:** YouTube's bot detection blocks many IPv4 routes but allows IPv6. The compose file above gives the container IPv6 (requires Docker with IPv6 enabled: `"ipv6": true, "fixed-cidr-v6": "fd00::/64"` in `/etc/docker/daemon.json` or Docker Desktop Engine settings) and uses external DNS (Docker's embedded DNS strips AAAA records). The backend auto-detects IPv6 and adds `--force-ipv6` to yt-dlp; set `FORCE_IPV6=0` to disable.
+> **IPv6 & DNS note:** YouTube's bot detection blocks many IPv4 routes but allows IPv6. The compose file above gives the container IPv6 (requires Docker with IPv6 enabled: `"ipv6": true, "fixed-cidr-v6": "fd00::/64"` in `/etc/docker/daemon.json` or Docker Desktop Engine settings) and uses external DNS (Docker's embedded DNS strips AAAA records). The backend **probes actual IPv6 connectivity** (TCP connect, 3s timeout) and only then adds `--force-ipv6` to yt-dlp; if IPv6 is assigned but not routed (common on Synology Docker), it automatically falls back to IPv4. Set `FORCE_IPV6=0` to disable, `FORCE_IPV6=1` to force.
 
 ### 1-Click Docker Deploy (no cookies)
 
@@ -172,7 +172,7 @@ docker run -d --name kv-music -p 3110:8080 \
 | `RUST_LOG` | `info` | Log level (`info`, `debug`, `warn`, `error`) |
 | `PYTHONUNBUFFERED` | `1` | Python stdout buffering (recommended) |
 | `COOKIE_FILE` | `/app/cookies.txt` | Path to the Netscape-format cookies file for YouTube |
-| `FORCE_IPV6` | auto | Force yt-dlp to use IPv6 (`1` = always, `0` = never; default: auto-detect if the host has IPv6) |
+| `FORCE_IPV6` | auto | Force yt-dlp to use IPv6 (`1` = always, `0` = never; default: auto-probes IPv6 connectivity and falls back to IPv4 on network errors) |
 
 ### Volumes
 
