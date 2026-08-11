@@ -3,12 +3,19 @@ use std::path::{Path, PathBuf};
 use std::env;
 use std::fs;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
 use std::collections::HashMap;
 use std::time::{Instant, Duration};
 use futures::future::join_all;
 
 use crate::models::{Track, YTResult, StaticPlaylist};
+
+/// Set once a mounted/imported cookies.txt is rejected by YouTube
+/// ("cookies are no longer valid" / "Sign in to confirm you're not a bot").
+/// After this, user-provided cookie files are ignored in favour of the
+/// auto-refreshed anonymous session (which is written to a writable path).
+static USER_COOKIES_REJECTED: AtomicBool = AtomicBool::new(false);
 
 pub struct CacheItem {
     pub tracks: Vec<Track>,
@@ -663,6 +670,17 @@ impl SpotdlService {
         // 3. Managed auto-refreshed file (anonymous fallback - never shadows
         //    a user-provided logged-in session)
         // 4. Local cookies.txt
+        //
+        // Once YouTube has rejected the provided cookies (expired/rotated),
+        // skip the user-provided files entirely and fall back to the
+        // auto-refreshed anonymous session instead.
+        if USER_COOKIES_REJECTED.load(Ordering::Relaxed) {
+            let managed = Self::managed_cookie_path();
+            if managed.is_file() {
+                return managed;
+            }
+            return PathBuf::from("cookies.txt");
+        }
         let chosen = if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);
             if p.is_file() {
@@ -674,6 +692,27 @@ impl SpotdlService {
             Self::cookies_file_path_fallback()
         };
         Self::writable_cookie_copy(chosen)
+    }
+
+    /// True when yt-dlp reports that the supplied cookies are stale/expired
+    /// or that a logged-in session is required (bot detection).
+    fn is_rejected_cookie_error(stderr: &str) -> bool {
+        let lower = stderr.to_lowercase();
+        lower.contains("cookies are no longer valid")
+            || lower.contains("sign in to confirm you're not a bot")
+            || (lower.contains("cookies") && lower.contains("not valid"))
+            || (lower.contains("cookies") && lower.contains("expired"))
+    }
+
+    /// Mark user-provided cookies as rejected and remove their writable copy,
+    /// so the next yt-dlp run uses fresh auto-refreshed cookies.
+    fn reject_user_cookies() {
+        USER_COOKIES_REJECTED.store(true, Ordering::Relaxed);
+        let managed = Self::managed_cookie_path();
+        if managed.is_file() {
+            let _ = fs::remove_file(&managed);
+            println!("[Cookies] User cookies rejected by YouTube - removed {}, will auto-refresh", managed.display());
+        }
     }
 
     fn cookies_file_path_fallback() -> PathBuf {
@@ -951,7 +990,21 @@ impl SpotdlService {
             println!("[Stream] yt-dlp download failed (attempt {}): {}", attempt + 1, stderr);
             
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if is_rate_limit && attempt < 2 {
+            if Self::is_rejected_cookie_error(&stderr) {
+                // User cookies expired/rotated (e.g. an old export mounted on
+                // the NAS). Drop them and refresh the anonymous session so the
+                // next attempt uses fresh cookies.
+                Self::reject_user_cookies();
+                let s = self.clone();
+                tokio::spawn(async move {
+                    match s.refresh_cookies().await {
+                        Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
+                        Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
+                    }
+                });
+                println!("[Stream] Cookies rejected by YouTube - refreshing session and retrying...");
+                std::thread::sleep(Duration::from_secs(6));
+            } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 5;
                 println!("[Stream] Rate limited, retrying in {}s...", delay_secs);
                 std::thread::sleep(Duration::from_secs(delay_secs as u64));
