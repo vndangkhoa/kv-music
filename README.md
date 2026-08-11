@@ -37,6 +37,7 @@ KV Music is a self-hosted music streaming web application that pulls content fro
 
 ### Playback & Discovery
 - **YouTube Music Integration** - Search and stream millions of songs via YouTube
+- **Smart Audio Format Negotiation** - Serves WebM/Opus by default (open codec, plays everywhere including VS Code's webview) and auto-switches to m4a/AAC for browsers that can't play WebM (e.g. Safari)
 - **Universal Search** - One search box returns real Songs, Albums, Playlists and Artists
 - **Real-Time Charts (BXH)** - Official YouTube Music charts: Trending 20, Top 100, Daily Top Music Videos (VN / KR / US / Global)
 - **New Releases (MỚI PHÁT HÀNH)** - Real latest releases per region from YouTube Music
@@ -211,13 +212,14 @@ yt-dlp is **auto-updated to the latest nightly binary on every container start**
 YouTube increasingly rate-limits server-side requests (HTTP 429 / "Sign in to confirm you're not a bot"). KV Music can fetch **fresh YouTube session cookies automatically** — no manual export needed:
 
 - Click **Cài Đặt → Lấy Cookie Mới** (Settings → Fetch Fresh Cookies) in the app, or
-- On server start, if no cookie file exists at all, fresh cookies are fetched automatically.
+- On server start, if no cookie file exists at all, fresh cookies are fetched automatically, or
+- **Automatically when YouTube rejects the current cookies**: if yt-dlp reports "cookies are no longer valid" / "Sign in to confirm you're not a bot", the backend discards the rejected cookie file, refreshes the anonymous session and retries the download — no manual re-export needed.
 
-Fresh cookies are written to a **writable, persistent** location (`/app/data/cookies.txt` in Docker, `data/cookies.txt` locally), which takes priority over a mounted `cookies.txt` (so mounted read-only files are never overwritten). After a refresh, **all in-memory caches are cleared**, so every subsequent fetch (search, charts, new releases, artists, streams, browse) uses the new cookies.
+Fresh cookies are written to a **writable, persistent** location (`/app/data/cookies.txt` in Docker, `data/cookies.txt` locally). After a refresh, **all in-memory caches are cleared**, so every subsequent fetch (search, charts, new releases, artists, streams, browse) uses the new cookies.
 
 > **IPv6 matters too:** YouTube's bot detection also blocks many residential **IPv4** routes while allowing IPv6. The docker-compose `kvnet` network is dual-stack so yt-dlp connects over IPv6 when the host supports it (the backend auto-adds `--force-ipv6`; set `FORCE_IPV6=0` to disable). Docker's embedded DNS strips `AAAA` records, so the compose file points at `8.8.8.8` / `1.1.1.1` instead.
 
-> Still recommend exporting a **logged-in** `cookies.txt` from your browser for the strongest session (see below), but the automatic refresh covers the common anonymous case.
+> **Important — anonymous cookies cannot override an IP-level block.** If your NAS IP itself is bot-flagged by YouTube (common on residential/Synology connections), "Sign in to confirm you're not a bot" persists even with fresh anonymous cookies. Two real fixes exist: enable routed IPv6 in the container (preferred, no cookies needed), or export a **logged-in** `cookies.txt` from your browser — a logged-in session defeats the IP-level block (see [Troubleshooting on a NAS](#troubleshooting-on-a-nas)).
 
 ---
 
@@ -263,6 +265,40 @@ docker exec kv-music yt-dlp --js-runtimes node --cookies /app/cookies.txt "ytsea
 ```
 
 If you see `HTTP Error 429` / `Sign in to confirm you're not a bot`, make sure the container has IPv6 (dual-stack `kvnet` network from docker-compose) — see [Automatic Cookie Refresh](#automatic-cookie-refresh).
+
+---
+
+## Troubleshooting on a NAS
+
+### Symptom: "cannot play music", stream endpoint returns HTTP 500
+
+Open the 500 response body (or `docker logs kv-music`) to see yt-dlp's real error:
+
+**1. `The provided YouTube account cookies are no longer valid`**
+
+Your mounted `cookies.txt` export expired (browser sessions rotate). The backend now detects this, discards the rejected file and auto-refreshes — but the strongest fix is re-exporting a fresh **logged-in** `cookies.txt` (see [YouTube Cookies](#youtube-cookies)).
+
+**2. `Sign in to confirm you're not a bot` (no cookie warning)**
+
+Your NAS **IP itself is bot-flagged** and anonymous cookies can't override that. Check which network path the container actually has:
+
+```bash
+# Inside the container - is IPv6 routed?
+docker exec kv-music sh -c "curl -6 -m 8 -s -o /dev/null -w IPv6:%{http_code} https://www.youtube.com/ || echo IPv6-FAILED"
+# IPv4?
+docker exec kv-music sh -c "curl -4 -m 8 -s -o /dev/null -w IPv4:%{http_code} https://www.youtube.com/ || echo IPv4-FAILED"
+```
+
+- **`IPv6:200`** → the container should already stream over IPv6 (backend probes and adds `--force-ipv6`). If streams still fail, the probe result may be stale — restart the container.
+- **`IPv6:000` + `IPv4:200`** → the `kvnet` dual-stack network has IPv6 assigned but **not routed** (very common on Synology Docker). The container falls back to IPv4, which YouTube blocks. Fixes, in order of preference:
+  1. **Enable routed IPv6**: enable IPv6 on your router (ISP must provide it) and on the Synology (`Control Panel → Network → Network Interface → IPv6`, e.g. DHCPv6), then restart the container until `IPv6:200`.
+  2. **Export a fresh logged-in `cookies.txt`** from your browser — a logged-in session defeats IP-level bot checks even over a flagged IPv4 route (this is the reliable fix if IPv6 is unavailable).
+
+### Other playback issues
+
+- **`NotSupportedError: no supported source was found`** (browser console): the app serves **WebM/Opus** by default (open codec — plays in Chrome/Firefox/Edge and codec-restricted clients like VS Code's webview) and requests **m4a/AAC** (`?fmt=m4a`) only when the browser can't play WebM/Opus (e.g. Safari). If you still hit this, hard-refresh (Ctrl+Shift+R) — an old tab keeps a stuck error state from before the format fix.
+- **Songs previously played still fail**: the server caches downloads; after a backend upgrade, clear the old cache volume (`docker compose down && rm -rf cache`) so stale files are re-downloaded in the new format.
+- **Search shows "No results found"**: hard-refresh the page (Ctrl+Shift+R) — an old tab runs pre-fix frontend code.
 
 ---
 
