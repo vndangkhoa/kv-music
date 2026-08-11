@@ -660,12 +660,20 @@ impl SpotdlService {
         // 3. Managed auto-refreshed file (anonymous fallback - never shadows
         //    a user-provided logged-in session)
         // 4. Local cookies.txt
-        if let Ok(env_path) = env::var("COOKIE_FILE") {
+        let chosen = if let Ok(env_path) = env::var("COOKIE_FILE") {
             let p = PathBuf::from(&env_path);
             if p.exists() {
-                return p;
+                p
+            } else {
+                Self::cookies_file_path_fallback()
             }
-        }
+        } else {
+            Self::cookies_file_path_fallback()
+        };
+        Self::writable_cookie_copy(chosen)
+    }
+
+    fn cookies_file_path_fallback() -> PathBuf {
         let docker_path = PathBuf::from("/app/cookies.txt");
         if docker_path.exists() {
             return docker_path;
@@ -675,6 +683,30 @@ impl SpotdlService {
             return managed;
         }
         PathBuf::from("cookies.txt")
+    }
+
+    /// yt-dlp opens the cookies file for writing (it updates session cookies).
+    /// A read-only mount (docker-compose `:ro`) crashes it, so copy the file to
+    /// a writable location when needed.
+    fn writable_cookie_copy(path: PathBuf) -> PathBuf {
+        if !path.exists() {
+            return path;
+        }
+        let writable = std::fs::OpenOptions::new().append(true).open(&path).is_ok();
+        if writable {
+            return path;
+        }
+        let target = Self::managed_cookie_path();
+        if let Some(parent) = target.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        if let Ok(content) = fs::read(&path) {
+            if fs::write(&target, &content).is_ok() {
+                println!("[Cookies] Copied read-only {} -> {} for yt-dlp", path.display(), target.display());
+                return target;
+            }
+        }
+        path
     }
 
     /// True when IPv6 is actually routable (not just an address assigned).
