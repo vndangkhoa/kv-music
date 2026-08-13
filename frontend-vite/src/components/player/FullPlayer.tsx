@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Heart, Mic2, Shuffle, Repeat, SkipBack, SkipForward, Play, Pause, ListMusic, Sparkles, Music } from 'lucide-react';
+import { Heart, Mic2, Shuffle, Repeat, SkipBack, SkipForward, Play, Pause, ListMusic, Sparkles, Music, Share2, Check } from 'lucide-react';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useLyrics } from '../../hooks/useLyrics';
 import CoverImage from '../CoverImage';
 import VideoPlayer from '../VideoPlayer';
 import BottomSheet from '../BottomSheet';
+import DownloadMenu from '../DownloadMenu';
 import { useNavigate } from 'react-router-dom';
 import type { Track } from '../../types';
 
@@ -42,6 +43,21 @@ export default function FullPlayer() {
   const [activePanel, setActivePanel] = useState<'lyrics' | 'queue' | 'related' | null>(null);
   const [relatedTracks, setRelatedTracks] = useState<Track[]>([]);
   const [loadingRelated, setLoadingRelated] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
+
+  const handleShare = async () => {
+    if (!currentTrack) return;
+    const url = `${window.location.origin}/share/track/${encodeURIComponent(currentTrack.id)}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: currentTrack.title, text: `${currentTrack.title} - ${currentTrack.artist}`, url }); } catch {}
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareStatus('copied');
+        setTimeout(() => setShareStatus('idle'), 2000);
+      } catch {}
+    }
+  };
 
   const {
     lyrics,
@@ -223,6 +239,14 @@ export default function FullPlayer() {
             <button onClick={() => setActivePanel(activePanel === 'related' ? null : 'related')} className={`p-2 rounded-full hover:bg-white/10 transition ${activePanel === 'related' ? 'text-green-500' : 'text-white/50'}`}>
               <Sparkles size={22} />
             </button>
+            <button onClick={handleShare} title="Share" className="p-2 rounded-full hover:bg-white/10 transition text-white/50 hover:text-white">
+              {shareStatus === 'copied' ? <Check size={22} className="text-green-400" /> : <Share2 size={22} />}
+            </button>
+            <DownloadMenu
+              tracks={[currentTrack]}
+              className="p-2 rounded-full hover:bg-white/10 transition text-white/50 hover:text-white"
+              iconClassName="w-[22px] h-[22px]"
+            />
           </div>
 
           {/* Progress */}

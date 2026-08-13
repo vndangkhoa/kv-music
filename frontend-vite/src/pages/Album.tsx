@@ -2,9 +2,10 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { libraryService, streamUrl } from '../services/library';
 import { usePlayerStore } from '../stores/playerStore';
-import { Play, Shuffle, Heart, Clock, ListPlus, Download } from 'lucide-react';
+import { Play, Shuffle, Heart, Clock, ListPlus } from 'lucide-react';
 import { Track } from '../types';
 import Recommendations from '../components/Recommendations';
+import DownloadMenu from '../components/DownloadMenu';
 
 export default function Album() {
     const { id } = useParams();
@@ -167,9 +168,11 @@ export default function Album() {
                     >
                         <ListPlus size={20} />
                     </button>
-                    <button className="p-2 text-neutral-400 hover:text-white transition border border-white/10 rounded-full hover:bg-white/10 hover:border-white">
-                        <Download size={20} />
-                    </button>
+                    <DownloadMenu
+                        tracks={tracks}
+                        className="p-2 text-neutral-400 hover:text-white transition border border-white/10 rounded-full hover:bg-white/10 hover:border-white"
+                        iconClassName="w-5 h-5"
+                    />
                 </div>
             </div>
 
@@ -203,6 +206,12 @@ export default function Album() {
                             >
                                 <Heart size={18} fill={likedTracks.has(track.id) ? "currentColor" : "none"} />
                             </button>
+
+                            <DownloadMenu
+                                tracks={[track]}
+                                className="mr-6 text-neutral-400 opacity-0 group-hover:opacity-100 hover:text-white hover:scale-110 transition"
+                                iconClassName="w-[18px] h-[18px]"
+                            />
 
                             <span className="text-neutral-500 text-sm hidden md:block w-12 text-right font-mono">
                                 {Math.floor((track.duration || 0) / 60)}:{((track.duration || 0) % 60).toString().padStart(2, '0')}

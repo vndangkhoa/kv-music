@@ -11,7 +11,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::ServeDir,
+    services::{ServeDir, ServeFile},
 };
 use std::io::Write;
 
@@ -61,6 +61,9 @@ let app = Router::new()
         .route("/api/universal-search", get(api::universal_search_handler))
         .route("/api/collection", get(api::collection_handler))
         .route("/api/stream/{id}", get(api::stream_handler))
+        .route("/api/track/{id}", get(api::track_info_handler))
+        .route("/share/track/{id}", get(api::share_handler))
+        .route("/api/download/{id}", get(api::download_handler))
         .route("/api/artist/info", get(api::artist_info_handler))
         .route("/api/browse", get(api::browse_handler))
         .route("/api/recommendations", get(api::recommendations_handler))
@@ -78,7 +81,10 @@ let app = Router::new()
         .route("/api/auth/me", post(api::me_handler))
         .route("/api/auth/pair/generate", post(api::pair_generate_handler))
         .route("/api/auth/pair/link", post(api::pair_link_handler))
-        .fallback_service(ServeDir::new("static"))
+        .fallback_service(
+            ServeDir::new("static")
+                .fallback(ServeFile::new("static/index.html")),
+        )
         .layer(cors)
         .with_state(app_state);
 

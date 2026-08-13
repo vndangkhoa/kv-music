@@ -518,6 +518,89 @@ impl SpotdlService {
         Err(format!("Search failed after retries. stderr: {}", last_err))
     }
 
+    /// Resolve a single track's metadata (title, artist, cover, duration) from a
+    /// YouTube video id. Used to build Open Graph previews for shared track links.
+    pub async fn get_track_info(&self, id: &str) -> Result<Track, String> {
+        let path = Self::yt_dlp_path();
+        let video_url = format!("https://www.youtube.com/watch?v={}", id);
+        let output_args = vec![
+            video_url.as_str(), "--dump-json", "--no-playlist",
+        ];
+
+        let mut use_ipv6 = Self::ipv6_connectivity();
+        let mut last_err = String::new();
+
+        for attempt in 0..3 {
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let output = match Command::new(&path).args(&all_args).output() {
+                Ok(o) => o,
+                Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
+            };
+
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let line = stdout.lines().next().unwrap_or("");
+                if let Ok(res) = serde_json::from_str::<YTResult>(line) {
+                    let artist = res.uploader.replace(" - Topic", "");
+                    let mut cover_url = String::new();
+                    if !res.thumbnails.is_empty() {
+                        let mut best_score = -1.0;
+                        for thumb in &res.thumbnails {
+                            let w = thumb.width.unwrap_or(0) as f64;
+                            let h = thumb.height.unwrap_or(0) as f64;
+                            if w == 0.0 || h == 0.0 { continue; }
+                            let ratio = w / h;
+                            let diff = (ratio - 1.0).abs();
+                            let mut score = w * h;
+                            if diff < 0.1 { score *= 10.0; }
+                            if score > best_score {
+                                best_score = score;
+                                cover_url = thumb.url.clone();
+                            }
+                        }
+                        if cover_url.is_empty() {
+                            cover_url = res.thumbnails.last().unwrap().url.clone();
+                        }
+                    } else {
+                        cover_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id);
+                    }
+                    return Ok(Track {
+                        id: res.id.clone(),
+                        title: res.title.clone(),
+                        artist,
+                        album: "YouTube Music".to_string(),
+                        duration: res.duration.unwrap_or(0.0) as i32,
+                        cover_url,
+                        url: format!("/api/stream/{}", res.id),
+                        view_count: res.view_count,
+                        like_count: res.like_count,
+                        comment_count: res.comment_count,
+                        bitrate: res.abr.map(|b| b as i32),
+                        codec: res.acodec,
+                    });
+                }
+                last_err = "Could not parse track metadata".to_string();
+                break;
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_err = stderr.to_string();
+            let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
+            if is_rate_limit && attempt < 2 {
+                let delay_secs = (attempt + 1) * 3;
+                println!("[TrackInfo] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
+                tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
+            } else if use_ipv6 && Self::is_network_error(&stderr) {
+                println!("[TrackInfo] IPv6 network error, falling back to IPv4: {}", stderr.trim().lines().last().unwrap_or(""));
+                use_ipv6 = false;
+            } else {
+                break;
+            }
+        }
+
+        Err(format!("Failed to resolve track {}. stderr: {}", id, last_err))
+    }
+
     /// Fetch real YouTube Music chart tracks from a chart playlist URL.
     /// `chart_url` is a music.youtube.com playlist link (e.g. https://music.youtube.com/playlist?list=PL...)
     pub async fn fetch_chart_tracks(&self, chart_url: &str, limit: usize) -> Result<Vec<Track>, String> {
@@ -1017,6 +1100,105 @@ impl SpotdlService {
             }
         }
         
+        Err(format!("Download failed. stderr: {}", last_err))
+    }
+
+    /// Fetch (or return cached) best-quality video+audio for a video.
+    ///
+    /// Downloads H.264 (mp4) video + AAC (m4a) audio and merges them into a
+    /// single .mp4 with ffmpeg (installed in the Docker image). YouTube caps
+    /// H.264 at 1080p; higher resolutions require VP9/AV1 (webm), which we
+    /// deliberately do not pick so downloaded files play everywhere.
+    pub fn get_video_url(&self, video_url: &str) -> Result<String, String> {
+        let target_url = if video_url.starts_with("http") {
+            video_url.to_string()
+        } else {
+            format!("https://www.youtube.com/watch?v={}", video_url)
+        };
+
+        let video_id = Self::extract_id(&target_url);
+        let ext = "mp4";
+
+        if let Ok(entries) = fs::read_dir(&self.download_dir) {
+            for entry in entries.flatten() {
+                if let Some(file_name) = entry.file_name().to_str() {
+                    if file_name.starts_with(&format!("{}.", video_id)) && file_name.ends_with(ext) {
+                        return Ok(entry.path().to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+
+        let output_pattern = format!("{}.%(ext)s", video_id);
+        let format_selector = "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestvideo+bestaudio/best";
+        let output_args = vec![
+            "-f", format_selector,
+            "--merge-output-format", "mp4",
+            "--output", &output_pattern,
+            &target_url,
+        ];
+
+        // Try IPv6 first when available; fall back to IPv4 on network errors
+        let mut use_ipv6 = Self::ipv6_connectivity();
+
+        // Retry up to 2 times with backoff for transient 429 errors
+        let mut last_err = String::new();
+        for attempt in 0..3 {
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let output = match Command::new(Self::yt_dlp_path())
+                .current_dir(&self.download_dir)
+                .args(&all_args)
+                .output() {
+                Ok(o) => o,
+                Err(e) => {
+                    println!("[Download] yt-dlp spawn error: {}", e);
+                    return Err(format!("Download spawn failed: {}", e));
+                }
+            };
+
+            if output.status.success() {
+                if let Ok(entries) = fs::read_dir(&self.download_dir) {
+                    for entry in entries.flatten() {
+                        if let Some(file_name) = entry.file_name().to_str() {
+                            if file_name.starts_with(&format!("{}.", video_id)) && file_name.ends_with(ext) {
+                                return Ok(entry.path().to_string_lossy().into_owned());
+                            }
+                        }
+                    }
+                }
+                return Err("File not found after download".to_string());
+            }
+
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            last_err = stderr.to_string();
+            println!("[Download] yt-dlp download failed (attempt {}): {}", attempt + 1, stderr);
+
+            let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
+            if Self::is_rejected_cookie_error(&stderr) {
+                // User cookies expired/rotated - drop them and refresh the
+                // anonymous session so the next attempt uses fresh cookies.
+                Self::reject_user_cookies();
+                let s = self.clone();
+                tokio::spawn(async move {
+                    match s.refresh_cookies().await {
+                        Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
+                        Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
+                    }
+                });
+                println!("[Download] Cookies rejected by YouTube - refreshing session and retrying...");
+                std::thread::sleep(Duration::from_secs(6));
+            } else if is_rate_limit && attempt < 2 {
+                let delay_secs = (attempt + 1) * 5;
+                println!("[Download] Rate limited, retrying in {}s...", delay_secs);
+                std::thread::sleep(Duration::from_secs(delay_secs as u64));
+            } else if use_ipv6 && Self::is_network_error(&stderr) {
+                println!("[Download] IPv6 network error, falling back to IPv4: {}", stderr.trim().lines().last().unwrap_or(""));
+                use_ipv6 = false;
+            } else {
+                break;
+            }
+        }
+
         Err(format!("Download failed. stderr: {}", last_err))
     }
     

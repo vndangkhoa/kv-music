@@ -164,6 +164,161 @@ pub async fn search_handler(
     }
 }
 
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+     .replace('"', "&quot;")
+     .replace('\'', "&#39;")
+}
+
+/// Facebook/Messenger link previews do not reliably render WebP images. YouTube
+/// serves covers as WebP (i.ytimg.com/vi_webp/.../maxresdefault.webp); convert
+/// any such URL to the equivalent JPG so the shared thumbnail always displays.
+fn og_image_rewrite(cover_url: &str) -> String {
+    if !cover_url.contains("i.ytimg.com") {
+        return cover_url.to_string();
+    }
+    let idx = match cover_url.find("/vi_") {
+        Some(i) => i,
+        None => return cover_url.to_string(),
+    };
+    let rest = &cover_url[idx..];
+    let after = rest
+        .trim_start_matches("/vi_webp/")
+        .trim_start_matches("/vi/");
+    let (vid, name) = match after.split_once('/') {
+        Some((v, n)) => (v, n),
+        None => return cover_url.to_string(),
+    };
+    let name = name.strip_suffix(".webp").unwrap_or(name);
+    format!("https://i.ytimg.com/vi/{}/{}.jpg", vid, name)
+}
+
+/// JSON metadata for a single track by YouTube id (used by the SPA's /track/:id page).
+pub async fn track_info_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    match state.spotdl.get_track_info(&id).await {
+        Ok(track) => (StatusCode::OK, Json(track)).into_response(),
+        Err(e) => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": e}))).into_response(),
+    }
+}
+
+/// Serve a small server-rendered page for shared track links so that link
+/// previews (Messenger, Facebook, iMessage, etc.) can read Open Graph tags and
+/// display the album thumbnail instead of a bare URL. The page also redirects
+/// humans into the app (auto-play on /track/:id).
+pub async fn share_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost:8080")
+        .to_string();
+    let scheme = if headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s == "https")
+        .unwrap_or(false)
+    {
+        "https"
+    } else {
+        "http"
+    };
+    let base = format!("{}://{}", scheme, host);
+    let share_url = format!("{}/share/track/{}", base, id);
+    let app_url = format!("{}/track/{}", base, id);
+
+    let (title, artist, cover_url) = match state.spotdl.get_track_info(&id).await {
+        Ok(t) => {
+            let cover = if t.cover_url.is_empty() {
+                format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id)
+            } else {
+                t.cover_url.clone()
+            };
+            (t.title.clone(), t.artist.clone(), cover)
+        }
+        Err(_) => (
+            "Listen to this track on kv-music".to_string(),
+            "kv-music".to_string(),
+            format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id),
+        ),
+    };
+
+    let e_title = html_escape(&title);
+    let e_artist = html_escape(&artist);
+    let e_cover = html_escape(&og_image_rewrite(&cover_url));
+    let e_share_url = html_escape(&share_url);
+    let e_app_url = html_escape(&app_url);
+    let description = format!("{} - {}", title, artist);
+    let e_desc = html_escape(&description);
+
+    let html = format!(
+        r#"<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{e_title} - {e_artist} | kv-music</title>
+  <meta name="description" content="{e_desc}" />
+
+  <!-- Open Graph (Messenger / Facebook) -->
+  <meta property="og:type" content="music.song" />
+  <meta property="og:site_name" content="kv-music" />
+  <meta property="og:title" content="{e_title}" />
+  <meta property="og:description" content="{e_desc}" />
+  <meta property="og:url" content="{e_share_url}" />
+  <meta property="og:image" content="{e_cover}" />
+  <meta property="og:image:alt" content="{e_title} by {e_artist}" />
+  <meta property="music:musician" content="{e_artist}" />
+  <meta property="music:duration" content="0" />
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="{e_title}" />
+  <meta name="twitter:description" content="{e_desc}" />
+  <meta name="twitter:image" content="{e_cover}" />
+
+  <meta http-equiv="refresh" content="1;url={e_app_url}" />
+  <style>
+    * {{ margin:0; padding:0; box-sizing:border-box; }}
+    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: radial-gradient(1200px 600px at 20% -10%, #142044, #0b132d 60%); min-height:100vh; display:flex; align-items:center; justify-content:center; color:#fff; }}
+    .card {{ background: rgba(20,32,68,.7); border:1px solid rgba(0,168,255,.25); border-radius:20px; padding:28px; max-width:380px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.5); }}
+    img {{ width:180px; height:180px; object-fit:cover; border-radius:16px; margin-bottom:16px; box-shadow:0 10px 30px rgba(0,0,0,.5); }}
+    h1 {{ font-size:18px; font-weight:700; }}
+    p {{ color:#9fb2d9; margin-top:6px; font-size:14px; }}
+    a {{ display:inline-block; margin-top:18px; padding:10px 22px; border-radius:999px; background:linear-gradient(90deg,#00a8ff,#00d2d3); color:#fff; font-weight:700; text-decoration:none; font-size:14px; }}
+    .brand {{ margin-top:14px; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#5b6fa8; }}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <img src="{e_cover}" alt="{e_title}" />
+    <h1>{e_title}</h1>
+    <p>{e_artist}</p>
+    <a href="{e_app_url}">▶ Open in kv-music</a>
+    <div class="brand">kv-music · listen in high quality</div>
+  </div>
+</body>
+</html>"#
+    );
+
+    (
+        StatusCode::OK,
+        [(
+            axum::http::header::CONTENT_TYPE,
+            axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+        )],
+        html,
+    )
+        .into_response()
+}
+
 pub async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -176,6 +331,41 @@ pub async fn stream_handler(
     let prefer_m4a = params.fmt.as_deref() == Some("m4a");
     // This blocks the async executor slightly, ideally spawn_blocking but it's okay for now
     match state.spotdl.get_stream_url(&id, prefer_m4a) {
+        Ok(file_path) => {
+            let service = tower_http::services::ServeFile::new(&file_path);
+            match tower::ServiceExt::oneshot(service, req).await {
+                Ok(res) => res.into_response(),
+                Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Error serving file").into_response(),
+            }
+        },
+        Err(e) => {
+            (StatusCode::INTERNAL_SERVER_ERROR, e).into_response()
+        }
+    }
+}
+
+#[derive(Deserialize, Default)]
+pub struct DownloadQuery {
+    pub fmt: Option<String>,
+}
+
+pub async fn download_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    Query(params): Query<DownloadQuery>,
+    req: axum::extract::Request,
+) -> impl IntoResponse {
+    // fmt=video: best video+audio merged into a single .mp4 via ffmpeg.
+    // fmt=m4a: AAC/MP4 audio (Safari). Anything else: default WebM/Opus audio.
+    let is_video = params.fmt.as_deref() == Some("video");
+    let result = if is_video {
+        state.spotdl.get_video_url(&id)
+    } else {
+        let prefer_m4a = params.fmt.as_deref() == Some("m4a");
+        state.spotdl.get_stream_url(&id, prefer_m4a)
+    };
+
+    match result {
         Ok(file_path) => {
             let service = tower_http::services::ServeFile::new(&file_path);
             match tower::ServiceExt::oneshot(service, req).await {

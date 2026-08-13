@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { X, Play, Pause, Sparkles, Disc, User, Mic2, ListMusic, Video } from 'lucide-react';
+import { X, Play, Pause, Sparkles, Disc, User, Mic2, ListMusic, Video, Share2, Check } from 'lucide-react';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useUIStore } from '../../stores/uiStore';
 import { libraryService } from '../../services/library';
@@ -9,6 +9,7 @@ import PlayerControls from '../player/PlayerControls';
 import ProgressBar from '../player/ProgressBar';
 import VideoPlayer from '../VideoPlayer';
 import Lyrics from '../Lyrics';
+import DownloadMenu from '../DownloadMenu';
 import { Link } from 'react-router-dom';
 
 export default function NowPlayingBar() {
@@ -43,6 +44,21 @@ export default function NowPlayingBar() {
   const [related, setRelated] = useState<{ tracks: Track[]; albums: any[]; artists: any[] }>({ tracks: [], albums: [], artists: [] });
   const [loadingRelated, setLoadingRelated] = useState(false);
   const [showVideo, setShowVideo] = useState(false);
+  const [shareStatus, setShareStatus] = useState<'idle' | 'copied'>('idle');
+
+  const handleShare = async () => {
+    if (!currentTrack) return;
+    const url = `${window.location.origin}/share/track/${encodeURIComponent(currentTrack.id)}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: currentTrack.title, text: `${currentTrack.title} - ${currentTrack.artist}`, url }); } catch {}
+    } else {
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareStatus('copied');
+        setTimeout(() => setShareStatus('idle'), 2000);
+      } catch {}
+    }
+  };
 
   useEffect(() => {
     if (!currentTrack || !isRightPanelOpen || rightPanelTab !== 'related') return;
@@ -205,6 +221,18 @@ export default function NowPlayingBar() {
           >
             <Sparkles className="w-4 h-4" />
           </button>
+          <button
+            onClick={handleShare}
+            className="p-2 rounded-xl transition border border-cyan-500/10 text-neutral-400 hover:text-white hover:bg-cyan-500/10"
+            title="Share"
+          >
+            {shareStatus === 'copied' ? <Check className="w-4 h-4 text-green-400" /> : <Share2 className="w-4 h-4" />}
+          </button>
+          <DownloadMenu
+            tracks={[currentTrack]}
+            className="p-2 rounded-xl transition border border-cyan-500/10 text-neutral-400 hover:text-white hover:bg-cyan-500/10"
+            iconClassName="w-4 h-4"
+          />
         </div>
       </div>
 

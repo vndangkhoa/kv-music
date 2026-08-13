@@ -4,7 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion, PanInfo, AnimatePresence } from 'framer-motion';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useLyrics } from '../../hooks/useLyrics';
-import { libraryService, streamUrl } from '../../services/library';
+import { libraryService } from '../../services/library';
+import { downloadTrack } from '../../services/download';
 import CoverImage from '../CoverImage';
 import VideoPlayer from '../VideoPlayer';
 import type { Track } from '../../types';
@@ -178,17 +179,18 @@ export default function MobileFullPlayer() {
 
     const handleShare = useCallback(async () => {
         if (!currentTrack) return;
+        const url = `${window.location.origin}/share/track/${encodeURIComponent(currentTrack.id)}`;
         const shareData = {
             title: currentTrack.title,
             text: `${currentTrack.title} - ${currentTrack.artist}`,
-            url: `https://music.youtube.com/watch?v=${currentTrack.id}`,
+            url,
         };
         if (navigator.share) {
             try {
                 await navigator.share(shareData);
             } catch {}
         } else {
-            await navigator.clipboard.writeText(shareData.url);
+            await navigator.clipboard.writeText(url);
             setShareStatus('copied');
             setTimeout(() => setShareStatus('idle'), 2000);
         }
@@ -198,16 +200,7 @@ export default function MobileFullPlayer() {
         if (!currentTrack) return;
         setDownloadStatus('downloading');
         try {
-            const response = await fetch(`${streamUrl(currentTrack.id)}`);
-            const blob = await response.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${currentTrack.artist} - ${currentTrack.title}.webm`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
+            await downloadTrack(currentTrack, 'audio');
             setDownloadStatus('done');
             setTimeout(() => setDownloadStatus('idle'), 2000);
         } catch {

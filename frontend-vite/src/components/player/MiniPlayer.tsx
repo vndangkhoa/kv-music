@@ -1,7 +1,10 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../stores/playerStore';
+import useMediaSession from '../../hooks/useMediaSession';
 
 export default function MiniPlayer() {
+  useMediaSession();
+
   const currentTrack = usePlayerStore(s => s.currentTrack);
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const volume = usePlayerStore(s => s.volume);
@@ -46,10 +49,8 @@ export default function MiniPlayer() {
           if (e.name !== 'AbortError') console.error("Play error:", e);
         });
       }
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "playing";
     } else {
       audioRef.current.pause();
-      if ('mediaSession' in navigator) navigator.mediaSession.playbackState = "paused";
     }
   }, [isPlaying]);
 
@@ -71,15 +72,6 @@ export default function MiniPlayer() {
     setProgress(audioRef.current.currentTime);
     if (!isNaN(audioRef.current.duration)) {
       setDuration(audioRef.current.duration);
-    }
-    if ('mediaSession' in navigator && !isNaN(audioRef.current.duration)) {
-      try {
-        navigator.mediaSession.setPositionState({
-          duration: audioRef.current.duration,
-          playbackRate: audioRef.current.playbackRate,
-          position: audioRef.current.currentTime
-        });
-      } catch { }
     }
   };
 

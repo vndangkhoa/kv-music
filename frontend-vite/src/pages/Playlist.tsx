@@ -8,6 +8,7 @@ import { libraryService, streamUrl } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
 import AddToPlaylistModal from '../components/AddToPlaylistModal';
+import DownloadMenu from '../components/DownloadMenu';
 import Skeleton from '../components/Skeleton';
 import Recommendations from '../components/Recommendations';
 import { GENERATED_CONTENT } from '../data/seed_data';
@@ -302,6 +303,12 @@ export default function Playlist() {
                 >
                     <Shuffle className="w-6 h-6" />
                 </button>
+                <DownloadMenu
+                    tracks={playlist.tracks}
+                    label="Download"
+                    className="px-4 py-2.5 rounded-full border border-white/10 text-neutral-400 hover:text-white hover:bg-white/10 transition disabled:opacity-50 text-sm font-semibold"
+                    iconClassName="w-4 h-4"
+                />
             </div>
 
             {/* Track List */}
@@ -397,6 +404,11 @@ export default function Playlist() {
                                     >
                                         <PlusCircle className="w-4 h-4" />
                                     </button>
+                                    <DownloadMenu
+                                        tracks={[track]}
+                                        className="opacity-0 group-hover:opacity-100 text-neutral-400 hover:text-white transition"
+                                        iconClassName="w-4 h-4"
+                                    />
                                     {isUserPlaylist && (
                                         <button
                                             onClick={(e) => { e.stopPropagation(); handleRemoveTrack(track.id); }}
