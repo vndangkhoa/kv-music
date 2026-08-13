@@ -26,7 +26,7 @@ export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: Creat
             onClick={onClose}
         >
             <div
-                className="bg-[#282828] rounded-lg w-full max-w-sm shadow-2xl animate-in"
+                className="bg-[#333333] rounded-lg w-full max-w-sm shadow-2xl animate-in"
                 onClick={(e) => e.stopPropagation()}
             >
                 <div className="p-6">

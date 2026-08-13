@@ -10,6 +10,7 @@ use std::time::{Instant, Duration};
 use futures::future::join_all;
 
 use crate::models::{Track, YTResult, StaticPlaylist};
+use serde::Deserialize;
 
 /// Set once a mounted/imported cookies.txt is rejected by YouTube
 /// ("cookies are no longer valid" / "Sign in to confirm you're not a bot").
@@ -20,6 +21,14 @@ static USER_COOKIES_REJECTED: AtomicBool = AtomicBool::new(false);
 pub struct CacheItem {
     pub tracks: Vec<Track>,
     pub timestamp: Instant,
+}
+
+/// Minimal YouTube oEmbed payload (fast, no-auth track metadata for link previews).
+#[derive(Deserialize)]
+struct OEmbedResponse {
+    title: String,
+    author_name: Option<String>,
+    thumbnail_url: Option<String>,
 }
 
 /// Cookie jar shared between the reqwest client and Netscape file serialization.
@@ -75,9 +84,14 @@ impl reqwest::cookie::CookieStore for SharedCookieStore {
 pub struct SpotdlService {
     download_dir: PathBuf,
     yt_client: reqwest::Client,
+    oembed_client: reqwest::Client,
     cookie_jar: Arc<SharedCookieStore>,
     pub search_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
     pub browse_cache: Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>,
+    /// Full yt-dlp metadata for single tracks (see get_track_info).
+    pub track_info_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
+    /// Fast oEmbed previews used by the Open Graph share page (see resolve_share_preview).
+    pub share_preview_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
 }
 
 impl SpotdlService {
@@ -99,12 +113,23 @@ impl SpotdlService {
             .build()
             .unwrap_or_default();
 
+        // Dedicated short-timeout client for oEmbed lookups so Facebook's link
+        // crawler (strict ~10s timeout) always gets an instant share page.
+        let oembed_client = reqwest::Client::builder()
+            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+            .timeout(Duration::from_secs(3))
+            .build()
+            .unwrap_or_default();
+
         Self {
             download_dir,
             yt_client,
+            oembed_client,
             cookie_jar,
             search_cache: Arc::new(RwLock::new(HashMap::new())),
             browse_cache: Arc::new(RwLock::new(HashMap::new())),
+            track_info_cache: Arc::new(RwLock::new(HashMap::new())),
+            share_preview_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -521,6 +546,19 @@ impl SpotdlService {
     /// Resolve a single track's metadata (title, artist, cover, duration) from a
     /// YouTube video id. Used to build Open Graph previews for shared track links.
     pub async fn get_track_info(&self, id: &str) -> Result<Track, String> {
+        // 1. Fast cache check - full metadata is cached for 6h
+        {
+            let cache = self.track_info_cache.read().await;
+            if let Some(item) = cache.get(id) {
+                if item.timestamp.elapsed() < Duration::from_secs(6 * 3600) {
+                    if let Some(t) = item.tracks.first() {
+                        println!("TrackInfo Cache Hit: {}", id);
+                        return Ok(t.clone());
+                    }
+                }
+            }
+        }
+
         let path = Self::yt_dlp_path();
         let video_url = format!("https://www.youtube.com/watch?v={}", id);
         let output_args = vec![
@@ -564,7 +602,7 @@ impl SpotdlService {
                     } else {
                         cover_url = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id);
                     }
-                    return Ok(Track {
+                    let track = Track {
                         id: res.id.clone(),
                         title: res.title.clone(),
                         artist,
@@ -577,7 +615,13 @@ impl SpotdlService {
                         comment_count: res.comment_count,
                         bitrate: res.abr.map(|b| b as i32),
                         codec: res.acodec,
+                    };
+                    let mut cache = self.track_info_cache.write().await;
+                    cache.insert(id.to_string(), CacheItem {
+                        tracks: vec![track.clone()],
+                        timestamp: Instant::now(),
                     });
+                    return Ok(track);
                 }
                 last_err = "Could not parse track metadata".to_string();
                 break;
@@ -599,6 +643,72 @@ impl SpotdlService {
         }
 
         Err(format!("Failed to resolve track {}. stderr: {}", id, last_err))
+    }
+
+    /// Fast, cached metadata for shared link previews (Open Graph tags).
+    /// Uses YouTube's oEmbed API (usually <1s) instead of yt-dlp so the share
+    /// page answers instantly - Facebook/Messenger crawlers time out after
+    /// ~10s and show "connection timed out" when the page is slow. Results are
+    /// cached for 24h so repeated crawler fetches are served from memory.
+    pub async fn resolve_share_preview(&self, id: &str) -> (String, String, String) {
+        // 1. Cache check
+        {
+            let cache = self.share_preview_cache.read().await;
+            if let Some(item) = cache.get(id) {
+                if item.timestamp.elapsed() < Duration::from_secs(24 * 3600) {
+                    if let Some(t) = item.tracks.first() {
+                        println!("SharePreview Cache Hit: {}", id);
+                        return (t.title.clone(), t.artist.clone(), t.cover_url.clone());
+                    }
+                }
+            }
+        }
+
+        let default_cover = format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id);
+        let (title, artist, cover) = match self.fetch_oembed_preview(id).await {
+            Some((t, a, c)) => (t, a, c),
+            None => (
+                "Listen to this track on kv-music".to_string(),
+                "kv-music".to_string(),
+                default_cover,
+            ),
+        };
+
+        // 2. Cache the result for 24h
+        let mut cache = self.share_preview_cache.write().await;
+        cache.insert(id.to_string(), CacheItem {
+            tracks: vec![Track {
+                id: id.to_string(),
+                title: title.clone(),
+                artist: artist.clone(),
+                album: "YouTube Music".to_string(),
+                duration: 0,
+                cover_url: cover.clone(),
+                url: format!("/api/stream/{}", id),
+                view_count: None,
+                like_count: None,
+                comment_count: None,
+                bitrate: None,
+                codec: None,
+            }],
+            timestamp: Instant::now(),
+        });
+        (title, artist, cover)
+    }
+
+    async fn fetch_oembed_preview(&self, id: &str) -> Option<(String, String, String)> {
+        let url = format!(
+            "https://www.youtube.com/oembed?format=json&url={}",
+            urlencoding::encode(&format!("https://www.youtube.com/watch?v={}", id))
+        );
+        let res = self.oembed_client.get(&url).send().await.ok()?;
+        if !res.status().is_success() {
+            return None;
+        }
+        let data: OEmbedResponse = res.json().await.ok()?;
+        let cover = data.thumbnail_url.unwrap_or_else(|| format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id));
+        let artist = data.author_name.unwrap_or_else(|| "kv-music".to_string());
+        Some((data.title, artist, cover))
     }
 
     /// Fetch real YouTube Music chart tracks from a chart playlist URL.

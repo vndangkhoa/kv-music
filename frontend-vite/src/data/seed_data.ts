@@ -676,124 +676,76 @@ export const GENERATED_CONTENT: Record<string, StaticPlaylist> = {
         "creator": "The Weeknd",
         "tracks": []
     },
-    "Bolero Tru Tinh": {
-        "id": "playlist-Bolero-Tru-Tinh",
-        "title": "Bolero Tru Tinh",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/muDs2wLpBtE/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLApKILStj6RV-kl6tdEPIPj45h0-A",
+    "SoundCloud Weekly Charts": {
+        "id": "playlist-SoundCloud-Weekly-Charts",
+        "title": "SoundCloud Weekly Top 50",
+        "description": "The 50 most streamed tracks on SoundCloud this week.",
+        "cover_url": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "SoundCloud Charts",
         "tracks": []
     },
-    "Viral Hits Vietnam": {
-        "id": "playlist-Viral-Hits-Vietnam",
-        "title": "Viral Hits Vietnam",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/UdyGlHhI8tQ/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCAY2u4FOdXEMC-6C95u8xBsdO6nQ",
+    "TikTok Viral Hits 2026": {
+        "id": "playlist-TikTok-Viral-Hits-2026",
+        "title": "TikTok Viral Sounds 2026",
+        "description": "The biggest trending audio clips and viral anthems.",
+        "cover_url": "https://images.unsplash.com/photo-1470225620780-dba8ba36b745?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "SoundCloud Editorial",
         "tracks": []
     },
-    "Acoustic Thu Gian": {
-        "id": "playlist-Acoustic-Thu-Gian",
-        "title": "Acoustic Thu Gian",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/IoKQ905zrxU/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBJPpS_yUSyDUv9PjMFPjK3H1kdmA",
+    "Lofi Chill & Midnight Beats": {
+        "id": "playlist-Lofi-Chill-Midnight-Beats",
+        "title": "Lofi Chill & Midnight Beats",
+        "description": "Smooth ambient beats for deep focus, study, and relaxing nights.",
+        "cover_url": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "Chillhop Music",
         "tracks": []
     },
-    "Workout Energy": {
-        "id": "playlist-Workout-Energy",
-        "title": "Workout Energy",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/dZ1tiIgLvro/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAjtQ3hwKesNVywnI49oV2x4PV-IQ",
+    "EDM Mainstage Festival 2026": {
+        "id": "playlist-EDM-Mainstage-Festival-2026",
+        "title": "EDM Mainstage Festival",
+        "description": "High-energy festival drops, electro house, and dance bangers.",
+        "cover_url": "https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "SoundCloud EDM",
         "tracks": []
     },
-    "Lofi Chill Vietnam": {
-        "id": "playlist-Lofi-Chill-Vietnam",
-        "title": "Lofi Chill Vietnam",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/VQoju_Dfi94/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAmHCuyDdiQqJ345GRQgLLhhcXU2g",
+    "V-Pop New Wave & Indie": {
+        "id": "playlist-V-Pop-New-Wave-Indie",
+        "title": "V-Pop New Wave & Indie",
+        "description": "Fresh indie sounds and chart-topping hits from Vietnamese creators.",
+        "cover_url": "https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "V-Pop Pulse",
         "tracks": []
     },
-    "Party Anthems": {
-        "id": "playlist-Party-Anthems",
-        "title": "Party Anthems",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/aNSiNYb4c9c/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDgx99jZRe8m7XqBpwutGiMIT8AJQ",
+    "Hip-Hop Trap & Bass Heavies": {
+        "id": "playlist-Hip-Hop-Trap-Bass-Heavies",
+        "title": "Hip-Hop Trap & Bass",
+        "description": "Hard-hitting 808 trap, drill, and underground rap heavyweights.",
+        "cover_url": "https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "Underground Rap",
         "tracks": []
     },
-    "Piano Focus": {
-        "id": "playlist-Piano-Focus",
-        "title": "Piano Focus",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/AnlKTlJLkro/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCI00FI0HZWHQWuACTV5HQV7Cgcyg",
+    "Acoustic Coffee Unplugged": {
+        "id": "playlist-Acoustic-Coffee-Unplugged",
+        "title": "Acoustic Unplugged Sessions",
+        "description": "Warm guitar acoustic covers and intimate vocal performances.",
+        "cover_url": "https://images.unsplash.com/photo-1465847899084-d164df4dedc6?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
+        "creator": "Acoustic Vault",
         "tracks": []
     },
-    "Nhac Trinh Cong Son": {
-        "id": "playlist-Nhac-Trinh-Cong-Son",
-        "title": "Nhac Trinh Cong Son",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/m9CBkq1wu54/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCiCeeUxKjO2ePbLrGEOSfLRyqK_g",
+    "Workout Gym Energy 2026": {
+        "id": "playlist-Workout-Gym-Energy-2026",
+        "title": "Workout Energy 140+ BPM",
+        "description": "High-intensity motivation tracks to power your workout.",
+        "cover_url": "https://images.unsplash.com/photo-1534438327276-14e5300c3a48?w=600&auto=format&fit=crop&q=80",
         "type": "Playlist",
-        "tracks": []
-    },
-    "Indie Vietnam": {
-        "id": "playlist-Indie-Vietnam",
-        "title": "Indie Vietnam",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/p0ODaducyPo/hqdefault.jpg?sqp=-oaymwEcCOADEI4CSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLBUfHeOzENXCm2yVU_oZSeOiGQLOw",
-        "type": "Playlist",
-        "tracks": []
-    },
-    "Nhac Tre Moi Nhat": {
-        "id": "playlist-Nhac-Tre-Moi-Nhat",
-        "title": "Nhac Tre Moi Nhat",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/q2Ev43H-nmc/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLD_Zlz1YrxVVEOHgUrsaYo13EytEA",
-        "type": "Playlist",
-        "tracks": []
-    },
-    "K-Pop ON!": {
-        "id": "playlist-K-Pop-ON!",
-        "title": "K-Pop ON!",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/eCVJyexv1kg/hqdefault.jpg?sqp=-oaymwEcCOADEI4CSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDRg6HvyBxQm2dzzkiQE8f6hSZSBw",
-        "type": "Playlist",
-        "tracks": []
-    },
-    "K-Pop Daebak": {
-        "id": "playlist-K-Pop-Daebak",
-        "title": "K-Pop Daebak",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/yf0O4WZVJqQ/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLDG99KV-WjOmqf0pKu0jb7CLa7H0A",
-        "type": "Playlist",
-        "tracks": []
-    },
-    "Top 50 Vietnam": {
-        "id": "playlist-Top-50-Vietnam",
-        "title": "Top 50 Vietnam",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/bEas0GWDm1k/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCufqFtBRF6_VlO_-EXC3qdx3VR-A",
-        "type": "Playlist",
-        "tracks": []
-    },
-    "Sleep Sounds": {
-        "id": "playlist-Sleep-Sounds",
-        "title": "Sleep Sounds",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/LFASWuckB1c/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLCotlKXoysvRmnwvONiMwGRlTDYNg",
-        "type": "Playlist",
-        "tracks": []
-    },
-    "Gaming Music": {
-        "id": "playlist-Gaming-Music",
-        "title": "Gaming Music",
-        "description": "Playlist • Trending",
-        "cover_url": "https://i.ytimg.com/vi/PP2Uvesx4ls/hq720.jpg?sqp=-oaymwEcCNAFEJQDSFXyq4qpAw4IARUAAIhCGAFwAcABBg==&rs=AOn4CLAl7lLrOqFoRf2b9F6pvcdEwKKPvA",
-        "type": "Playlist",
+        "creator": "SoundCloud Fitness",
         "tracks": []
     },
     "Anime Hits": {

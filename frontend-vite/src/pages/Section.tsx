@@ -6,6 +6,7 @@ import { libraryService } from '../services/library';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
 import type { StaticPlaylist } from '../types';
+import { safeStorage } from '../utils/safeStorage';
 
 export default function Section() {
     const [searchParams] = useSearchParams();
@@ -20,7 +21,7 @@ export default function Section() {
             return;
         }
         setLoading(true);
-        const cached = localStorage.getItem('ytm_browse_cache_v8');
+        const cached = safeStorage.getItem('ytm_browse_cache_v8');
         if (cached) {
             const data = JSON.parse(cached);
             const items = data[category] || [];
@@ -61,7 +62,7 @@ export default function Section() {
             {loading ? (
                  <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                      {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                         <div key={i} className="bg-[#1f1f1f]/30 p-3 rounded-2xl border border-white/5 space-y-3">
+                         <div key={i} className="bg-[#2a2a2a]/30 p-3 rounded-2xl border border-white/5 space-y-3">
                              <Skeleton className="w-full aspect-square rounded-xl animate-pulse" />
                              <Skeleton className="h-4 w-3/4 animate-pulse" />
                              <Skeleton className="h-3 w-1/2 animate-pulse" />
@@ -72,7 +73,7 @@ export default function Section() {
                 <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                     {playlists.map((playlist) => (
                         <Link to={`/playlist/${playlist.id}`} key={playlist.id}>
-                            <div className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer h-full flex flex-col border border-white/5 justify-between">
+                            <div className="bg-[#2a2a2a]/30 p-3 rounded-2xl hover:bg-[#2a2a2a]/85 transition duration-300 group cursor-pointer h-full flex flex-col border border-white/5 justify-between">
                                 <div>
                                     <div className="relative mb-3">
                                         <CoverImage

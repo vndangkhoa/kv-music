@@ -3,53 +3,38 @@
 @tailwind utilities;
 
 :root {
-    --background: #0b1329;
+    /* ── SoundCloud dark theme ── */
+    --background: #111111;
     --foreground: #FFFFFF;
 
-    /* NhạcCủaTui Theme */
-    --spotify-base: #0b132d;
-    --spotify-sidebar: #0f1938;
-    --spotify-player: #0f1938;
-    --spotify-highlight: #00a8ff;
-    --spotify-hover: rgba(0, 168, 255, 0.12);
+    --sc-base: #111111;
+    --sc-surface: #222222;
+    --sc-card: #2a2a2a;
+    --sc-card-hover: #333333;
+    --sc-orange: #ff5500;
+    --sc-orange-2: #ff7a00;
+    --sc-border: rgba(255, 255, 255, 0.1);
+    --sc-text-main: #FFFFFF;
+    --sc-text-muted: #999999;
+    --sc-text-faint: #666666;
+
+    --spotify-base: #111111;
+    --spotify-sidebar: #222222;
+    --spotify-player: #222222;
+    --spotify-highlight: #ff5500;
+    --spotify-hover: rgba(255, 85, 0, 0.14);
     --spotify-text-main: #FFFFFF;
-    --spotify-text-muted: #94a3b8;
-    --spotify-card: #142044;
-    --spotify-card-hover: #1c2c5b;
+    --spotify-text-muted: #999999;
+    --spotify-card: #2a2a2a;
+    --spotify-card-hover: #333333;
 
-    /* NCT Specific Accents */
-    --nct-cyan: #00a8ff;
-    --nct-teal: #00d2d3;
-    --nct-blue: #2e86de;
+    --nct-orange: #ff5500;
+    --nct-teal: #ff8f1f;
+    --nct-blue: #ff7a00;
     --nct-gold: #ff9f43;
-    --nct-purple: #9b59b6;
-    --nct-dark-card: #142044;
-    --nct-dark-card-hover: #1e2e60;
-    --font-family: 'Inter', 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-}
-
-:root[data-theme='apple'] {
-    /* Pitch Black NCT Night Mode */
-    --background: #060913;
-    --foreground: #FFFFFF;
-
-    --spotify-base: #060913;
-    --spotify-sidebar: #0b1021;
-    --spotify-player: #0b1021;
-    --spotify-highlight: #00a8ff;
-    --spotify-hover: rgba(0, 168, 255, 0.15);
-    --spotify-text-main: #FFFFFF;
-    --spotify-text-muted: #64748b;
-    --spotify-card: #0f172a;
-    --spotify-card-hover: #1e293b;
-
-    --nct-cyan: #00a8ff;
-    --nct-teal: #00d2d3;
-    --nct-blue: #2e86de;
-    --nct-gold: #ff9f43;
-    --nct-purple: #9b59b6;
-    --nct-dark-card: #0f172a;
-    --nct-dark-card-hover: #1e293b;
+    --nct-purple: #ff7a00;
+    --nct-dark-card: #2a2a2a;
+    --nct-dark-card-hover: #3a3a3a;
 
     --font-family: 'Inter', 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 }
@@ -368,4 +353,121 @@ button:focus-visible,
 a:focus-visible {
     outline: 2px solid var(--spotify-highlight);
     outline-offset: 2px;
+}
+
+/* ── SoundCloud-style shared utilities ────────────────────────────────────── */
+
+/* Standard surface panel */
+.sc-surface {
+    background-color: var(--sc-card);
+    border: 1px solid var(--sc-border);
+}
+
+/* Segment control (SC filter pills) */
+.sc-segment {
+    background-color: var(--sc-card);
+    border: 1px solid var(--sc-border);
+    border-radius: 999px;
+    padding: 3px;
+}
+
+.sc-segment-active {
+    background: var(--sc-orange);
+    color: #fff;
+    border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(255, 85, 0, 0.4);
+}
+
+/* Large page title */
+.sc-page-title {
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+}
+
+/* Section header (title + "see more") */
+.sc-section-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.sc-section-header h2 {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+    color: #fff;
+}
+
+.sc-section-header a {
+    font-size: 12px;
+    font-weight: 600;
+    color: rgba(255, 255, 255, 0.5);
+    flex-shrink: 0;
+}
+
+.sc-section-header a:hover {
+    color: #fff;
+}
+
+/* Bottom sheet surface */
+.sc-sheet {
+    background-color: #222222;
+    border: 1px solid var(--sc-border);
+    border-bottom: none;
+    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Fullscreen overlays (lyrics) */
+.sc-overlay {
+    background-color: rgba(17, 17, 17, 0.96);
+}
+
+/* Small circle icon buttons */
+.sc-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid var(--sc-border);
+    border-radius: 999px;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.sc-icon-btn:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+}
+
+.sc-icon-btn:active {
+    background-color: rgba(255, 255, 255, 0.16);
+    transform: scale(0.92);
+}
+
+/* Primary action (SC orange) */
+.sc-btn-primary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    background: var(--sc-orange);
+    color: #fff;
+    font-weight: 700;
+    border-radius: 999px;
+    transition: background-color 0.15s ease, transform 0.1s ease;
+}
+
+.sc-btn-primary:hover {
+    background: var(--sc-orange-2);
+}
+
+.sc-btn-primary:active {
+    transform: scale(0.96);
+}
+
+/* Orange text selection */
+::selection {
+    background: var(--sc-orange);
+    color: #fff;
 }

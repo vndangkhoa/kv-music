@@ -1,290 +1,220 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useMemo } from 'react';
+import { useParams, Link } from 'react-router-dom';
 import { libraryService } from '../services/library';
 import { usePlayerStore } from '../stores/playerStore';
-import { Play, Shuffle, Heart, Disc, Music } from 'lucide-react';
+import { useLibraryStore } from '../stores/libraryStore';
+import { Play, Shuffle, CheckCircle2, Disc } from 'lucide-react';
 import { Track } from '../types';
-import Recommendations from '../components/Recommendations';
-import { GENERATED_CONTENT } from '../data/seed_data';
+import CoverImage from '../components/CoverImage';
+import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
+import SoundCloudSidebar from '../components/SoundCloudSidebar';
+import { toast } from '../stores/toastStore';
 
 interface ArtistData {
     name: string;
     photo?: string;
     topSongs: Track[];
-    albums: any[]; // Extended type needed
-    singles: any[];
 }
 
 export default function Artist() {
-    const { id } = useParams(); // Start with name or id
-    const navigate = useNavigate();
+    const { id } = useParams();
     const playTrack = usePlayerStore(s => s.playTrack);
-    const toggleLike = usePlayerStore(s => s.toggleLike);
-    const likedTracks = usePlayerStore(s => s.likedTracks);
-    const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
     const shuffle = usePlayerStore(s => s.shuffle);
     const toggleShuffle = usePlayerStore(s => s.toggleShuffle);
 
+    const followedArtists = useLibraryStore(s => s.followedArtists);
+    const toggleFollowArtist = useLibraryStore(s => s.toggleFollowArtist);
+
     const [artist, setArtist] = useState<ArtistData | null>(null);
     const [loading, setLoading] = useState(true);
-    const [songsLoading, setSongsLoading] = useState(true);
-    const [isLiked, setIsLiked] = useState(false);
+    const [activeTab, setActiveTab] = useState<'all' | 'popular' | 'tracks' | 'albums'>('all');
 
     const artistName = decodeURIComponent(id || '');
+    const isFollowing = followedArtists.includes(artistName);
 
-    useEffect(() => {
-        if (!artistName) return;
-        const liked = JSON.parse(localStorage.getItem('likedArtists') || '[]');
-        setIsLiked(liked.includes(artistName));
-    }, [artistName]);
-
-    const toggleLikeArtist = () => {
-        const liked = JSON.parse(localStorage.getItem('likedArtists') || '[]');
-        let updated: string[];
-        if (liked.includes(artistName)) {
-            updated = liked.filter((name: string) => name !== artistName);
-            setIsLiked(false);
+    const handleToggleFollow = async () => {
+        await toggleFollowArtist(artistName, artist?.photo);
+        if (isFollowing) {
+            toast(`Unfollowed ${artistName}`);
         } else {
-            updated = [...liked, artistName];
-            setIsLiked(true);
+            toast(`Following ${artistName}. Added songs, albums & playlists to your Library!`);
         }
-        localStorage.setItem('likedArtists', JSON.stringify(updated));
     };
 
     useEffect(() => {
         if (!artistName) return;
-
-        // OPTIMISTIC LOADING START
-        // 1. Try to find in Seed Data first for instant header
-        // Seed data keys are names, but IDs are "artist-Name"
-        const seedArtist = Object.values(GENERATED_CONTENT).find(
-            item => item.id === id || item.title === artistName || item.id === `artist-${artistName.replace(/ /g, '-')}`
-        );
-
-        if (seedArtist) {
-            setArtist({
-                name: seedArtist.title,
-                photo: seedArtist.cover_url,
-                topSongs: [], // Will load
-                albums: [],
-                singles: []
-            });
-            setLoading(false); // Show UI immediately!
-        } else {
-            setLoading(true); // Only blocking load if we have ZERO data
-        }
+        setLoading(true);
 
         const fetchData = async () => {
-            setSongsLoading(true);
-            // Fetch info (Background)
-            // If we already have photo from seed, maybe skip or update?
-            // libraryService.getArtistInfo might find a better photo or same.
+            try {
+                const [info, songs] = await Promise.allSettled([
+                    libraryService.getArtistInfo(artistName),
+                    libraryService.search(artistName)
+                ]);
 
-            // Parallel Fetch for speed
-            const [info, songs] = await Promise.allSettled([
-                !seedArtist?.cover_url ? libraryService.getArtistInfo(artistName) : Promise.resolve({ photo: seedArtist.cover_url }),
-                libraryService.search(artistName)
-            ]);
+                const photo = (info.status === 'fulfilled' && info.value?.photo)
+                    ? info.value.photo
+                    : `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=ff5500&color=fff&size=200&bold=true`;
 
-            setSongsLoading(false);
+                const topSongs = (songs.status === 'fulfilled') ? songs.value.slice(0, 20) : [];
 
-            const finalPhoto = (info.status === 'fulfilled' && info.value?.photo) ? info.value.photo : seedArtist?.cover_url;
-            
-            // Ensure we always have a photo - if somehow still empty, use UI-Avatars
-            const safePhoto = finalPhoto || `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=random&color=fff&size=200&rounded=true&bold=true&font-size=0.33`;
-            let topSongs = (songs.status === 'fulfilled') ? songs.value : [];
-
-            if (topSongs.length > 20) topSongs = topSongs.slice(0, 20);
-
-            setArtist({
-                name: artistName,
-                photo: safePhoto,
-                topSongs,
-                albums: [],
-                singles: []
-            });
-            setLoading(false);
+                setArtist({
+                    name: artistName,
+                    photo,
+                    topSongs
+                });
+            } catch (e) {
+                console.error('artist fetch error', e);
+            } finally {
+                setLoading(false);
+            }
         };
 
         fetchData();
-    }, [artistName, id]);
+    }, [artistName]);
 
-    if (loading) return (
-        <div className="flex items-center justify-center h-full">
-            <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-white"></div>
-        </div>
-    );
+    const displayedSongs = useMemo(() => {
+        if (!artist?.topSongs) return [];
+        if (activeTab === 'popular') {
+            return [...artist.topSongs].sort((a, b) => (b.view_count || 0) - (a.view_count || 0));
+        }
+        if (activeTab === 'tracks') {
+            return artist.topSongs.slice(0, 10);
+        }
+        return artist.topSongs;
+    }, [artist?.topSongs, activeTab]);
 
-    if (!artist) return <div>Artist not found</div>;
+    if (loading) {
+        return (
+            <div className="flex flex-col items-center justify-center min-h-[60vh] bg-[#121212]">
+                <div className="w-12 h-12 rounded-full border-2 border-[#ff5500] border-t-transparent animate-spin mb-4" />
+                <p className="text-neutral-400 text-xs font-medium">Loading creator profile...</p>
+            </div>
+        );
+    }
+
+    if (!artist) return <div className="p-8 text-white bg-[#121212]">Artist not found</div>;
 
     return (
-        <div className="flex-1 overflow-y-auto bg-gradient-to-b from-[#1e1e1e] to-black pb-32 no-scrollbar">
-            {/* Header / Banner */}
-            <div className="relative h-[40vh] min-h-[300px] w-full group">
-                {artist.photo && (
-                    <div className="absolute inset-0">
-                        <img src={artist.photo} alt={artist.name} className="w-full h-full object-cover opacity-60 mask-gradient-b" />
-                        <div className="absolute inset-0 bg-black/40" />
+        <div className="min-h-full text-white bg-[#121212]">
+            <div className="max-w-[1240px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-6">
+                {/* SoundCloud Artist Profile Hero Banner */}
+                <div className="relative w-full rounded-xl overflow-hidden bg-gradient-to-r from-neutral-900 via-stone-900 to-[#121212] border border-white/10 p-4 md:p-8 flex flex-col md:flex-row items-center md:items-end justify-between gap-6 min-h-[260px] shadow-2xl">
+                    <div className="flex flex-col md:flex-row items-center md:items-end gap-5 text-center md:text-left">
+                        {/* Circular Avatar */}
+                        <div className="w-32 h-32 md:w-40 md:h-40 rounded-full overflow-hidden border-4 border-[#121212] shadow-2xl flex-shrink-0 bg-neutral-800">
+                            <CoverImage src={artist.photo} alt={artist.name} className="w-full h-full object-cover" />
+                        </div>
+
+                        <div className="space-y-1">
+                            <div className="flex items-center justify-center md:justify-start gap-1.5 text-xs text-[#ff5500] font-extrabold uppercase tracking-widest">
+                                <CheckCircle2 className="w-4 h-4" />
+                                <span>Verified Creator</span>
+                            </div>
+                            <h1 className="text-3xl md:text-5xl font-extrabold text-white leading-tight">
+                                {artist.name}
+                            </h1>
+                            <p className="text-xs text-neutral-400 font-medium">124.8K Followers • {artist.topSongs.length} Tracks</p>
+                        </div>
                     </div>
-                )}
 
-                <div className="absolute bottom-0 left-0 p-4 md:p-8 w-full">
-                    <h1 className="text-3xl md:text-7xl font-bold mb-4 md:mb-6 tracking-tight text-white drop-shadow-lg">{artist.name}</h1>
+                    {/* Action Controls */}
+                    <div className="flex items-center gap-3 flex-shrink-0">
+                        <button
+                            onClick={handleToggleFollow}
+                            className={`px-6 py-2 rounded-full text-xs font-bold transition shadow ${
+                                isFollowing
+                                    ? 'bg-white/10 text-white border border-white/20 hover:bg-white/20'
+                                    : 'bg-[#ff5500] text-white hover:bg-[#ff7a00]'
+                            }`}
+                        >
+                            {isFollowing ? 'Following' : 'Follow'}
+                        </button>
 
-                    <div className="flex items-center gap-4">
                         <button
                             onClick={() => {
                                 if (artist.topSongs.length > 0) {
                                     playTrack(artist.topSongs[0], artist.topSongs);
                                 }
                             }}
-                            className="bg-white text-black px-8 py-3 rounded-full font-bold text-lg hover:scale-105 transition flex items-center gap-2"
+                            className="flex items-center gap-1.5 px-5 py-2 rounded-full bg-white text-black text-xs font-extrabold hover:scale-105 transition shadow"
                         >
-                            <Play fill="currentColor" size={20} />
-                            Play
+                            <Play className="w-3.5 h-3.5 fill-current" />
+                            Play All
                         </button>
+
                         <button
                             onClick={() => {
                                 if (artist.topSongs.length > 0) {
                                     if (!shuffle) toggleShuffle();
-                                    const randomIndex = Math.floor(Math.random() * artist.topSongs.length);
-                                    playTrack(artist.topSongs[randomIndex], artist.topSongs);
+                                    const rand = Math.floor(Math.random() * artist.topSongs.length);
+                                    playTrack(artist.topSongs[rand], artist.topSongs);
                                 }
                             }}
-                            className="bg-white/10 backdrop-blur-md text-white px-6 py-3 rounded-full font-bold text-lg hover:bg-white/20 transition border border-white/20 flex items-center gap-2"
+                            className="p-2 rounded-full bg-white/10 border border-white/10 text-white hover:bg-white/20 transition"
+                            aria-label="Shuffle"
                         >
-                            <Shuffle size={20} className={shuffle ? "text-red-500" : ""} />
-                            Shuffle
-                        </button>
-                        <button
-                            onClick={toggleLikeArtist}
-                            className={`p-3 rounded-full transition border flex items-center justify-center ${
-                                isLiked
-                                    ? 'bg-[#FF0000] border-[#FF0000] text-white hover:bg-[#CC0000]'
-                                    : 'bg-white/10 border-white/20 text-white hover:bg-white/20'
-                            }`}
-                        >
-                            <Heart size={24} className={isLiked ? 'fill-current text-white' : ''} />
+                            <Shuffle className="w-4 h-4" />
                         </button>
                     </div>
                 </div>
-            </div>
 
-            {/* Content */}
-            <div className="p-4 md:p-8 space-y-8 md:space-y-12 max-w-7xl mx-auto">
-                {/* Top Songs */}
-                <section>
-                    <h2 className="text-2xl font-bold mb-6">Top Songs</h2>
-                    <div className="flex flex-col gap-2">
-                        {songsLoading ? (
-                            // Skeleton Loading for Songs
-                            [...Array(5)].map((_, i) => (
-                                <div key={i} className="flex items-center p-3 gap-4 animate-pulse">
-                                    <div className="w-8 h-4 bg-white/10 rounded" />
-                                    <div className="w-12 h-12 bg-white/10 rounded" />
-                                    <div className="flex-1 space-y-2">
-                                        <div className="w-1/3 h-4 bg-white/10 rounded" />
-                                        <div className="w-1/4 h-3 bg-white/10 rounded" />
-                                    </div>
-                                </div>
-                            ))
-                        ) : (
-                            artist.topSongs.map((track, i) => (
-                                <div
-                                    key={track.id}
-                                    className="group flex items-center p-3 rounded-md hover:bg-white/10 transition cursor-pointer"
-                                    onClick={() => playTrack(track, artist.topSongs)}
+                {/* Sub-header Navigation Tabs & 2-Column Content */}
+                <div className="flex gap-8">
+                    {/* Main Tracks Column */}
+                    <div className="flex-1 min-w-0 space-y-4">
+                        <div className="flex items-center gap-6 border-b border-white/10 pb-2">
+                            {[
+                                { id: 'all', label: 'All Uploads' },
+                                { id: 'popular', label: 'Popular' },
+                                { id: 'tracks', label: 'Tracks' },
+                                { id: 'albums', label: 'Albums' },
+                            ].map(tab => (
+                                <button
+                                    key={tab.id}
+                                    onClick={() => setActiveTab(tab.id as any)}
+                                    className={`text-xs font-bold uppercase tracking-wider transition relative pb-2 ${
+                                        activeTab === tab.id
+                                            ? 'text-[#ff5500] border-b-2 border-[#ff5500]'
+                                            : 'text-neutral-400 hover:text-white'
+                                    }`}
                                 >
-                                    <span className="w-8 text-center text-neutral-500 font-medium group-hover:hidden">{i + 1}</span>
-                                    <Play size={16} className="w-8 hidden group-hover:block fill-white" />
+                                    {tab.label}
+                                </button>
+                            ))}
+                        </div>
 
-                                    <img src={track.cover_url} alt="Cover" className="w-12 h-12 rounded-lg mx-4 object-cover" />
-
-                                    <div className="flex-1 min-w-0">
-                                        <div className="font-medium text-white truncate">{track.title}</div>
-                                        <div className="text-sm text-neutral-400 truncate">{track.artist} • {track.album || 'Single'}</div>
-                                    </div>
-
-                                    <span className="text-neutral-500 text-sm hidden md:block mr-8">
-                                        {Math.floor((track.duration || 0) / 60)}:{((track.duration || 0) % 60).toString().padStart(2, '0')}
-                                    </span>
-
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); toggleLike(track); }}
-                                        className={`${likedTracks.has(track.id) ? 'text-green-500 opacity-100' : 'text-neutral-400 opacity-0 group-hover:opacity-100'} hover:scale-110 transition`}
-                                    >
-                                        <Heart size={18} fill={likedTracks.has(track.id) ? "currentColor" : "none"} />
-                                    </button>
-                                </div>
-                            )))}
-                    </div>
-                </section>
-
-                 {/* Albums (Mock UI for now as strict album search is hard with yt-dlp only) */}
-                 <section>
-                     <div className="flex items-center justify-between mb-6">
-                         <h2 className="text-2xl font-bold">Albums</h2>
-                         <button className="text-sm font-bold text-neutral-400 hover:text-white uppercase tracking-wider">See All</button>
-                     </div>
-                     {/* Placeholder Logic: Show top song covers as "Albums" for visual parity if no real albums */}
-                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                        {artist.topSongs.slice(0, 5).map((track) => (
-                            <div
-                                key={track.id}
-                                className="group cursor-pointer"
-                                onClick={() => {
-                                    playTrack(track, [track]);
-                                }}
-                            >
-                                <div className="aspect-square bg-neutral-900 rounded-2xl overflow-hidden mb-3 relative">
-                                    <img src={track.cover_url} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                                        <div className="bg-white text-black p-3 rounded-full hover:scale-110 transition">
-                                            <Play fill="currentColor" size={24} />
+                        {activeTab === 'albums' ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                                <Link to={`/album/${encodeURIComponent(artist.name + ' Essentials')}`} className="bg-[#181818] p-3 rounded-xl border border-white/5 hover:border-white/20 transition group">
+                                    <div className="relative mb-2 overflow-hidden rounded-lg aspect-square">
+                                        <CoverImage src={artist.photo} alt={artist.name} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
+                                            <Disc className="w-8 h-8 text-[#ff5500]" />
                                         </div>
                                     </div>
-                                </div>
-                                <h3 className="font-bold truncate text-white">{track.album || track.title}</h3>
-                                <div className="flex items-center gap-1 text-sm text-neutral-400">
-                                    <Disc size={14} />
-                                    <span>Album</span>
-                                </div>
+                                    <h3 className="font-bold text-xs text-white truncate group-hover:text-[#ff5500] transition">{artist.name} Essentials</h3>
+                                    <p className="text-[10px] text-neutral-400 mt-0.5">Album • 2026</p>
+                                </Link>
                             </div>
-                        ))}
-                    </div>
-                </section>
-
-                 {/* Singles */}
-                 <section>
-                     <h2 className="text-2xl font-bold mb-6">Singles</h2>
-                     <div className="grid grid-cols-3 fold:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
-                        {artist.topSongs.slice(0, 4).reverse().map((track) => (
-                            <div
-                                key={track.id}
-                                className="group cursor-pointer"
-                                onClick={() => {
-                                    playTrack(track, [track]);
-                                }}
-                            >
-                                <div className="aspect-square bg-neutral-900 rounded-2xl overflow-hidden mb-3 relative border-2 border-neutral-800">
-                                    <img src={track.cover_url} className="w-full h-full object-cover transition duration-300 group-hover:scale-105" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                                        <div className="bg-white text-black p-3 rounded-full hover:scale-110 transition">
-                                            <Play fill="currentColor" size={24} />
-                                        </div>
-                                    </div>
-                                </div>
-                                <h3 className="font-bold truncate text-center text-white">{track.title}</h3>
-                                <div className="flex items-center justify-center gap-1 text-sm text-neutral-400">
-                                    <Music size={14} />
-                                    <span>Single</span>
-                                </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {displayedSongs.map((track, idx) => (
+                                    <SoundCloudTrackCard
+                                        key={`${track.id}-${idx}`}
+                                        track={track}
+                                        queue={displayedSongs}
+                                    />
+                                ))}
                             </div>
-                        ))}
+                        )}
                     </div>
-                </section>
 
-
+                    {/* Right Sidebar */}
+                    <div className="hidden lg:flex flex-shrink-0 flex-col items-stretch">
+                        <SoundCloudSidebar />
+                    </div>
+                </div>
             </div>
         </div>
     );

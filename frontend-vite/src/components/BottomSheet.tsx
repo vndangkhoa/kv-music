@@ -55,25 +55,25 @@ export default function BottomSheet({ isOpen, onClose, title, children }: Bottom
 
   return (
     <div className="fixed inset-0 z-[80] flex items-end justify-center" onClick={onClose}>
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200" />
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200" />
       <div
         ref={sheetRef}
-        className="relative w-full max-w-lg bg-[#1a1a1a] rounded-t-2xl animate-in slide-in-from-bottom duration-300 ease-out flex flex-col max-h-[85vh]"
+        className="relative w-full max-w-lg sc-sheet rounded-t-[28px] rounded-b-none animate-in slide-in-from-bottom duration-300 ease-out flex flex-col max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
       >
-        {/* Drag handle */}
+        {/* iOS drag handle */}
         <div className="flex justify-center pt-3 pb-2 cursor-grab active:cursor-grabbing">
-          <div className="w-10 h-1 rounded-full bg-neutral-600" />
+          <div className="w-9 h-1.5 rounded-full bg-white/25" />
         </div>
 
         {/* Header */}
         {title && (
-          <div className="flex items-center justify-between px-4 pb-3 border-b border-white/5">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider">{title}</h3>
-            <button onClick={onClose} className="p-1.5 rounded-full hover:bg-white/10 text-neutral-400 hover:text-white transition">
+          <div className="flex items-center justify-between px-5 pb-3 border-b border-white/10">
+            <h3 className="text-sm font-extrabold text-white tracking-wide">{title}</h3>
+            <button onClick={onClose} className="sc-icon-btn w-8 h-8 text-neutral-300 hover:text-white transition">
               <X className="w-4 h-4" />
             </button>
           </div>

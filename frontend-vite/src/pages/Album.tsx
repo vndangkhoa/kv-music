@@ -87,7 +87,7 @@ export default function Album() {
     const formattedDuration = `${Math.floor(totalDuration / 60)} minutes`;
 
     return (
-        <div className="flex-1 overflow-y-auto bg-[#121212] no-scrollbar pb-32 relative">
+        <div className="flex-1 overflow-y-auto bg-[#111111] no-scrollbar pb-32 relative">
             {/* Banner Background */}
             {albumInfo.cover && (
                 <div
@@ -179,7 +179,7 @@ export default function Album() {
             {/* Tracklist */}
             <div className="p-4 md:p-8">
                 {/* Header Row */}
-                <div className="flex items-center text-sm text-neutral-400 border-b border-white/10 pb-2 mb-4 px-4 sticky top-20 bg-[#121212] z-10">
+                <div className="flex items-center text-sm text-neutral-400 border-b border-white/10 pb-2 mb-4 px-4 sticky top-20 bg-[#111111] z-10">
                     <span className="w-10 text-center">#</span>
                     <span className="flex-1">Title</span>
                     <span className="hidden md:block w-12 text-right"><Clock size={16} /></span>
@@ -233,7 +233,7 @@ export default function Album() {
                     <div className="grid grid-cols-2 fold:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 md:gap-2">
                         {moreByArtist.map((track) => (
                             <div
-                                className="bg-[#1f1f1f]/30 p-3 rounded-2xl hover:bg-[#1f1f1f]/85 transition duration-300 group cursor-pointer relative flex flex-col border border-white/5"
+                                className="bg-[#2a2a2a]/30 p-3 rounded-2xl hover:bg-[#2a2a2a]/85 transition duration-300 group cursor-pointer relative flex flex-col border border-white/5"
                                 key={track.id}
                                 onClick={() => {
                                     playTrack(track, moreByArtist);

@@ -83,13 +83,13 @@ export default function DownloadMenu({
             {open && (
                 <div
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute top-full right-0 mt-2 z-50 min-w-[230px] bg-[#1a1a1a] border border-white/10 rounded-xl shadow-2xl p-1.5 flex flex-col"
+                    className="absolute top-full right-0 mt-2 z-50 min-w-[230px] bg-[#222222] border border-white/10 rounded-xl shadow-2xl p-1.5 flex flex-col"
                 >
                     <button
                         onClick={() => run('audio')}
                         className="flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-white/10 transition text-left"
                     >
-                        <Music className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                        <Music className="w-4 h-4 text-orange-400 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                             <p className="text-sm font-semibold text-white">Audio</p>
                             <p className="text-[10px] text-neutral-400">.webm (Opus) / .m4a • small file</p>

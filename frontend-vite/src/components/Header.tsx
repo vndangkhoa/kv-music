@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Settings, LogOut, Menu, PanelRightOpen, PanelRightClose, X } from 'lucide-react';
+import { Search, Settings, LogOut, X } from 'lucide-react';
 import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-dom';
 import Logo from './Logo';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
-import { useUIStore } from '../stores/uiStore';
 import LoginModal from './LoginModal';
 
 interface GradientColor {
@@ -17,7 +16,7 @@ function getAvatarGradient(avatarColor: string): string {
     const parsed: GradientColor = JSON.parse(avatarColor);
     return `linear-gradient(135deg, ${parsed.from}, ${parsed.to})`;
   } catch {
-    return 'linear-gradient(135deg, #ff6b6b, #ee5a24)';
+    return 'linear-gradient(135deg, #ff5500, #ff7a00)';
   }
 }
 
@@ -28,14 +27,13 @@ export default function Header() {
   const urlQuery = searchParams.get('q') || '';
   const [query, setQuery] = useState(urlQuery);
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const setIsSettingsOpen = usePlayerStore(s => s.setIsSettingsOpen);
   const addRecentSearch = usePlayerStore(s => s.addRecentSearch);
   const user = useAuthStore(s => s.user);
   const isLoggedIn = useAuthStore(s => s.isLoggedIn);
   const logout = useAuthStore(s => s.logout);
-  const toggleSidebar = useUIStore(s => s.toggleSidebar);
-  const isNowPlayingOpen = useUIStore(s => s.isNowPlayingOpen);
-  const toggleNowPlaying = useUIStore(s => s.toggleNowPlaying);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -46,8 +44,6 @@ export default function Header() {
   useEffect(() => {
     setIsMobileSearchOpen(false);
   }, [location.pathname]);
-
-  const isHomePage = location.pathname === '/';
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -62,12 +58,18 @@ export default function Header() {
   const handleSearch = (val: string) => {
     setQuery(val);
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    debounceRef.current = setTimeout(() => {
-      if (val.trim()) {
+    if (val.trim()) {
+      fetch(`/api/suggestions?q=${encodeURIComponent(val.trim())}`)
+        .then(r => r.json().catch(() => []))
+        .then((list: string[]) => setSuggestions(Array.isArray(list) ? list.slice(0, 6) : []))
+        .catch(() => setSuggestions([]));
+      debounceRef.current = setTimeout(() => {
         addRecentSearch(val);
         navigate(`/search?q=${encodeURIComponent(val)}`);
-      }
-    }, 500);
+      }, 700);
+    } else {
+      setSuggestions([]);
+    }
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
@@ -79,80 +81,129 @@ export default function Header() {
     }
   };
 
-  const handleAvatarClick = () => {
-    if (!isLoggedIn) {
-      setIsLoginOpen(true);
-    } else {
-      setIsDropdownOpen(!isDropdownOpen);
-    }
-  };
-
-  const handleLogout = () => {
-    logout();
-    setIsDropdownOpen(false);
-  };
-
   const displayLetter = user ? user.name.trim()[0].toUpperCase() : '?';
-  const avatarGradient = user ? getAvatarGradient(user.avatarColor) : 'linear-gradient(135deg, #535353, #282828)';
+  const avatarGradient = user ? getAvatarGradient(user.avatarColor) : 'linear-gradient(135deg, #ff5500, #ff7a00)';
+
+  const navItems = [
+    { to: '/', label: 'Home' },
+    { to: '/feed', label: 'Feed' },
+    { to: '/library', label: 'Library' },
+  ];
 
   return (
     <>
-      <header className={`bg-[#0f1938]/95 backdrop-blur-md border-b border-cyan-500/20 ${isHomePage ? 'hidden' : 'flex'} md:flex flex-col z-[60] relative select-none sticky top-0 shadow-lg shadow-black/20`}>
-        {/* Top Navbar */}
-        <div className="h-14 md:h-16 flex items-center justify-between px-3 md:px-6">
-          <div className="flex items-center gap-2 md:gap-4">
-            <button onClick={toggleSidebar} className="p-2 hover:bg-cyan-500/10 rounded-xl text-neutral-300 hover:text-cyan-400 transition hidden fold:flex" aria-label="Toggle sidebar">
-              <Menu className="w-5 h-5" />
-            </button>
-            <Link to="/" className="hover:opacity-95 active:scale-95 transition">
+      <header className="sticky top-0 z-[60] bg-[#121212] border-b border-white/10 select-none">
+        <div className="max-w-[1280px] mx-auto h-12 md:h-14 px-3 md:px-6 flex items-center justify-between gap-2 md:gap-6">
+          {/* Logo & Main Nav */}
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <Link to="/" className="hover:opacity-90 active:scale-95 transition flex-shrink-0 flex items-center gap-2">
               <Logo />
             </Link>
+
+            <nav className="hidden md:flex items-center gap-1">
+              {navItems.map(({ to, label }) => {
+                const active = location.pathname === to;
+                return (
+                  <Link
+                    key={to}
+                    to={to}
+                    className={`px-3 py-1.5 text-xs md:text-sm transition uppercase tracking-wider font-bold ${
+                      active
+                        ? 'text-[#ff5500] border-b-2 border-[#ff5500]'
+                        : 'text-neutral-400 hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </Link>
+                );
+              })}
+            </nav>
           </div>
 
-          <form onSubmit={handleFormSubmit} className="flex-1 max-w-[540px] mx-3 md:mx-6 relative hidden md:flex">
-            <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
-              <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
-              <input type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Tìm bài hát, ca sĩ, album, lyric..."
-                className="w-full pl-11 pr-24 py-2 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
-              <button type="submit" className="absolute right-1.5 px-3 py-1 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white text-xs font-semibold rounded-full shadow transition">
-                Tìm kiếm
+          {/* Search Bar (Centered) */}
+          <form onSubmit={handleFormSubmit} className="hidden md:block flex-1 max-w-[500px] relative">
+            <div className="relative flex items-center w-full bg-[#242424] hover:bg-[#2a2a2a] focus-within:bg-[#2a2a2a] rounded border border-white/10 focus-within:border-[#ff5500] transition duration-200">
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => { handleSearch(e.target.value); setShowSuggestions(true); }}
+                onFocus={() => setShowSuggestions(true)}
+                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                placeholder="Search for artists, tracks, podcasts"
+                className="w-full pl-3 pr-8 py-1.5 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none"
+              />
+              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white transition">
+                <Search className="w-4 h-4" />
               </button>
             </div>
+
+            {/* Live Autocomplete Dropdown */}
+            {showSuggestions && suggestions.length > 0 && query.trim() && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-[#1c1c1c] border border-white/10 rounded shadow-2xl overflow-hidden z-[70]">
+                {suggestions.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onMouseDown={() => {
+                      setQuery(s);
+                      setShowSuggestions(false);
+                      addRecentSearch(s);
+                      navigate(`/search?q=${encodeURIComponent(s)}`);
+                    }}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-xs text-neutral-200 hover:bg-white/5 transition text-left"
+                  >
+                    <Search className="w-3.5 h-3.5 text-neutral-500" />
+                    <span className="truncate">{s}</span>
+                  </button>
+                ))}
+              </div>
+            )}
           </form>
 
-          <div className="flex items-center gap-2 md:gap-3 text-neutral-300">
-            <button onClick={toggleNowPlaying} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10 hidden lg:block" title="Toggle player panel">
-              {isNowPlayingOpen ? <PanelRightClose className="w-5 h-5 text-cyan-400" /> : <PanelRightOpen className="w-5 h-5" />}
+          {/* Right Action Items */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              onClick={() => setIsSettingsOpen(true)}
+              className="hidden md:flex p-1.5 text-neutral-400 hover:text-white transition"
+              aria-label="Settings"
+            >
+              <Settings className="w-4 h-4" />
             </button>
 
-            {!isHomePage && (
-              <button onClick={() => setIsMobileSearchOpen(true)} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10 md:hidden" aria-label="Search" title="Search">
-                <Search className="w-5 h-5" />
-              </button>
-            )}
-
-            <button onClick={() => setIsSettingsOpen(true)} className="hover:text-cyan-400 active:scale-95 transition p-2 rounded-xl hover:bg-cyan-500/10">
-              <Settings className="w-5 h-5" />
+            <button
+              onClick={() => setIsMobileSearchOpen(v => !v)}
+              className="md:hidden p-1.5 text-neutral-400 hover:text-white transition"
+              aria-label="Search"
+            >
+              {isMobileSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
             </button>
 
+            {/* Account Menu */}
             <div className="relative" ref={dropdownRef}>
-              <button onClick={handleAvatarClick}
-                className="w-9 h-9 rounded-full text-white font-extrabold flex items-center justify-center text-sm shadow-md cursor-pointer border border-cyan-400/30 hover:scale-105 active:scale-95 transition select-none shadow-cyan-500/20"
-                style={{ background: avatarGradient }}>
+              <button
+                onClick={() => { if (!isLoggedIn) setIsLoginOpen(true); else setIsDropdownOpen(v => !v); }}
+                className="w-7 h-7 rounded-full text-white font-extrabold flex items-center justify-center text-xs cursor-pointer border border-[#ff5500]/60 hover:scale-105 active:scale-95 transition select-none"
+                style={{ background: avatarGradient }}
+                aria-label="Account"
+              >
                 {isLoggedIn ? displayLetter : '?'}
               </button>
 
               {isLoggedIn && isDropdownOpen && (
-                <div className="absolute right-0 top-11 w-48 bg-[#142044] border border-cyan-500/20 rounded-xl shadow-2xl py-1 z-[70] animate-in fade-in slide-in-from-top-2 duration-150">
-                  <div className="px-4 py-3 border-b border-cyan-500/10">
-                    <p className="text-sm font-bold text-white truncate">{user?.name}</p>
-                    <p className="text-[10px] text-cyan-400 font-medium uppercase tracking-wider">Thành viên VIP</p>
+                <div className="absolute right-0 top-9 w-44 bg-[#1c1c1c] border border-white/10 rounded shadow-2xl py-1 z-[70]">
+                  <div className="px-3 py-2 border-b border-white/10">
+                    <p className="text-xs font-bold text-white truncate">{user?.name}</p>
+                    <p className="text-[10px] text-[#ff5500] font-semibold uppercase tracking-wider">Member Pro</p>
                   </div>
-                  <button onClick={handleLogout}
-                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-neutral-300 hover:text-white hover:bg-cyan-500/10 transition">
-                    <LogOut className="w-4 h-4 text-red-400" />
-                    <span>Đăng Xuất</span>
+                  <button onClick={() => { setIsDropdownOpen(false); setIsSettingsOpen(true); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-neutral-300 hover:text-white hover:bg-white/5 transition">
+                    <Settings className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>Settings</span>
+                  </button>
+                  <button onClick={async () => { await logout(); setIsDropdownOpen(false); }}
+                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-neutral-300 hover:text-white hover:bg-white/5 transition">
+                    <LogOut className="w-3.5 h-3.5 text-red-400" />
+                    <span>Sign Out</span>
                   </button>
                 </div>
               )}
@@ -160,38 +211,26 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Mobile Search Bar (icon-triggered, hidden on home page) */}
-        {!isHomePage && isMobileSearchOpen && (
-          <form onSubmit={handleFormSubmit} className="md:hidden px-3 pb-2.5">
-            <div className="relative flex items-center w-full bg-[#142044] hover:bg-[#1a2957] focus-within:bg-[#1a2957] rounded-full border border-cyan-500/20 focus-within:border-cyan-400 transition duration-200 shadow-inner">
-              <Search className="absolute left-4 w-4 h-4 text-cyan-400/70 pointer-events-none" />
-              <input autoFocus type="text" value={query} onChange={(e) => handleSearch(e.target.value)}
-                placeholder="Tìm bài hát, ca sĩ, album, playlist..."
-                className="w-full pl-11 pr-10 py-2.5 bg-transparent text-white placeholder-neutral-400 text-sm font-medium focus:outline-none" />
-              <button type="button" onClick={() => { setIsMobileSearchOpen(false); setQuery(''); }} className="absolute right-1.5 p-1.5 text-neutral-400 hover:text-white transition" aria-label="Close search">
-                <X className="w-4 h-4" />
+        {/* Mobile search row */}
+        {isMobileSearchOpen && (
+          <form onSubmit={handleFormSubmit} className="md:hidden px-3 pb-2 pt-1">
+            <div className="relative flex items-center w-full bg-[#242424] rounded border border-[#ff5500]">
+              <input
+                autoFocus
+                type="text"
+                value={query}
+                onChange={(e) => handleSearch(e.target.value)}
+                placeholder="Search tracks, artists, podcasts..."
+                className="w-full pl-3 pr-8 py-2 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none"
+              />
+              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white">
+                <Search className="w-4 h-4" />
               </button>
             </div>
           </form>
         )}
-
-        {/* Sub-Navigation Category Bar (NCT Header Menu) */}
-        <div className="hidden fold:flex items-center gap-1 md:gap-6 px-4 md:px-8 py-1.5 border-t border-cyan-500/10 text-xs md:text-sm font-bold text-neutral-300 overflow-x-auto no-scrollbar">
-          <Link to="/" className="text-cyan-400 hover:text-white transition py-1 border-b-2 border-cyan-400 px-1">
-            BÀI HÁT
-          </Link>
-          <Link to="/library" className="hover:text-cyan-400 transition py-1 px-1">
-            PLAYLIST
-          </Link>
-          <Link to="/charts" className="hover:text-cyan-400 transition py-1 px-1 flex items-center gap-1">
-            <span>BXH REALTIME</span>
-            <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
-          </Link>
-          <Link to="/artists" className="hover:text-cyan-400 transition py-1 px-1">
-            ARTISTS
-          </Link>
-        </div>
       </header>
+
       <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </>
   );

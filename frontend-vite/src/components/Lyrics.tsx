@@ -89,21 +89,21 @@ export default function Lyrics({ trackTitle, artistName, currentTime, isOpen, on
     }
 
     return (
-        <div className="fixed inset-0 bg-black/95 z-[80] flex flex-col animate-in slide-in-from-bottom">
+        <div className="fixed inset-0 sc-overlay z-[80] flex flex-col animate-in slide-in-from-bottom">
             {/* Header */}
-            <div className="flex items-center justify-between p-6">
+            <div className="flex items-center justify-between px-6 pt-14 pb-2">
                 <div className="flex flex-col">
-                    <span className="text-xs font-bold text-neutral-400 uppercase tracking-widest">Lyrics</span>
-                    <h2 className="text-xl font-bold">{trackTitle}</h2>
+                    <span className="text-xs font-bold text-white/50 uppercase tracking-widest">Lyrics</span>
+                    <h2 className="sc-page-title text-2xl text-white">{trackTitle}</h2>
                 </div>
                 <button
                     onClick={(e) => {
                         e.stopPropagation();
                         onClose();
                     }}
-                    className="p-2 rounded-full hover:bg-white/10 transition z-[90]"
+                    className="sc-icon-btn w-10 h-10 text-white transition z-[90]"
                 >
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                         <path d="M18 6L6 18M6 6l12 12" />
                     </svg>
                 </button>

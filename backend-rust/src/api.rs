@@ -9,10 +9,12 @@ use std::sync::Arc;
 
 use crate::auth::AuthStore;
 use crate::spotdl::SpotdlService;
+use crate::ytm::YtmBridge;
 
 pub struct AppState {
     pub spotdl: SpotdlService,
     pub auth: AuthStore,
+    pub ytm: YtmBridge,
 }
 
 // ── Auth handlers ────────────────────────────────────────────────────────────
@@ -164,6 +166,31 @@ pub async fn search_handler(
     }
 }
 
+/// Live search suggestions from YouTube Music (ytmusicapi bridge).
+pub async fn suggestions_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SearchQuery>,
+) -> impl IntoResponse {
+    let query = params.q.trim().to_string();
+    if query.is_empty() {
+        return (StatusCode::OK, Json(serde_json::json!([])));
+    }
+    let out = state.ytm.suggestions(&query).await;
+    match serde_json::from_str::<serde_json::Value>(&out) {
+        Ok(v) => (StatusCode::OK, Json(v)),
+        Err(_) => (StatusCode::OK, Json(serde_json::json!([]))),
+    }
+}
+
+/// YouTube Music home feed sections (mixes / quick picks / made for you).
+pub async fn feed_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let out = state.ytm.home().await;
+    match serde_json::from_str::<serde_json::Value>(&out) {
+        Ok(v) => (StatusCode::OK, Json(v)),
+        Err(_) => (StatusCode::OK, Json(serde_json::json!([]))),
+    }
+}
+
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
      .replace('<', "&lt;")
@@ -206,10 +233,61 @@ pub async fn track_info_handler(
     }
 }
 
+/// Detect link-preview crawlers (Facebook/Messenger, Twitter, WhatsApp, Telegram,
+/// iMessage, etc.). Everything else is a human clicking the link and should be
+/// redirected straight into the app instead of waiting on a meta-refresh, which
+/// some in-app browsers (e.g. Messenger's WebView) ignore - that was causing
+/// shared links to hang on a dark blue page.
+fn is_link_preview_bot(user_agent: &str) -> bool {
+    let ua = user_agent.to_lowercase();
+    [
+        "facebookexternalhit",
+        "facebot",
+        "meta-externalagent",
+        "twitterbot",
+        "linkedinbot",
+        "slackbot",
+        "discordbot",
+        "telegrambot",
+        "whatsapp",
+        "viber",
+        "pinterest",
+        "skypeuripreview",
+        "line",
+        "snapchat",
+        "tumblr",
+        "redditbot",
+        "embedly",
+        "quora",
+        "applebot",
+        "googlebot",
+        "bingbot",
+        "baiduspider",
+        "yandex",
+        "duckduckbot",
+        "sogou",
+        "exabot",
+        "bingpreview",
+        "adidxbot",
+        "slurp",
+        "curl",
+        "wget",
+        "python-requests",
+        "python-urllib",
+        "java/",
+        "httpclient",
+        "okhttp",
+        "go-http-client",
+    ]
+    .iter()
+    .any(|bot| ua.contains(bot))
+}
+
 /// Serve a small server-rendered page for shared track links so that link
 /// previews (Messenger, Facebook, iMessage, etc.) can read Open Graph tags and
-/// display the album thumbnail instead of a bare URL. The page also redirects
-/// humans into the app (auto-play on /track/:id).
+/// display the album thumbnail instead of a bare URL. Humans clicking the link
+/// are redirected with a 302 straight into the app (auto-play on /track/:id) so
+/// the shared link always opens the player, even in restricted in-app browsers.
 pub async fn share_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -234,21 +312,15 @@ pub async fn share_handler(
     let share_url = format!("{}/share/track/{}", base, id);
     let app_url = format!("{}/track/{}", base, id);
 
-    let (title, artist, cover_url) = match state.spotdl.get_track_info(&id).await {
-        Ok(t) => {
-            let cover = if t.cover_url.is_empty() {
-                format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id)
-            } else {
-                t.cover_url.clone()
-            };
-            (t.title.clone(), t.artist.clone(), cover)
-        }
-        Err(_) => (
-            "Listen to this track on kv-music".to_string(),
-            "kv-music".to_string(),
-            format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", id),
-        ),
-    };
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !is_link_preview_bot(user_agent) {
+        return (StatusCode::FOUND, [(axum::http::header::LOCATION, app_url)], ()).into_response();
+    }
+
+    let (title, artist, cover_url) = state.spotdl.resolve_share_preview(&id).await;
 
     let e_title = html_escape(&title);
     let e_artist = html_escape(&artist);
@@ -310,10 +382,18 @@ pub async fn share_handler(
 
     (
         StatusCode::OK,
-        [(
-            axum::http::header::CONTENT_TYPE,
-            axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
-        )],
+        [
+            (
+                axum::http::header::CONTENT_TYPE,
+                axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
+            ),
+            // Never let the in-app browser serve a stale copy of this page -
+            // it must always re-fetch (and follow the redirect / refresh).
+            (
+                axum::http::header::CACHE_CONTROL,
+                axum::http::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+            ),
+        ],
         html,
     )
         .into_response()

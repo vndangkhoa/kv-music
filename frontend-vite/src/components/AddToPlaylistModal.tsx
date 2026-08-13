@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { useLibraryStore } from '../stores/libraryStore';
 import { dbService } from '../services/db';
 import { Track, Playlist } from '../types';
+import { Plus, Check, Music, X } from 'lucide-react';
+import CoverImage from './CoverImage';
 
 interface AddToPlaylistModalProps {
     track: Track;
@@ -13,7 +15,8 @@ export default function AddToPlaylistModal({ track, isOpen, onClose }: AddToPlay
     const userPlaylists = useLibraryStore(s => s.userPlaylists);
     const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
     const [newPlaylistName, setNewPlaylistName] = useState('');
-    const [showCreate, setShowCreate] = useState(false);
+    const [showCreateInput, setShowCreateInput] = useState(false);
+    const [addedMap, setAddedMap] = useState<Record<string, boolean>>({});
 
     useEffect(() => {
         if (isOpen) {
@@ -26,107 +29,131 @@ export default function AddToPlaylistModal({ track, isOpen, onClose }: AddToPlay
     const handleAddToPlaylist = async (playlist: Playlist) => {
         await dbService.addToPlaylist(playlist.id, track);
         await refreshLibrary();
-        onClose();
+        setAddedMap(prev => ({ ...prev, [playlist.id]: true }));
+        setTimeout(() => {
+            onClose();
+        }, 600);
     };
 
     const handleCreateAndAdd = async () => {
         if (!newPlaylistName.trim()) return;
         const newPlaylist = await dbService.createPlaylist(newPlaylistName.trim());
-        await dbService.addToPlaylist(newPlaylist.id, track);
-        await refreshLibrary();
+        if (newPlaylist) {
+            await dbService.addToPlaylist(newPlaylist.id, track);
+            await refreshLibrary();
+            setAddedMap(prev => ({ ...prev, [newPlaylist.id]: true }));
+        }
         setNewPlaylistName('');
-        setShowCreate(false);
-        onClose();
+        setShowCreateInput(false);
+        setTimeout(() => {
+            onClose();
+        }, 600);
     };
 
     return (
         <div
-            className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
+            className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200"
             onClick={onClose}
         >
             <div
-                className="bg-[#282828] rounded-lg w-full max-w-sm shadow-2xl animate-in"
+                className="bg-[#181818] border border-white/10 rounded-t-[28px] sm:rounded-2xl w-full max-w-md shadow-2xl text-white overflow-hidden pb-[calc(1rem+env(safe-area-inset-bottom))]"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="flex items-center justify-between p-4 border-b border-white/10">
-                    <h2 className="text-lg font-bold">Add to Playlist</h2>
+                <div className="flex items-center justify-between p-4 border-b border-white/10 bg-[#121212]">
+                    <div className="flex items-center gap-2">
+                        <Music className="w-4 h-4 text-[#ff5500]" />
+                        <h2 className="text-sm font-extrabold text-white">Save Track to Playlist</h2>
+                    </div>
                     <button
                         onClick={onClose}
-                        className="text-neutral-400 hover:text-white transition"
+                        className="p-1 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition"
                     >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                            <path d="M18 6L6 18M6 6l12 12" />
-                        </svg>
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
 
-                {/* Track Preview */}
-                <div className="p-4 border-b border-white/10 flex items-center gap-3">
-                    <img
+                {/* Track Preview Bar */}
+                <div className="p-3.5 bg-[#121212]/50 border-b border-white/5 flex items-center gap-3">
+                    <CoverImage
                         src={track.cover_url}
                         alt={track.title}
-                        className="w-12 h-12 rounded object-cover"
+                        className="w-11 h-11 rounded object-cover flex-shrink-0"
                     />
-                    <div className="min-w-0">
-                        <p className="font-medium truncate">{track.title}</p>
-                        <p className="text-sm text-neutral-400 truncate">{track.artist}</p>
+                    <div className="min-w-0 flex-1">
+                        <p className="text-xs font-bold text-white truncate">{track.title}</p>
+                        <p className="text-[11px] text-neutral-400 truncate">{track.artist}</p>
                     </div>
                 </div>
 
-                {/* Playlist List */}
-                <div className="max-h-64 overflow-y-auto no-scrollbar">
-                    {/* Create New Option */}
-                    {showCreate ? (
-                        <div className="p-4 flex gap-2">
+                {/* Playlist List / Quick Create Container */}
+                <div className="max-h-72 overflow-y-auto no-scrollbar p-2 space-y-1">
+                    {/* Create New Playlist Input Option */}
+                    {showCreateInput ? (
+                        <div className="p-2 flex gap-2 bg-[#121212] rounded-xl border border-[#ff5500]/40 my-1">
                             <input
                                 type="text"
                                 value={newPlaylistName}
                                 onChange={(e) => setNewPlaylistName(e.target.value)}
-                                placeholder="Playlist name"
-                                className="flex-1 px-3 py-2 bg-neutral-700 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#FF0000]"
+                                placeholder="Enter playlist title..."
+                                className="flex-1 px-3 py-2 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none"
                                 autoFocus
                                 onKeyDown={(e) => e.key === 'Enter' && handleCreateAndAdd()}
                             />
                             <button
                                 onClick={handleCreateAndAdd}
-                                className="px-4 py-2 bg-[#FF0000] text-white font-bold rounded-full hover:scale-105 transition"
+                                className="px-4 py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold text-xs rounded-lg transition active:scale-95 flex-shrink-0"
                             >
-                                Create
+                                Save & Create
                             </button>
                         </div>
                     ) : (
                         <button
-                            onClick={() => setShowCreate(true)}
-                            className="w-full p-4 flex items-center gap-3 hover:bg-white/5 transition text-left"
+                            onClick={() => setShowCreateInput(true)}
+                            className="w-full p-3 flex items-center gap-3 bg-white/5 hover:bg-white/10 rounded-xl transition text-left group"
                         >
-                            <div className="w-10 h-10 bg-neutral-700 rounded flex items-center justify-center">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                    <path d="M12 5v14M5 12h14" />
-                                </svg>
+                            <div className="w-9 h-9 bg-[#ff5500] text-white rounded-lg flex items-center justify-center shadow flex-shrink-0">
+                                <Plus className="w-5 h-5" />
                             </div>
-                            <span className="font-medium">Create new playlist</span>
+                            <span className="text-xs font-extrabold text-white group-hover:text-[#ff5500] transition">
+                                + Save to a New Playlist
+                            </span>
                         </button>
                     )}
 
                     {/* Existing Playlists */}
-                    {userPlaylists.map((playlist) => (
-                        <button
-                            key={playlist.id}
-                            onClick={() => handleAddToPlaylist(playlist)}
-                            className="w-full p-4 flex items-center gap-3 hover:bg-white/5 transition text-left"
-                        >
-                            <img
-                                src={playlist.cover_url || `https://placehold.co/40/222/fff?text=${playlist.title?.charAt(0) || '?'}`}
-                                alt={playlist.title}
-                                className="w-10 h-10 rounded object-cover"
-                            />
-                            <div className="min-w-0">
-                                <p className="font-medium truncate">{playlist.title}</p>
-                                <p className="text-sm text-neutral-400">{playlist.tracks?.length || 0} songs</p>
-                            </div>
-                        </button>
-                    ))}
+                    {userPlaylists.map((playlist) => {
+                        const isAdded = !!addedMap[playlist.id];
+                        return (
+                            <button
+                                key={playlist.id}
+                                onClick={() => handleAddToPlaylist(playlist)}
+                                className="w-full p-2.5 flex items-center justify-between gap-3 hover:bg-white/5 rounded-xl transition text-left group"
+                            >
+                                <div className="flex items-center gap-3 min-w-0 flex-1">
+                                    <CoverImage
+                                        src={playlist.cover_url}
+                                        alt={playlist.title}
+                                        className="w-9 h-9 rounded object-cover flex-shrink-0"
+                                        fallbackText="PL"
+                                    />
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-xs font-bold text-white group-hover:text-[#ff5500] truncate transition">{playlist.title}</p>
+                                        <p className="text-[10px] text-neutral-400">{playlist.tracks?.length || 0} songs</p>
+                                    </div>
+                                </div>
+                                {isAdded ? (
+                                    <span className="flex items-center gap-1 text-[11px] font-extrabold text-green-400">
+                                        <Check className="w-4 h-4" /> Added
+                                    </span>
+                                ) : (
+                                    <span className="px-3 py-1 bg-white/5 group-hover:bg-[#ff5500] group-hover:text-white rounded-full text-[11px] font-bold text-neutral-300 transition">
+                                        Add
+                                    </span>
+                                )}
+                            </button>
+                        );
+                    })}
                 </div>
             </div>
         </div>

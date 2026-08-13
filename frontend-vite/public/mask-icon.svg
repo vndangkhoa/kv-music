@@ -1,0 +1,10 @@
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <!-- Monochrome waveform mark for Safari pinned tabs (tinted by the browser) -->
+  <rect fill="black" x="96" y="268" width="28" height="96" rx="14"/>
+  <rect fill="black" x="142" y="196" width="28" height="168" rx="14"/>
+  <rect fill="black" x="188" y="120" width="28" height="244" rx="14"/>
+  <rect fill="black" x="234" y="86" width="28" height="278" rx="14"/>
+  <rect fill="black" x="280" y="146" width="28" height="218" rx="14"/>
+  <rect fill="black" x="326" y="222" width="28" height="142" rx="14"/>
+  <rect fill="black" x="372" y="286" width="28" height="78" rx="14"/>
+</svg>

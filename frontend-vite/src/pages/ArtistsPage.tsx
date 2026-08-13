@@ -39,11 +39,11 @@ export default function ArtistsPage() {
     };
 
     return (
-        <div className="min-h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-28 text-white bg-[#0b132d] w-full">
+        <div className="min-h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-28 text-white bg-[#111111] w-full">
             {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-cyan-500/15 pb-5 w-full">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-orange-500/15 pb-5 w-full">
                 <div>
-                    <div className="flex items-center gap-2 text-cyan-400 text-xs font-bold uppercase tracking-wider mb-1">
+                    <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-wider mb-1">
                         <Users className="w-4 h-4" />
                         <span>Bảng Xếp Hạng Nghệ Sĩ Realtime</span>
                     </div>
@@ -52,7 +52,7 @@ export default function ArtistsPage() {
                 </div>
 
                 {/* Regional Filter Tabs */}
-                <div className="grid grid-cols-4 gap-1 bg-[#142044] p-1 rounded-2xl border border-cyan-500/20 text-xs font-extrabold text-center max-w-md w-full">
+                <div className="grid grid-cols-4 gap-1 bg-[#2a2a2a] p-1 rounded-2xl border border-orange-500/20 text-xs font-extrabold text-center max-w-md w-full">
                     {[
                         { id: 'vn', label: 'VIỆT NAM' },
                         { id: 'us', label: 'ÂU MỸ' },
@@ -62,7 +62,7 @@ export default function ArtistsPage() {
                         <button
                             key={tab.id}
                             onClick={() => setRegion(tab.id as any)}
-                            className={`py-2 rounded-xl transition ${region === tab.id ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow-lg shadow-cyan-500/20' : 'text-neutral-400 hover:text-white'}`}
+                            className={`py-2 rounded-xl transition ${region === tab.id ? 'bg-gradient-to-r from-[#ff5500] to-[#ff7a00] text-white shadow-lg shadow-orange-500/20' : 'text-neutral-400 hover:text-white'}`}
                         >
                             {tab.label}
                         </button>
@@ -75,15 +75,15 @@ export default function ArtistsPage() {
                 {artists.map((artist) => (
                     <div
                         key={artist.id}
-                        className="bg-[#142044] hover:bg-[#1a2957] border border-cyan-500/15 hover:border-cyan-400/40 rounded-2xl p-4 transition-all duration-300 flex items-center justify-between group shadow-md w-full"
+                        className="bg-[#2a2a2a] hover:bg-[#333333] border border-orange-500/15 hover:border-orange-400/40 rounded-2xl p-4 transition-all duration-300 flex items-center justify-between group shadow-md w-full"
                     >
                         <div className="flex items-center gap-3.5 min-w-0">
                             {/* Rank badge */}
                             <div className={`w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center flex-shrink-0 ${
                                 artist.rank === 1 ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/30' :
-                                artist.rank === 2 ? 'bg-cyan-400 text-black shadow-lg shadow-cyan-400/30' :
+                                artist.rank === 2 ? 'bg-orange-400 text-black shadow-lg shadow-orange-400/30' :
                                 artist.rank === 3 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' :
-                                'bg-[#0b132d] text-neutral-400 border border-cyan-500/20'
+                                'bg-[#111111] text-neutral-400 border border-orange-500/20'
                             }`}>
                                 #{artist.rank}
                             </div>
@@ -96,7 +96,7 @@ export default function ArtistsPage() {
                                 <CoverImage
                                     src={artist.photo}
                                     alt={artist.name}
-                                    className="w-14 h-14 rounded-full object-cover border-2 border-cyan-400/30 shadow-md"
+                                    className="w-14 h-14 rounded-full object-cover border-2 border-orange-400/30 shadow-md"
                                     fallbackText={artist.name[0]}
                                 />
                             </div>
@@ -105,11 +105,11 @@ export default function ArtistsPage() {
                             <div className="min-w-0">
                                 <h3
                                     onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
-                                    className="font-bold text-white text-sm hover:text-cyan-400 cursor-pointer truncate transition"
+                                    className="font-bold text-white text-sm hover:text-orange-400 cursor-pointer truncate transition"
                                 >
                                     {artist.name}
                                 </h3>
-                                <p className="text-[11px] text-cyan-400 font-medium flex items-center gap-1 mt-0.5">
+                                <p className="text-[11px] text-orange-400 font-medium flex items-center gap-1 mt-0.5">
                                     <Users className="w-3 h-3" />
                                     <span>{artist.followers} người nghe</span>
                                 </p>
@@ -122,7 +122,7 @@ export default function ArtistsPage() {
                         {/* Play button */}
                         <button
                             onClick={() => playArtistTrack(artist.name)}
-                            className="w-9 h-9 rounded-full bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white flex items-center justify-center shadow-lg shadow-cyan-500/30 hover:scale-110 active:scale-95 transition flex-shrink-0 ml-2"
+                            className="w-9 h-9 rounded-full bg-gradient-to-r from-[#ff5500] to-[#ff7a00] text-white flex items-center justify-center shadow-lg shadow-orange-500/30 hover:scale-110 active:scale-95 transition flex-shrink-0 ml-2"
                             title={`Phát nhạc ${artist.name}`}
                         >
                             <Play className="w-3.5 h-3.5 fill-current ml-0.5" />

@@ -33,7 +33,7 @@ export default function Collection() {
     return (
         <div className="h-full overflow-y-auto no-scrollbar pb-24">
             {/* Hero Header */}
-            <div className="h-72 md:h-80 bg-gradient-to-b from-indigo-800 to-[#121212] p-6 md:p-8 flex flex-col md:flex-row items-center md:items-end relative">
+            <div className="h-72 md:h-80 bg-gradient-to-b from-indigo-800 to-[#111111] p-6 md:p-8 flex flex-col md:flex-row items-center md:items-end relative">
                 <Link to="/library" className="absolute top-4 left-4 md:hidden">
                     <ArrowLeft className="w-6 h-6" />
                 </Link>

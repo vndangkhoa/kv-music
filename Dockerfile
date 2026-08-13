@@ -45,10 +45,12 @@ ENV PATH="/opt/venv/bin:$PATH"
 # curl_cffi (Chrome TLS fingerprint impersonation) + yt-dlp-ejs help bypass
 # YouTube bot detection. The nightly standalone yt-dlp binary is downloaded at
 # container start (pip-installed yt-dlp cannot self-update across channels).
-RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs "curl_cffi==0.15.0"
+# ytmusicapi powers live search suggestions and the home feed.
+RUN pip install --no-cache-dir -U "yt-dlp[default]" yt-dlp-ejs "curl_cffi==0.15.0" ytmusicapi
 
 # Copy artifacts
 COPY --from=backend-builder /app/backend-rust-bin /app/server
+COPY --from=backend-builder /app/backend/scripts /app/scripts
 COPY --from=frontend-builder /app/frontend/dist /app/static
 
 # Permissions and Directories

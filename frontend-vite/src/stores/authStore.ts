@@ -46,7 +46,7 @@ function mapUser(u: any): UserProfile {
     id: u.id,
     name: u.name,
     email: u.email,
-    avatarColor: u.avatar_color || '{"from":"#00a8ff","to":"#2e86de"}',
+    avatarColor: u.avatar_color || '{"from":"#ff5500","to":"#ff7a00"}',
     pairCode: u.pair_code || '',
     createdAt: u.created_at || Date.now(),
   };

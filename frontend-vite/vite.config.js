@@ -14,9 +14,9 @@ export default defineConfig({
             manifest: {
                 name: 'kv-music',
                 short_name: 'kv-music',
-                description: 'kv-music - Modern High Quality Music Streaming Platform',
-                theme_color: '#0b132d',
-                background_color: '#0b132d',
+                description: 'kv-music - Stream the world\'s music: popular tracks, mixes and charts.',
+                theme_color: '#111111',
+                background_color: '#111111',
                 display: 'standalone',
                 scope: '/',
                 start_url: '/',
@@ -37,6 +37,23 @@ export default defineConfig({
                         sizes: '512x512',
                         type: 'image/png',
                         purpose: 'any maskable'
+                    }
+                ],
+                shortcuts: [
+                    {
+                        name: 'Tìm kiếm',
+                        url: '/search',
+                        icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+                    },
+                    {
+                        name: 'Thư viện',
+                        url: '/library',
+                        icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
+                    },
+                    {
+                        name: 'BXH',
+                        url: '/charts',
+                        icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
                     }
                 ]
             }

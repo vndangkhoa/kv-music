@@ -2,22 +2,45 @@ pub mod api;
 pub mod auth;
 pub mod models;
 mod spotdl;
+mod ytm;
 
 use axum::{
+    body::Body,
+    http::{header, StatusCode},
+    response::Response,
     routing::{get, post},
     Router,
 };
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use tower::service_fn;
 use tower_http::{
     cors::{Any, CorsLayer},
-    services::{ServeDir, ServeFile},
+    services::ServeDir,
 };
 use std::io::Write;
 
 use crate::api::AppState;
 use crate::auth::AuthStore;
 use crate::spotdl::SpotdlService;
+use crate::ytm::YtmBridge;
+
+/// Locate the built frontend directory no matter which directory the server is
+/// started from (repo root, backend-rust/, Docker /app).
+fn resolve_static_dir() -> String {
+    if let Ok(dir) = std::env::var("KV_MUSIC_STATIC") {
+        if std::path::Path::new(&dir).join("index.html").exists() {
+            return dir;
+        }
+    }
+    for candidate in ["static", "../static", "frontend-vite/dist", "../frontend-vite/dist", "/app/static"] {
+        if std::path::Path::new(candidate).join("index.html").exists() {
+            return candidate.to_string();
+        }
+    }
+    "static".to_string()
+}
 
 #[tokio::main]
 async fn main() {
@@ -49,15 +72,49 @@ async fn main() {
     println!("Auth store ready. Accounts persist at: {}", auth_file);
     std::io::stdout().flush().unwrap();
     
-    let app_state = Arc::new(AppState { spotdl, auth });
+    let app_state = Arc::new(AppState { spotdl, auth, ytm: YtmBridge::new() });
+
+    let static_dir = resolve_static_dir();
+    println!("Serving static files from: {}", static_dir);
+
+    // Read the SPA shell once at startup and serve it with `Cache-Control:
+    // no-cache`. The built JS/CSS assets carry content hashes (/assets/*.hash.js),
+    // so if a browser ever holds onto a stale index.html it will request a
+    // bundle that no longer exists and render a blank page - exactly what was
+    // happening when shared links were opened from Messenger's in-app browser.
+    let index_html: Arc<Vec<u8>> = Arc::new(
+        std::fs::read(format!("{}/index.html", static_dir)).unwrap_or_else(|_| {
+            eprintln!("WARNING: static/index.html not found - run the frontend build first.");
+            Vec::new()
+        }),
+    );
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
         .allow_headers(Any);
 
+    let spa_fallback = service_fn({
+        let index_html = index_html.clone();
+        move |_req: axum::http::Request<Body>| {
+            let index_html = index_html.clone();
+            async move {
+                Ok::<_, Infallible>(
+                    Response::builder()
+                        .status(StatusCode::OK)
+                        .header(header::CONTENT_TYPE, "text/html; charset=utf-8")
+                        .header(header::CACHE_CONTROL, "no-cache")
+                        .body(Body::from(index_html.as_ref().clone()))
+                        .unwrap(),
+                )
+            }
+        }
+    });
+
 let app = Router::new()
         .route("/api/search", get(api::search_handler))
+        .route("/api/suggestions", get(api::suggestions_handler))
+        .route("/api/feed", get(api::feed_handler))
         .route("/api/universal-search", get(api::universal_search_handler))
         .route("/api/collection", get(api::collection_handler))
         .route("/api/stream/{id}", get(api::stream_handler))
@@ -82,8 +139,8 @@ let app = Router::new()
         .route("/api/auth/pair/generate", post(api::pair_generate_handler))
         .route("/api/auth/pair/link", post(api::pair_link_handler))
         .fallback_service(
-            ServeDir::new("static")
-                .fallback(ServeFile::new("static/index.html")),
+            ServeDir::new(&static_dir)
+                .fallback(spa_fallback),
         )
         .layer(cors)
         .with_state(app_state);

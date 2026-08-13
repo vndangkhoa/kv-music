@@ -4,6 +4,7 @@ import { dbService, Playlist } from '../services/db';
 import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
 import { libraryService } from '../services/library';
+import { safeStorage } from '../utils/safeStorage';
 
 type FilterType = 'all' | 'playlists' | 'artists' | 'albums' | 'liked';
 
@@ -19,10 +20,14 @@ interface LibraryState {
   followedArtists: string[];
   savedAlbums: SavedAlbum[];
   activeFilter: FilterType;
+  lastSyncedAt: number;
+  isSyncing: boolean;
   setActiveFilter: (filter: FilterType) => void;
+  toggleFollowArtist: (artistName: string, coverPhoto?: string) => Promise<void>;
   refreshLibrary: () => Promise<void>;
   hydrateSeedTracks: () => Promise<void>;
   deriveSavedAlbums: (playHistory: Track[]) => void;
+  startAutoSync: () => () => void;
 }
 
 function buildSeedPlaylists(): Playlist[] {
@@ -62,35 +67,90 @@ export const useLibraryStore = create<LibraryState>()(
       followedArtists: buildSeedArtists(),
       savedAlbums: buildSeedAlbums(),
       activeFilter: 'all' as FilterType,
+      lastSyncedAt: Date.now(),
+      isSyncing: false,
 
       setActiveFilter: (filter) => set({ activeFilter: filter }),
 
+      toggleFollowArtist: async (artistName: string, coverPhoto?: string) => {
+        const { followedArtists, savedAlbums, userPlaylists } = get();
+        const isFollowing = followedArtists.includes(artistName);
+        let updatedArtists: string[];
+
+        if (isFollowing) {
+          updatedArtists = followedArtists.filter(a => a !== artistName);
+          set({ followedArtists: updatedArtists });
+        } else {
+          updatedArtists = [...followedArtists, artistName];
+          
+          // Dynamically fetch artist top tracks to populate user's account with artist's songs, albums, and playlists!
+          const songs = await libraryService.search(artistName).catch(() => []);
+          const cover = coverPhoto || (songs.length > 0 ? songs[0].cover_url : `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=ff5500&color=fff`);
+
+          // Create artist album entry
+          const newAlbum: SavedAlbum = {
+            id: `album-${artistName.replace(/\s+/g, '-')}`,
+            title: `${artistName} Essentials`,
+            artist: artistName,
+            cover_url: cover,
+          };
+
+          // Create artist playlist entry
+          const newPlaylist: Playlist = {
+            id: `playlist-${artistName.replace(/\s+/g, '-')}`,
+            title: `${artistName} Best Hits`,
+            description: `Curated top songs and discography from ${artistName}`,
+            cover_url: cover,
+            tracks: songs.slice(0, 15),
+            createdAt: Date.now(),
+          };
+
+          const mergedAlbums = [newAlbum, ...savedAlbums.filter(a => a.id !== newAlbum.id)];
+          const mergedPlaylists = [newPlaylist, ...userPlaylists.filter(p => p.id !== newPlaylist.id)];
+
+          set({
+            followedArtists: updatedArtists,
+            savedAlbums: mergedAlbums,
+            userPlaylists: mergedPlaylists,
+          });
+        }
+
+        safeStorage.setItem('sc_followed_artists', JSON.stringify(updatedArtists));
+      },
+
       refreshLibrary: async () => {
+        set({ isSyncing: true });
         try {
-          const userPlaylists = await dbService.getPlaylists() || [];
-          const likedArtists = JSON.parse(localStorage.getItem('likedArtists') || '[]') as string[];
+          const dbPlaylists = await dbService.getPlaylists() || [];
+          const storedFollowed = JSON.parse(safeStorage.getItem('sc_followed_artists') || '[]') as string[];
           const seedPlaylists = buildSeedPlaylists();
           const seedArtists = buildSeedArtists();
           const { userPlaylists: currentPlaylists } = get();
+          
           const mergedPlaylists = [...seedPlaylists.map(sp => {
             const existing = currentPlaylists.find(p => p.id === sp.id);
             return existing && existing.tracks.length > 0 ? { ...sp, tracks: existing.tracks } : sp;
-          }), ...userPlaylists.filter(p => !seedPlaylists.some(s => s.id === p.id))];
-          const mergedArtists = [...seedArtists, ...likedArtists.filter((a: string) => !seedArtists.includes(a))];
-          set({ userPlaylists: mergedPlaylists, followedArtists: mergedArtists });
+          }), ...dbPlaylists.filter(p => !seedPlaylists.some(s => s.id === p.id))];
+
+          const mergedArtists = [...new Set([...storedFollowed, ...seedArtists])];
+
+          set({
+            userPlaylists: mergedPlaylists,
+            followedArtists: mergedArtists,
+            lastSyncedAt: Date.now(),
+            isSyncing: false,
+          });
         } catch (err) {
           console.error(err);
+          set({ isSyncing: false });
         }
       },
 
       hydrateSeedTracks: async () => {
         const { userPlaylists } = get();
-        const emptyPlaylists = userPlaylists.filter(p => p.tracks.length === 0);
-        if (emptyPlaylists.length === 0) return;
-
-        const BATCH_SIZE = 3;
-        for (let i = 0; i < emptyPlaylists.length; i += BATCH_SIZE) {
-          const batch = emptyPlaylists.slice(i, i + BATCH_SIZE);
+        const BATCH_SIZE = 4;
+        for (let i = 0; i < userPlaylists.length; i += BATCH_SIZE) {
+          const batch = userPlaylists.slice(i, i + BATCH_SIZE);
           const results = await Promise.allSettled(
             batch.map(async (p) => {
               const full = await libraryService.getPlaylist(p.id);
@@ -110,6 +170,7 @@ export const useLibraryStore = create<LibraryState>()(
               userPlaylists: state.userPlaylists.map(p =>
                 updated.has(p.id) ? { ...p, tracks: updated.get(p.id)! } : p
               ),
+              lastSyncedAt: Date.now(),
             }));
           }
         }
@@ -117,8 +178,10 @@ export const useLibraryStore = create<LibraryState>()(
 
       deriveSavedAlbums: (playHistory) => {
         const seedAlbums = buildSeedAlbums();
+        const { savedAlbums: currentAlbums } = get();
         const seen = new Map<string, SavedAlbum>();
         seedAlbums.forEach(a => seen.set(a.id, a));
+        currentAlbums.forEach(a => seen.set(a.id, a));
         for (const track of playHistory) {
           if (track.album && !seen.has(track.album.replace(/\s+/g, '-').toLowerCase())) {
             seen.set(track.album.replace(/\s+/g, '-').toLowerCase(), {
@@ -131,12 +194,34 @@ export const useLibraryStore = create<LibraryState>()(
         }
         set({ savedAlbums: Array.from(seen.values()) });
       },
+
+      startAutoSync: () => {
+        const handleSync = () => {
+          get().refreshLibrary();
+          get().hydrateSeedTracks();
+        };
+
+        const intervalId = setInterval(handleSync, 6000);
+
+        const onFocus = () => handleSync();
+        window.addEventListener('focus', onFocus);
+        document.addEventListener('visibilitychange', onFocus);
+        window.addEventListener('storage', onFocus);
+
+        return () => {
+          clearInterval(intervalId);
+          window.removeEventListener('focus', onFocus);
+          document.removeEventListener('visibilitychange', onFocus);
+          window.removeEventListener('storage', onFocus);
+        };
+      },
     }),
     {
       name: 'library-storage',
       partialize: (state) => ({
         followedArtists: state.followedArtists,
         userPlaylists: state.userPlaylists,
+        savedAlbums: state.savedAlbums,
       }),
     }
   )

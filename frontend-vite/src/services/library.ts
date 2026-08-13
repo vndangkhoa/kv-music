@@ -1,5 +1,6 @@
 import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
+import { safeStorage } from '../utils/safeStorage';
 
 const artistCoverMap = new Map<string, string>();
 for (const entry of Object.values(GENERATED_CONTENT)) {
@@ -34,7 +35,7 @@ export function streamUrl(id: string): string {
 }
 
 function getUserCountry(): string {
-    const cached = localStorage.getItem('user_country');
+    const cached = safeStorage.getItem('user_country');
     if (cached && cached.length === 2) {
         return cached;
     }
@@ -43,15 +44,15 @@ function getUserCountry(): string {
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
         if (tz) {
             if (tz.includes('Ho_Chi_Minh') || tz.includes('Saigon') || tz.includes('Hanoi')) {
-                localStorage.setItem('user_country', 'VN');
+                safeStorage.setItem('user_country', 'VN');
                 return 'VN';
             }
             if (tz.includes('New_York') || tz.includes('Chicago') || tz.includes('Los_Angeles') || tz.includes('Denver')) {
-                localStorage.setItem('user_country', 'US');
+                safeStorage.setItem('user_country', 'US');
                 return 'US';
             }
             if (tz.includes('London') || tz.includes('Belfast') || tz.includes('Dublin')) {
-                localStorage.setItem('user_country', 'GB');
+                safeStorage.setItem('user_country', 'GB');
                 return 'GB';
             }
         }
@@ -63,7 +64,7 @@ function getUserCountry(): string {
             const parts = lang.split('-');
             const code = parts[parts.length - 1].toUpperCase();
             if (code.length === 2) {
-                localStorage.setItem('user_country', code);
+                safeStorage.setItem('user_country', code);
                 return code;
             }
             if (parts[0] === 'vi') return 'VN';
@@ -82,13 +83,13 @@ function extractVideoIdFromDiscoveryId(id: string): string | null {
 
 // Background geo-resolver
 setTimeout(async () => {
-    if (!localStorage.getItem('user_country_resolved')) {
+    if (!safeStorage.getItem('user_country_resolved')) {
         try {
             const res = await fetch('https://ipapi.co/json/');
             const data = await res.json();
             if (data && data.country_code) {
-                localStorage.setItem('user_country', data.country_code);
-                localStorage.setItem('user_country_resolved', 'true');
+                safeStorage.setItem('user_country', data.country_code);
+                safeStorage.setItem('user_country_resolved', 'true');
             }
         } catch (e) {}
     }
@@ -187,8 +188,8 @@ export const libraryService = {
     },
 
     async getInitialTrendingTracks(): Promise<Track[]> {
-        const cached = localStorage.getItem(CACHE_KEY_INITIAL);
-        const cacheTime = localStorage.getItem(`${CACHE_KEY_INITIAL}_time`);
+        const cached = safeStorage.getItem(CACHE_KEY_INITIAL);
+        const cacheTime = safeStorage.getItem(`${CACHE_KEY_INITIAL}_time`);
         
         // Use cache if less than 30 minutes old
         if (cached && cacheTime) {
@@ -233,8 +234,8 @@ export const libraryService = {
         allTracks.sort(() => Math.random() - 0.5);
 
         if (allTracks.length > 0) {
-            localStorage.setItem(CACHE_KEY_INITIAL, JSON.stringify(allTracks.slice(0, 30)));
-            localStorage.setItem(`${CACHE_KEY_INITIAL}_time`, Date.now().toString());
+            safeStorage.setItem(CACHE_KEY_INITIAL, JSON.stringify(allTracks.slice(0, 30)));
+            safeStorage.setItem(`${CACHE_KEY_INITIAL}_time`, Date.now().toString());
             preFetchAudio(allTracks);
         }
 

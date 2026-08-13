@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useAuthStore } from '../stores/authStore';
-import { User, LogIn, UserPlus, QrCode, Sparkles, X, Check, Copy, Loader2, AlertCircle } from 'lucide-react';
+import { LogIn, UserPlus, QrCode, X, Check, Copy, Loader2, AlertCircle } from 'lucide-react';
+import Logo from './Logo';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -13,14 +14,14 @@ interface GradientColor {
 }
 
 const AVATAR_COLORS: GradientColor[] = [
-  { from: '#00a8ff', to: '#2e86de' },  // NCT Cyan Blue
-  { from: '#00d2d3', to: '#01a3a4' },  // Teal Glow
-  { from: '#ff6b6b', to: '#ee5a24' },  // Coral
-  { from: '#a29bfe', to: '#6c5ce7' },  // Lavender
-  { from: '#fdcb6e', to: '#e17055' },  // Sunset
-  { from: '#74b9ff', to: '#0984e3' },  // Ocean
-  { from: '#fd79a8', to: '#e84393' },  // Pink
-  { from: '#55efc4', to: '#00b894' },  // Emerald
+  { from: '#ff5500', to: '#ff7a00' },
+  { from: '#00b894', to: '#0984e3' },
+  { from: '#ff6b6b', to: '#ee5a24' },
+  { from: '#a29bfe', to: '#6c5ce7' },
+  { from: '#fdcb6e', to: '#e17055' },
+  { from: '#74b9ff', to: '#0984e3' },
+  { from: '#fd79a8', to: '#e84393' },
+  { from: '#55efc4', to: '#00b894' },
 ];
 
 const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
@@ -90,65 +91,71 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const inputCls = "w-full bg-[#142044] border border-cyan-500/20 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-cyan-400 focus:outline-none transition";
+  const inputCls = "w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-[#ff5500] focus:outline-none transition";
   const labelCls = "block text-xs font-bold text-neutral-300 mb-1.5";
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
       <div
-        className="relative w-full max-w-md bg-[#0d1636]/95 border border-cyan-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl shadow-cyan-500/10 text-white overflow-hidden"
+        className="relative w-full max-w-md bg-[#181818] border border-white/10 rounded-t-[28px] md:rounded-2xl p-6 sm:p-8 pb-[calc(1.75rem+env(safe-area-inset-bottom))] shadow-2xl text-white overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
-        {/* Glow backdrop decorative effect */}
-        <div className="absolute -top-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-blue-600/20 rounded-full blur-3xl pointer-events-none" />
+        {/* Mobile Drag Indicator */}
+        <div className="flex justify-center md:hidden pt-1 pb-3">
+          <div className="w-9 h-1.5 rounded-full bg-white/20" />
+        </div>
 
-        {/* Close button */}
+        {/* Close Button */}
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 p-2 rounded-full text-neutral-400 hover:text-white hover:bg-cyan-500/10 transition"
+          className="absolute top-5 right-5 p-2 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* Header */}
+        {/* SoundCloud Header Logo */}
         <div className="text-center mb-6">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-400/20 text-cyan-400 text-xs font-bold mb-3">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>KV-MUSIC SYNC PASS</span>
+          <div className="inline-flex justify-center mb-3">
+            <Logo />
           </div>
-          <h2 className="text-2xl font-black text-white tracking-tight">Tài Khoản & Đồng Bộ</h2>
-          <p className="text-neutral-400 text-xs mt-1">Đăng nhập để đồng bộ nhạc và danh sách phát mọi thiết bị</p>
+          <h2 className="text-2xl font-extrabold text-white tracking-tight">Account & Sync</h2>
+          <p className="text-neutral-400 text-xs mt-1">Sign in to sync your music and playlists across devices</p>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="grid grid-cols-3 gap-1 bg-[#142044] p-1 rounded-xl border border-cyan-500/20 mb-6 text-xs font-extrabold text-center">
+        {/* SoundCloud Filter Tab Navigation */}
+        <div className="grid grid-cols-3 gap-1 bg-[#121212] p-1 rounded-xl text-xs font-extrabold text-center mb-6 border border-white/5">
           <button
             onClick={() => handleTabChange('login')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'login' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'login' ? 'bg-[#ff5500] text-white shadow' : 'text-neutral-400 hover:text-white'
+            }`}
           >
             <LogIn className="w-3.5 h-3.5" />
-            <span>Đăng Nhập</span>
+            <span>Sign In</span>
           </button>
           <button
             onClick={() => handleTabChange('register')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'register' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'register' ? 'bg-[#ff5500] text-white shadow' : 'text-neutral-400 hover:text-white'
+            }`}
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Đăng Ký</span>
+            <span>Sign Up</span>
           </button>
           <button
             onClick={() => handleTabChange('pair')}
-            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${activeTab === 'pair' ? 'bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white shadow' : 'text-neutral-400 hover:text-white'}`}
+            className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
+              activeTab === 'pair' ? 'bg-[#ff5500] text-white shadow' : 'text-neutral-400 hover:text-white'
+            }`}
           >
             <QrCode className="w-3.5 h-3.5" />
-            <span>Mã Pair</span>
+            <span>Pair Code</span>
           </button>
         </div>
 
-        {/* Error banner */}
+        {/* Error Notification Banner */}
         {error && (
-          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-xs font-semibold">
+          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold">
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
@@ -158,7 +165,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         {activeTab === 'login' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>Email Address</label>
               <input
                 type="email"
                 required
@@ -170,7 +177,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div>
-              <label className={labelCls}>Mật khẩu</label>
+              <label className={labelCls}>Password</label>
               <input
                 type="password"
                 required
@@ -184,10 +191,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading || !email.trim() || !password}
-              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full mt-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              Đăng Nhập
+              Sign In
             </button>
           </form>
         )}
@@ -197,7 +204,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           <form onSubmit={handleRegisterSubmit} className="space-y-4">
             <div className="flex justify-center mb-2">
               <div
-                className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-cyan-400/40"
+                className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-[#ff5500]"
                 style={{ background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})` }}
               >
                 {displayLetter}
@@ -205,19 +212,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div>
-              <label className={labelCls}>Họ và Tên</label>
+              <label className={labelCls}>Full Name</label>
               <input
                 type="text"
                 required
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Tên thành viên mới"
+                placeholder="Your Display Name"
                 className={inputCls}
               />
             </div>
 
             <div>
-              <label className={labelCls}>Địa chỉ Email</label>
+              <label className={labelCls}>Email Address</label>
               <input
                 type="email"
                 required
@@ -229,7 +236,7 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             </div>
 
             <div>
-              <label className={labelCls}>Mật khẩu (tối thiểu 6 ký tự)</label>
+              <label className={labelCls}>Password (at least 6 characters)</label>
               <input
                 type="password"
                 required
@@ -239,12 +246,12 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className={inputCls}
               />
               {password.length > 0 && password.length < 6 && (
-                <p className="text-[11px] text-red-400 mt-1">Mật khẩu phải có ít nhất 6 ký tự</p>
+                <p className="text-[11px] text-red-400 mt-1">Password must be at least 6 characters</p>
               )}
             </div>
 
             <div>
-              <label className={labelCls}>Xác nhận mật khẩu</label>
+              <label className={labelCls}>Confirm Password</label>
               <input
                 type="password"
                 required
@@ -254,19 +261,19 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className={inputCls}
               />
               {confirmPassword.length > 0 && confirmPassword !== password && (
-                <p className="text-[11px] text-red-400 mt-1">Mật khẩu không khớp</p>
+                <p className="text-[11px] text-red-400 mt-1">Passwords do not match</p>
               )}
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-neutral-400 mb-2">Màu Avatar cá nhân</label>
+              <label className="block text-xs font-bold text-neutral-400 mb-2">Avatar Color Accent</label>
               <div className="flex items-center justify-center gap-2.5 flex-wrap">
                 {AVATAR_COLORS.map((color, idx) => (
                   <button
                     key={idx}
                     type="button"
                     onClick={() => setSelectedColorIndex(idx)}
-                    className="w-8 h-8 rounded-full border-2 transition transform active:scale-95"
+                    className="w-7 h-7 rounded-full border-2 transition transform active:scale-95"
                     style={{
                       background: `linear-gradient(135deg, ${color.from}, ${color.to})`,
                       borderColor: selectedColorIndex === idx ? '#ffffff' : 'transparent',
@@ -280,10 +287,10 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <button
               type="submit"
               disabled={loading || !name.trim() || !email.trim() || password.length < 6 || confirmPassword !== password}
-              className="w-full mt-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+              className="w-full mt-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              Đăng Ký Tài Khoản
+              Create Account
             </button>
           </form>
         )}
@@ -291,44 +298,42 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
         {/* TAB 3: DEVICE PAIR CODE SYNC */}
         {activeTab === 'pair' && (
           <div className="space-y-5">
-            {/* Show Current Pair Code if logged in */}
             {currentUser?.pairCode && (
-              <div className="p-4 bg-[#142044] border border-cyan-500/30 rounded-2xl text-center">
-                <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-wider mb-1">Mã Pair Code Thiết Bị Này</p>
+              <div className="p-4 bg-[#121212] border border-white/10 rounded-xl text-center">
+                <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-wider mb-1">Your Device Pair Code</p>
                 <div className="flex items-center justify-center gap-2">
-                  <span className="text-2xl font-black tracking-widest text-cyan-400">{currentUser.pairCode}</span>
+                  <span className="text-2xl font-black tracking-widest text-[#ff5500]">{currentUser.pairCode}</span>
                   <button
                     onClick={copyCurrentPairCode}
-                    className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition"
-                    title="Sao chép mã"
+                    className="p-1.5 rounded-lg bg-white/5 text-[#ff5500] hover:bg-white/10 transition"
+                    title="Copy code"
                   >
                     {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[10px] text-neutral-400 mt-1">Nhập mã này trên TV/Laptop khác để đồng bộ tài khoản!</p>
+                <p className="text-[10px] text-neutral-400 mt-1">Enter this code on your TV or other device to pair!</p>
               </div>
             )}
 
-            {/* Input box to pair another device */}
             <form onSubmit={handlePairSubmit} className="space-y-3">
-              <label className="block text-xs font-bold text-neutral-300">Nhập Mã Pair Code Từ Thiết Bị Khác</label>
+              <label className="block text-xs font-bold text-neutral-300">Enter Pair Code From Other Device</label>
               <input
                 type="text"
                 value={pairInput}
                 onChange={e => setPairInput(e.target.value)}
-                placeholder="VD: KV-849201"
-                className="w-full bg-[#142044] border border-cyan-500/30 rounded-xl px-4 py-3 text-center text-lg font-black tracking-widest text-cyan-300 placeholder-neutral-500 uppercase focus:border-cyan-400 focus:outline-none transition"
+                placeholder="EX: KV-849201"
+                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-3 text-center text-lg font-black tracking-widest text-[#ff5500] placeholder-neutral-500 uppercase focus:border-[#ff5500] focus:outline-none transition"
               />
 
-              {pairSuccess && <p className="text-xs text-green-400 text-center font-bold">✅ Đồng bộ thành công!</p>}
+              {pairSuccess && <p className="text-xs text-green-400 text-center font-bold">✅ Pair successful!</p>}
 
               <button
                 type="submit"
                 disabled={loading || !pairInput.trim()}
-                className="w-full bg-gradient-to-r from-teal-400 to-cyan-500 hover:brightness-110 text-black font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+                className="w-full bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                Kết Nối & Đồng Bộ Thiết Bị
+                Connect & Sync Device
               </button>
             </form>
           </div>

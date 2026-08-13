@@ -3,6 +3,7 @@ import { X, RefreshCcw, Check, Trash2, Volume2, QrCode, Copy, Cpu, Cookie } from
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import Logo from './Logo';
+import { safeStorage } from '../utils/safeStorage';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -17,10 +18,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const linkPairCode = useAuthStore(s => s.linkPairCode);
 
     const [isUpdating, setIsUpdating] = useState(false);
-    const [updateStatus, setUpdateStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [updateLog, setUpdateLog] = useState<string>('');
     const [isFetchingCookies, setIsFetchingCookies] = useState(false);
-    const [cookieStatus, setCookieStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
     const [cookieLog, setCookieLog] = useState<string>('');
     const [isClearingCache, setIsClearingCache] = useState(false);
     const [pairInput, setPairInput] = useState('');
@@ -32,7 +31,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const handleUpdateYtdlp = async () => {
         if (isUpdating) return;
         setIsUpdating(true);
-        setUpdateStatus('loading');
         setUpdateLog('');
 
         try {
@@ -40,15 +38,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             const data = await response.json();
 
             if (response.ok) {
-                setUpdateStatus('success');
-                setUpdateLog(data.output || 'Cập nhật thành công core extractor!');
+                setUpdateLog(data.output || 'Successfully updated core extractor!');
             } else {
-                setUpdateStatus('error');
-                setUpdateLog(data.error || 'Cập nhật thất bại.');
+                setUpdateLog(data.error || 'Update failed.');
             }
-        } catch (e) {
-            setUpdateStatus('error');
-            setUpdateLog('Lỗi kết nối máy chủ.');
+        } catch {
+            setUpdateLog('Server connection error.');
         } finally {
             setIsUpdating(false);
         }
@@ -57,7 +52,6 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const handleFetchCookies = async () => {
         if (isFetchingCookies) return;
         setIsFetchingCookies(true);
-        setCookieStatus('loading');
         setCookieLog('');
 
         try {
@@ -65,15 +59,12 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
             const data = await response.json();
 
             if (response.ok) {
-                setCookieStatus('success');
-                setCookieLog(data.output || 'Đã lấy cookie mới thành công!');
+                setCookieLog(data.output || 'Successfully fetched new session cookies!');
             } else {
-                setCookieStatus('error');
-                setCookieLog(data.error || 'Không thể lấy cookie mới.');
+                setCookieLog(data.error || 'Could not fetch new cookies.');
             }
-        } catch (e) {
-            setCookieStatus('error');
-            setCookieLog('Lỗi kết nối máy chủ.');
+        } catch {
+            setCookieLog('Server connection error.');
         } finally {
             setIsFetchingCookies(false);
         }
@@ -81,13 +72,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
     const handleClearCache = () => {
         setIsClearingCache(true);
-        localStorage.removeItem('nct_browse_cache_v1');
-        localStorage.removeItem('last_search_results');
-        localStorage.removeItem('initial_tracks_cache_v1');
+        safeStorage.removeItem('nct_browse_cache_v1');
+        safeStorage.removeItem('last_search_results');
+        safeStorage.removeItem('initial_tracks_cache_v1');
 
         setTimeout(() => {
             setIsClearingCache(false);
-            alert("Đã xóa bộ nhớ đệm cache thành công! Ứng dụng sẽ tải dữ liệu mới.");
+            alert("Cache cleared successfully! Data will refresh.");
         }, 600);
     };
 
@@ -105,35 +96,40 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         if (!pairInput.trim()) return;
         const ok = await linkPairCode(pairInput.trim());
         if (ok) {
-            setPairMsg('✅ Đã đồng bộ tài khoản thành công!');
+            setPairMsg('✅ Device paired successfully!');
             setPairInput('');
         } else {
-            setPairMsg('❌ Mã Pair Code không đúng.');
+            setPairMsg('❌ Invalid Pair Code.');
         }
     };
 
     const handleGeneratePairCode = async () => {
         const code = await generatePairCode();
         if (code) {
-            setPairMsg('✅ Đã tạo mã mới: ' + code);
+            setPairMsg('✅ New pair code generated: ' + code);
         }
     };
 
     return (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
             <div
-                className="relative w-full max-w-2xl bg-[#0b132d] border border-cyan-500/30 md:rounded-3xl rounded-2xl overflow-hidden flex flex-col shadow-2xl shadow-cyan-500/10 text-white max-h-[90vh]"
+                className="relative w-full max-w-2xl bg-[#181818] border border-white/10 md:rounded-2xl rounded-t-[28px] rounded-b-none overflow-hidden flex flex-col shadow-2xl text-white max-h-[90vh]"
                 onClick={e => e.stopPropagation()}
             >
+                {/* Mobile Drag Handle */}
+                <div className="flex justify-center md:hidden pt-3 pb-1">
+                    <div className="w-9 h-1.5 rounded-full bg-white/20" />
+                </div>
+
                 {/* Top Header */}
-                <div className="flex items-center justify-between px-6 py-4 border-b border-cyan-500/20 bg-[#0f1938]">
+                <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-[#121212]">
                     <div className="flex items-center gap-3">
                         <Logo />
-                        <span className="text-xs font-bold text-neutral-400">| Cài Đặt Hệ Thống</span>
+                        <span className="text-xs font-bold text-neutral-400">| System Settings</span>
                     </div>
                     <button
                         onClick={onClose}
-                        className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-cyan-500/10 transition"
+                        className="p-2 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition"
                     >
                         <X className="w-5 h-5" />
                     </button>
@@ -142,26 +138,30 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 {/* Body Content */}
                 <div className="flex-1 overflow-y-auto p-6 space-y-6 no-scrollbar">
                     {/* SECTION 1: Audio Quality */}
-                    <section className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4">
+                    <section className="bg-[#121212] border border-white/10 rounded-xl p-4">
                         <div className="flex items-center gap-2 mb-3">
-                            <Volume2 className="w-4 h-4 text-cyan-400" />
-                            <h3 className="text-sm font-black text-white uppercase tracking-wider">Chất Lượng Âm Thanh</h3>
+                            <Volume2 className="w-4 h-4 text-[#ff5500]" />
+                            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Audio Playback Quality</h3>
                         </div>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             {[
-                                { id: 'auto', label: 'Tự Động', desc: 'Linh hoạt' },
-                                { id: 'lossless', label: 'Lossless', desc: 'FLAC / 320kbps' },
-                                { id: 'high', label: 'Cao (256k)', desc: 'Chất lượng cao' },
-                                { id: 'standard', label: 'Tiêu Chuẩn', desc: 'Tiết kiệm data' },
+                                { id: 'auto', label: 'Auto Stream', desc: 'Adaptive quality' },
+                                { id: 'lossless', label: 'Lossless FLAC', desc: '320kbps High fidelity' },
+                                { id: 'high', label: 'High (256k)', desc: 'Optimal audio' },
+                                { id: 'standard', label: 'Standard', desc: 'Data saver' },
                             ].map(q => (
                                 <button
                                     key={q.id}
                                     onClick={() => setQualityPreference(q.id as any)}
-                                    className={`p-3 rounded-xl border text-left transition ${qualityPreference === q.id ? 'bg-gradient-to-br from-[#00a8ff]/20 to-[#2e86de]/30 border-cyan-400 text-white shadow-md' : 'bg-[#0b132d]/60 border-cyan-500/10 text-neutral-400 hover:text-white'}`}
+                                    className={`p-3 rounded-xl border text-left transition ${
+                                        qualityPreference === q.id
+                                            ? 'bg-[#ff5500]/10 border-[#ff5500] text-white shadow'
+                                            : 'bg-[#181818] border-white/5 text-neutral-400 hover:text-white hover:border-white/20'
+                                    }`}
                                 >
                                     <div className="flex items-center justify-between">
                                         <span className="text-xs font-bold text-white">{q.label}</span>
-                                        {qualityPreference === q.id && <Check className="w-3.5 h-3.5 text-cyan-400" />}
+                                        {qualityPreference === q.id && <Check className="w-3.5 h-3.5 text-[#ff5500]" />}
                                     </div>
                                     <p className="text-[10px] text-neutral-400 mt-1">{q.desc}</p>
                                 </button>
@@ -170,113 +170,113 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </section>
 
                     {/* SECTION 2: Device Pair Code Sync */}
-                    <section className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4">
+                    <section className="bg-[#121212] border border-white/10 rounded-xl p-4">
                         <div className="flex items-center gap-2 mb-3">
-                            <QrCode className="w-4 h-4 text-cyan-400" />
-                            <h3 className="text-sm font-black text-white uppercase tracking-wider">Đồng Bộ Mã Pair Code Thiết Bị</h3>
+                            <QrCode className="w-4 h-4 text-[#ff5500]" />
+                            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">Device Sync Pair Code</h3>
                         </div>
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="bg-[#0b132d]/80 p-4 rounded-xl border border-cyan-500/20 text-center flex flex-col items-center justify-center">
-                                <p className="text-[11px] text-neutral-400 font-bold mb-1">Mã Pair Code Hiện Tại</p>
+                            <div className="bg-[#181818] p-4 rounded-xl border border-white/5 text-center flex flex-col items-center justify-center">
+                                <p className="text-[11px] text-neutral-400 font-bold mb-1">Your Device Pair Code</p>
                                 <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-2xl font-black text-cyan-400 tracking-widest">{currentUser?.pairCode || 'KV-849201'}</span>
+                                    <span className="text-2xl font-black text-[#ff5500] tracking-widest">{currentUser?.pairCode || 'KV-849201'}</span>
                                     <button
                                         onClick={handleCopyPairCode}
-                                        className="p-1.5 rounded-lg bg-cyan-500/20 text-cyan-400 hover:bg-cyan-500/30 transition"
+                                        className="p-1.5 rounded-lg bg-white/5 text-[#ff5500] hover:bg-white/10 transition"
                                     >
                                         {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                                     </button>
                                 </div>
                                 <button
                                     onClick={handleGeneratePairCode}
-                                    className="text-[11px] font-bold text-cyan-400 hover:underline"
+                                    className="text-[11px] font-bold text-[#ff5500] hover:underline"
                                 >
-                                    Tạo Mã Mới
+                                    Generate New Code
                                 </button>
                             </div>
 
-                            <form onSubmit={handleLinkPairCodeSubmit} className="bg-[#0b132d]/80 p-4 rounded-xl border border-cyan-500/20 space-y-2">
-                                <label className="block text-[11px] font-bold text-neutral-300">Nhập Mã Pair Để Ghép Nối</label>
+                            <form onSubmit={handleLinkPairCodeSubmit} className="bg-[#181818] p-4 rounded-xl border border-white/5 space-y-2">
+                                <label className="block text-[11px] font-bold text-neutral-300">Enter Code To Pair Device</label>
                                 <input
                                     type="text"
                                     value={pairInput}
                                     onChange={e => setPairInput(e.target.value)}
-                                    placeholder="VD: KV-849201"
-                                    className="w-full bg-[#142044] border border-cyan-500/30 rounded-lg px-3 py-2 text-center text-sm font-bold text-cyan-300 placeholder-neutral-500 uppercase focus:border-cyan-400 focus:outline-none"
+                                    placeholder="EX: KV-849201"
+                                    className="w-full bg-[#121212] border border-white/10 rounded-lg px-3 py-2 text-center text-sm font-bold text-[#ff5500] placeholder-neutral-500 uppercase focus:border-[#ff5500] focus:outline-none"
                                 />
-                                {pairMsg && <p className="text-[11px] font-bold text-cyan-400">{pairMsg}</p>}
+                                {pairMsg && <p className="text-[11px] font-bold text-green-400">{pairMsg}</p>}
                                 <button
                                     type="submit"
-                                    className="w-full py-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white font-bold text-xs rounded-lg transition"
+                                    className="w-full py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white font-bold text-xs rounded-lg transition"
                                 >
-                                    Đồng Bộ Ngay
+                                    Sync Now
                                 </button>
                             </form>
                         </div>
                     </section>
 
-                    {/* SECTION 3: Storage & Core Update */}
-                    <section className="bg-[#142044] border border-cyan-500/20 rounded-2xl p-4 space-y-4">
+                    {/* SECTION 3: System & Engine Maintenance */}
+                    <section className="bg-[#121212] border border-white/10 rounded-xl p-4 space-y-4">
                         <div className="flex items-center gap-2">
-                            <Cpu className="w-4 h-4 text-cyan-400" />
-                            <h3 className="text-sm font-black text-white uppercase tracking-wider">Hệ Thống & Bộ Nhớ Cache</h3>
+                            <Cpu className="w-4 h-4 text-[#ff5500]" />
+                            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">System & Storage Cache</h3>
                         </div>
 
-                        <div className="flex items-center justify-between p-3 bg-[#0b132d]/80 border border-cyan-500/10 rounded-xl">
+                        <div className="flex items-center justify-between p-3 bg-[#181818] border border-white/5 rounded-xl">
                             <div>
-                                <h4 className="text-xs font-bold text-white">Xóa Bộ Nhớ Đệm Cache</h4>
-                                <p className="text-[10px] text-neutral-400">Xóa dữ liệu duyệt tạm thời để làm mới danh sách bài hát</p>
+                                <h4 className="text-xs font-bold text-white">Clear Application Cache</h4>
+                                <p className="text-[10px] text-neutral-400">Clear temporary browsing cache to force fresh data refresh</p>
                             </div>
                             <button
                                 onClick={handleClearCache}
                                 disabled={isClearingCache}
-                                className="flex items-center gap-1.5 px-3 py-2 bg-red-500/20 text-red-400 border border-red-500/30 rounded-lg text-xs font-bold hover:bg-red-500/30 transition disabled:opacity-50"
+                                className="flex items-center gap-1.5 px-3 py-2 bg-red-500/10 text-red-400 border border-red-500/20 rounded-lg text-xs font-bold hover:bg-red-500/20 transition disabled:opacity-50"
                             >
                                 <Trash2 className="w-3.5 h-3.5" />
-                                <span>Xóa Cache</span>
+                                <span>Clear Cache</span>
                             </button>
                         </div>
 
-                        <div className="p-3 bg-[#0b132d]/80 border border-cyan-500/10 rounded-xl space-y-2">
+                        <div className="p-3 bg-[#181818] border border-white/5 rounded-xl space-y-2">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <h4 className="text-xs font-bold text-white">Cập Nhật Engine YouTube (yt-dlp)</h4>
-                                    <p className="text-[10px] text-neutral-400">Cập nhật công cụ bóc tách nhạc mượt mà hơn</p>
+                                    <h4 className="text-xs font-bold text-white">Audio Extractor Engine (yt-dlp)</h4>
+                                    <p className="text-[10px] text-neutral-400">Update audio stream resolution core</p>
                                 </div>
                                 <button
                                     onClick={handleUpdateYtdlp}
                                     disabled={isUpdating}
-                                    className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white rounded-lg text-xs font-bold hover:brightness-110 transition disabled:opacity-50"
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
                                 >
                                     <RefreshCcw className={`w-3.5 h-3.5 ${isUpdating ? 'animate-spin' : ''}`} />
-                                    <span>{isUpdating ? 'Đang Cập Nhật...' : 'Check Update'}</span>
+                                    <span>{isUpdating ? 'Updating...' : 'Check Update'}</span>
                                 </button>
                             </div>
                             {updateLog && (
-                                <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-cyan-300 font-mono overflow-x-auto max-h-24 no-scrollbar border border-cyan-500/20">
+                                <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-[#ff7a00] font-mono overflow-x-auto max-h-24 no-scrollbar border border-white/5">
                                     {updateLog}
                                 </pre>
                             )}
                         </div>
 
-                        <div className="p-3 bg-[#0b132d]/80 border border-cyan-500/10 rounded-xl space-y-2">
+                        <div className="p-3 bg-[#181818] border border-white/5 rounded-xl space-y-2">
                             <div className="flex items-center justify-between">
                                 <div>
-                                    <h4 className="text-xs font-bold text-white">Lấy Cookie YouTube Tự Động</h4>
-                                    <p className="text-[10px] text-neutral-400">Tự động lấy phiên cookie mới để tránh bị YouTube chặn (lỗi 429 / bot detection)</p>
+                                    <h4 className="text-xs font-bold text-white">Session Cookie Rotator</h4>
+                                    <p className="text-[10px] text-neutral-400">Rotate session tokens to maintain high-speed playback</p>
                                 </div>
                                 <button
                                     onClick={handleFetchCookies}
                                     disabled={isFetchingCookies}
-                                    className="flex items-center gap-1.5 px-3 py-2 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] text-white rounded-lg text-xs font-bold hover:brightness-110 transition disabled:opacity-50"
+                                    className="flex items-center gap-1.5 px-3 py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
                                 >
                                     <Cookie className={`w-3.5 h-3.5 ${isFetchingCookies ? 'animate-spin' : ''}`} />
-                                    <span>{isFetchingCookies ? 'Đang Lấy...' : 'Lấy Cookie Mới'}</span>
+                                    <span>{isFetchingCookies ? 'Fetching...' : 'Fetch Cookies'}</span>
                                 </button>
                             </div>
                             {cookieLog && (
-                                <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-cyan-300 font-mono overflow-x-auto max-h-24 no-scrollbar border border-cyan-500/20">
+                                <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-[#ff7a00] font-mono overflow-x-auto max-h-24 no-scrollbar border border-white/5">
                                     {cookieLog}
                                 </pre>
                             )}
@@ -285,9 +285,9 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 </div>
 
                 {/* Footer */}
-                <div className="p-4 border-t border-cyan-500/20 bg-[#0f1938] text-center">
-                    <p className="text-[11px] font-extrabold text-cyan-400">kv-music v2.5.0 PRO VIP</p>
-                    <p className="text-[10px] text-neutral-400 mt-0.5">Rust Axum & Tokio High-Performance Audio Engine</p>
+                <div className="p-4 border-t border-white/10 bg-[#121212] text-center">
+                    <p className="text-[11px] font-extrabold text-[#ff5500]">kv-music v2.5.0 PRO VIP</p>
+                    <p className="text-[10px] text-neutral-400 mt-0.5">SoundCloud Engine Edition</p>
                 </div>
             </div>
         </div>

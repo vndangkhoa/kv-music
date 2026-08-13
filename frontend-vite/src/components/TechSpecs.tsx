@@ -24,7 +24,7 @@ export default function TechSpecs({ isOpen, onClose, quality, trackTitle }: Tech
             onClick={onClose}
         >
             <div
-                className="bg-gradient-to-b from-[#2a2a2a] to-[#1a1a1a] rounded-xl w-full max-w-sm shadow-2xl animate-in overflow-hidden"
+                className="bg-gradient-to-b from-[#2a2a2a] to-[#222222] rounded-xl w-full max-w-sm shadow-2xl animate-in overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
             >
                 {/* Header */}

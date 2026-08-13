@@ -1,144 +1,139 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star, Volume2 } from 'lucide-react';
+import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
-import CoverImage from '../components/CoverImage';
+import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
+import SoundCloudSidebar from '../components/SoundCloudSidebar';
 import Skeleton from '../components/Skeleton';
-import { formatCount } from '../utils/format';
 import type { Track } from '../types';
 
-const CHART_CONFIG: Record<string, { title: string; icon: React.ReactNode }> = {
-    'top-hits': { 
-        title: 'BXH REALTIME BÀI HÁT HOT', 
-        icon: <Flame className="w-6 h-6 text-cyan-400 fill-cyan-400" />
-    },
-    'trending': { 
-        title: 'BXH NHẠC TRẺ VIỆT NAM', 
-        icon: <TrendingUp className="w-6 h-6 text-[#00d2d3]" />
-    },
-    'top-albums': { 
-        title: 'BXH TOP 100 BÀI HÁT VIỆT NAM', 
-        icon: <Disc className="w-6 h-6 text-blue-400" />
-    },
-    'hits-collection': { 
-        title: 'BXH ÂU MỸ & QUỐC TẾ', 
-        icon: <Star className="w-6 h-6 text-amber-400 fill-amber-400" />
-    },
+const CHART_CONFIG: Record<string, { title: string; desc: string; icon: React.ReactNode }> = {
+  'top-hits': {
+    title: 'SoundCloud Realtime Top 50 Charts',
+    desc: 'The most played and trending tracks on SoundCloud right now.',
+    icon: <Flame className="w-6 h-6 text-[#ff5500]" />
+  },
+  'trending': {
+    title: 'Top Trending V-Pop Charts',
+    desc: 'Vietnamese pop & indie hits dominating the stream.',
+    icon: <TrendingUp className="w-6 h-6 text-[#ff5500]" />
+  },
+  'top-albums': {
+    title: 'Top 100 Global Stream Charts',
+    desc: 'The hottest international chart toppers across all genres.',
+    icon: <Disc className="w-6 h-6 text-[#ff5500]" />
+  },
+  'hits-collection': {
+    title: 'SoundCloud New & Hot Collection',
+    desc: 'Breakthrough creators and viral underground discoveries.',
+    icon: <Star className="w-6 h-6 text-[#ff5500]" />
+  },
 };
 
 export default function ChartsSection() {
-    const [searchParams] = useSearchParams();
-    const chartType = searchParams.get('chart_type') || 'top-hits';
-    const [tracks, setTracks] = useState<Track[]>([]);
-    const [loading, setLoading] = useState(true);
-    const playTrack = usePlayerStore(s => s.playTrack);
+  const [searchParams] = useSearchParams();
+  const chartType = searchParams.get('chart_type') || 'top-hits';
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [loading, setLoading] = useState(true);
+  const playTrack = usePlayerStore(s => s.playTrack);
 
-    const config = CHART_CONFIG[chartType] || CHART_CONFIG['top-hits'];
+  const config = CHART_CONFIG[chartType] || CHART_CONFIG['top-hits'];
 
-    useEffect(() => {
-        setLoading(true);
-        setTracks([]);
-        
-        libraryService.getCharts(chartType)
-            .then(data => {
-                setTracks(data);
-                setLoading(false);
-            })
-            .catch(() => setLoading(false));
-    }, [chartType]);
+  useEffect(() => {
+    setLoading(true);
+    setTracks([]);
 
-    return (
-        <div className="h-full bg-[#0b132d] text-white overflow-y-auto no-scrollbar pb-28 p-4 md:p-8">
-            {/* Header */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-6 pb-4 border-b border-cyan-500/20">
-                <div className="flex items-center gap-4">
-                    <Link to="/" className="p-2 rounded-xl bg-[#142044] hover:bg-cyan-500/20 border border-cyan-500/20 transition">
-                        <ArrowLeft className="w-5 h-5 text-cyan-400" />
-                    </Link>
-                    <div className="flex items-center gap-3">
-                        {config.icon}
-                        <h1 className="text-xl md:text-2xl font-black text-white uppercase tracking-wider">{config.title}</h1>
-                    </div>
-                </div>
+    libraryService.getCharts(chartType)
+      .then(data => {
+        setTracks(data);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [chartType]);
 
-                {!loading && tracks.length > 0 && (
-                    <button
-                        onClick={() => playTrack(tracks[0], tracks)}
-                        className="px-6 py-2.5 bg-gradient-to-r from-[#00a8ff] to-[#2e86de] hover:brightness-110 text-white rounded-full font-extrabold text-xs uppercase tracking-wider shadow-lg shadow-cyan-500/30 active:scale-95 transition flex items-center gap-2"
-                    >
-                        <Play className="w-4 h-4 fill-white" />
-                        Phát Tất Cả ({tracks.length})
-                    </button>
-                )}
+  return (
+    <div className="min-h-full text-white bg-[#121212]">
+      {/* Top SoundCloud Spotlight Header Banner */}
+      <div className="relative w-full bg-gradient-to-r from-[#222222] via-[#1a1a1a] to-[#121212] border-b border-white/10 py-8 px-4 md:px-8">
+        <div className="max-w-[1240px] mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <Link
+              to="/"
+              className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition"
+              aria-label="Go back"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </Link>
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                {config.icon}
+                <span className="bg-[#ff5500] text-white text-[10px] font-extrabold uppercase px-2 py-0.5 rounded tracking-wider">
+                  SoundCloud Official
+                </span>
+              </div>
+              <h1 className="text-2xl md:text-3xl font-extrabold text-white">{config.title}</h1>
+              <p className="text-xs text-neutral-400 mt-0.5">{config.desc}</p>
             </div>
+          </div>
 
-            {/* NCT BXH Ranked List */}
-            {loading ? (
-                <div className="space-y-3">
-                    {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-                        <Skeleton key={i} className="h-16 w-full rounded-2xl" />
-                    ))}
-                </div>
-            ) : (
-                <div className="flex flex-col gap-2">
-                    {tracks.map((track, idx) => {
-                        const isTop1 = idx === 0;
-                        const isTop2 = idx === 1;
-                        const isTop3 = idx === 2;
-
-                        return (
-                            <div
-                                key={track.id || idx}
-                                onClick={() => playTrack(track, tracks)}
-                                className={`group flex items-center gap-4 p-3 rounded-2xl transition cursor-pointer border ${
-                                    isTop1 ? 'bg-gradient-to-r from-amber-500/20 via-[#142044] to-[#142044] border-amber-500/40 shadow-lg shadow-amber-500/10' :
-                                    isTop2 ? 'bg-gradient-to-r from-cyan-500/20 via-[#142044] to-[#142044] border-cyan-500/40 shadow-lg shadow-cyan-500/10' :
-                                    isTop3 ? 'bg-gradient-to-r from-blue-500/20 via-[#142044] to-[#142044] border-blue-500/40 shadow-lg shadow-blue-500/10' :
-                                    'bg-[#142044]/60 hover:bg-[#1c2c5b] border-cyan-500/10'
-                                }`}
-                            >
-                                {/* Rank Number */}
-                                <div className={`w-10 text-center font-black text-xl flex-shrink-0 ${
-                                    isTop1 ? 'text-amber-400 text-2xl drop-shadow-[0_2px_8px_rgba(245,158,11,0.6)]' :
-                                    isTop2 ? 'text-cyan-400 text-xl' :
-                                    isTop3 ? 'text-blue-400 text-xl' :
-                                    'text-neutral-400'
-                                }`}>
-                                    {idx + 1}
-                                </div>
-
-                                {/* Cover Image */}
-                                <div className="relative w-14 h-14 rounded-xl overflow-hidden flex-shrink-0 shadow-md">
-                                    <CoverImage src={track.cover_url} alt={track.title} className="w-full h-full object-cover" />
-                                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                                        <Play className="w-5 h-5 text-white fill-white ml-0.5" />
-                                    </div>
-                                </div>
-
-                                {/* Track Title & Artist */}
-                                <div className="flex-1 min-w-0">
-                                    <h3 className="font-extrabold text-white text-sm md:text-base truncate group-hover:text-cyan-300 transition">
-                                        {track.title}
-                                    </h3>
-                                    <p className="text-xs text-neutral-400 truncate mt-0.5">
-                                        {track.artist}
-                                    </p>
-                                </div>
-
-                                {/* Views badge */}
-                                <div className="hidden sm:flex items-center gap-1 px-3 py-1 bg-[#0b132d] rounded-lg border border-cyan-500/15 text-xs font-bold text-cyan-400">
-                                    <span>{track.view_count ? formatCount(track.view_count) : ''}</span>
-                                </div>
-
-                                <button className="p-2 rounded-full text-neutral-400 hover:text-cyan-400 transition">
-                                    <Volume2 className="w-5 h-5 opacity-0 group-hover:opacity-100 transition" />
-                                </button>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
+          {!loading && tracks.length > 0 && (
+            <button
+              onClick={() => playTrack(tracks[0], tracks)}
+              className="px-6 py-2.5 bg-[#ff5500] hover:bg-[#ff7a00] text-white rounded-full text-xs font-extrabold uppercase tracking-wider shadow-lg active:scale-95 transition flex items-center gap-2"
+            >
+              <Play className="w-4 h-4 fill-current ml-0.5" />
+              Play All ({tracks.length})
+            </button>
+          )}
         </div>
-    );
+      </div>
+
+      {/* 2-Column Responsive Layout matching SoundCloud Theme */}
+      <div className="max-w-[1240px] mx-auto px-3 md:px-6 py-6 flex gap-8">
+        {/* Left Ranked Stream Column */}
+        <div className="flex-1 min-w-0 space-y-4">
+          {loading ? (
+            <div className="space-y-4">
+              {[1, 2, 3, 4, 5].map(i => (
+                <Skeleton key={i} className="h-32 w-full rounded-xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {tracks.map((track, idx) => {
+                const rankNum = idx + 1;
+                const isTop3 = rankNum <= 3;
+
+                return (
+                  <div key={track.id || idx} className="relative flex items-center gap-3 group">
+                    {/* Rank Badge Indicator */}
+                    <div
+                      className={`w-8 sm:w-10 text-center font-black text-sm sm:text-base flex-shrink-0 rounded-lg py-1 ${
+                        isTop3
+                          ? 'bg-[#ff5500] text-white shadow'
+                          : 'bg-[#181818] border border-white/10 text-neutral-400'
+                      }`}
+                    >
+                      #{rankNum}
+                    </div>
+
+                    {/* SoundCloud Track Post Card */}
+                    <div className="flex-1 min-w-0">
+                      <SoundCloudTrackCard track={track} queue={tracks} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Right SoundCloud Desktop Sidebar */}
+        <div className="hidden lg:flex flex-shrink-0 flex-col items-stretch">
+          <SoundCloudSidebar />
+        </div>
+      </div>
+    </div>
+  );
 }
