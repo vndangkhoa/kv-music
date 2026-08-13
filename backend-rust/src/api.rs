@@ -201,28 +201,7 @@ fn html_escape(s: &str) -> String {
      .replace('\'', "&#39;")
 }
 
-/// Facebook/Messenger link previews do not reliably render WebP images. YouTube
-/// serves covers as WebP (i.ytimg.com/vi_webp/.../maxresdefault.webp); convert
-/// any such URL to the equivalent JPG so the shared thumbnail always displays.
-fn og_image_rewrite(cover_url: &str) -> String {
-    if !cover_url.contains("i.ytimg.com") {
-        return cover_url.to_string();
-    }
-    let idx = match cover_url.find("/vi_") {
-        Some(i) => i,
-        None => return cover_url.to_string(),
-    };
-    let rest = &cover_url[idx..];
-    let after = rest
-        .trim_start_matches("/vi_webp/")
-        .trim_start_matches("/vi/");
-    let (vid, name) = match after.split_once('/') {
-        Some((v, n)) => (v, n),
-        None => return cover_url.to_string(),
-    };
-    let name = name.strip_suffix(".webp").unwrap_or(name);
-    format!("https://i.ytimg.com/vi/{}/{}.jpg", vid, name)
-}
+
 
 /// JSON metadata for a single track by YouTube id (used by the SPA's /track/:id page).
 pub async fn track_info_handler(
@@ -242,12 +221,21 @@ pub async fn track_info_handler(
 /// shared links to hang on a dark blue page.
 fn is_link_preview_bot(user_agent: &str) -> bool {
     let ua = user_agent.to_lowercase();
+
+    // Human users in Facebook / Messenger in-app browser WebView send FBAN, FB_IAB, or FBAV
+    if ua.contains("fban") || ua.contains("fb_iab") || ua.contains("fbav") {
+        return false;
+    }
+
     [
         "facebookexternalhit",
         "facebookcatalog",
+        "facebookbot",
+        "facebook",
         "facebot",
         "meta-externalagent",
         "meta-externalfetcher",
+        "meta-external",
         "twitterbot",
         "linkedinbot",
         "slackbot",
@@ -283,6 +271,7 @@ fn is_link_preview_bot(user_agent: &str) -> bool {
         "okhttp",
         "go-http-client",
         "zalobot",
+        "zalo",
     ]
     .iter()
     .any(|bot| ua.contains(bot))
@@ -296,7 +285,7 @@ pub async fn build_og_response(
     let host = headers
         .get("host")
         .and_then(|v| v.to_str().ok())
-        .unwrap_or("localhost:8080")
+        .unwrap_or("sp.khoavo.myds.me")
         .to_string();
     let scheme = if headers
         .get("x-forwarded-proto")
@@ -308,18 +297,15 @@ pub async fn build_og_response(
     } else {
         "http"
     };
-    let base = format!("{}://{}", scheme, host);
-    let share_url = format!("{}/share/track/{}", base, id);
-    let app_url = format!("{}/track/{}", base, id);
+    let canonical_url = format!("{}://{}/track/{}", scheme, host, id);
 
     let (title, artist, cover_url) = state.spotdl.resolve_share_preview(id).await;
 
     let e_title = html_escape(&title);
     let e_artist = html_escape(&artist);
-    let e_cover = html_escape(&og_image_rewrite(&cover_url));
-    let e_share_url = html_escape(&share_url);
-    let e_app_url = html_escape(&app_url);
-    let description = format!("{} - {}", title, artist);
+    let e_cover = html_escape(&cover_url);
+    let e_url = html_escape(&canonical_url);
+    let description = format!("{} • Stream on kv-music", artist);
     let e_desc = html_escape(&description);
 
     let html = format!(
@@ -331,37 +317,31 @@ pub async fn build_og_response(
   <title>{e_title} - {e_artist} | kv-music</title>
   <meta name="description" content="{e_desc}" />
 
-  <!-- Open Graph (Messenger / Facebook / Social) -->
-  <meta property="og:type" content="music.song" />
+  <!-- Open Graph / Facebook / Messenger -->
+  <meta property="og:type" content="website" />
   <meta property="og:site_name" content="kv-music" />
   <meta property="og:title" content="{e_title}" />
   <meta property="og:description" content="{e_desc}" />
-  <meta property="og:url" content="{e_share_url}" />
+  <meta property="og:url" content="{e_url}" />
   <meta property="og:image" content="{e_cover}" />
   <meta property="og:image:secure_url" content="{e_cover}" />
   <meta property="og:image:type" content="image/jpeg" />
-  <meta property="og:image:width" content="500" />
-  <meta property="og:image:height" content="500" />
+  <meta property="og:image:width" content="1200" />
+  <meta property="og:image:height" content="630" />
   <meta property="og:image:alt" content="{e_title} by {e_artist}" />
-  <meta property="music:musician" content="{e_artist}" />
-  <meta property="music:duration" content="0" />
 
   <!-- Twitter Card -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="{e_title}" />
   <meta name="twitter:description" content="{e_desc}" />
   <meta name="twitter:image" content="{e_cover}" />
-
-  <meta http-equiv="refresh" content="0;url={e_app_url}" />
   <style>
-    * {{ margin:0; padding:0; box-sizing:border-box; }}
-    body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: radial-gradient(1200px 600px at 20% -10%, #142044, #0b132d 60%); min-height:100vh; display:flex; align-items:center; justify-content:center; color:#fff; }}
-    .card {{ background: rgba(20,32,68,.7); border:1px solid rgba(0,168,255,.25); border-radius:20px; padding:28px; max-width:380px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,.5); }}
-    img {{ width:180px; height:180px; object-fit:cover; border-radius:16px; margin-bottom:16px; box-shadow:0 10px 30px rgba(0,0,0,.5); }}
-    h1 {{ font-size:18px; font-weight:700; }}
-    p {{ color:#9fb2d9; margin-top:6px; font-size:14px; }}
-    a {{ display:inline-block; margin-top:18px; padding:10px 22px; border-radius:999px; background:linear-gradient(90deg,#00a8ff,#00d2d3); color:#fff; font-weight:700; text-decoration:none; font-size:14px; }}
-    .brand {{ margin-top:14px; font-size:11px; letter-spacing:1px; text-transform:uppercase; color:#5b6fa8; }}
+    body {{ font-family: system-ui, sans-serif; background: #111; color: #fff; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; padding: 20px; }}
+    .card {{ background: #222; border-radius: 16px; padding: 24px; max-width: 400px; text-align: center; border: 1px solid #333; }}
+    img {{ width: 240px; height: 240px; border-radius: 12px; object-fit: cover; margin-bottom: 16px; }}
+    h1 {{ font-size: 18px; margin: 0 0 8px; }}
+    p {{ color: #aaa; margin: 0 0 16px; font-size: 14px; }}
+    a {{ display: inline-block; padding: 10px 24px; background: #ff5500; color: #fff; text-decoration: none; border-radius: 99px; font-weight: bold; }}
   </style>
 </head>
 <body>
@@ -369,8 +349,7 @@ pub async fn build_og_response(
     <img src="{e_cover}" alt="{e_title}" />
     <h1>{e_title}</h1>
     <p>{e_artist}</p>
-    <a href="{e_app_url}">▶ Open in kv-music</a>
-    <div class="brand">kv-music · listen in high quality</div>
+    <a href="{e_url}">Listen on kv-music</a>
   </div>
 </body>
 </html>"#
@@ -385,7 +364,7 @@ pub async fn build_og_response(
             ),
             (
                 axum::http::header::CACHE_CONTROL,
-                axum::http::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
+                axum::http::HeaderValue::from_static("public, max-age=3600"),
             ),
         ],
         html,
