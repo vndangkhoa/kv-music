@@ -248,7 +248,6 @@ fn is_link_preview_bot(user_agent: &str) -> bool {
         "facebot",
         "meta-externalagent",
         "meta-externalfetcher",
-        "messenger",
         "twitterbot",
         "linkedinbot",
         "slackbot",
@@ -283,9 +282,7 @@ fn is_link_preview_bot(user_agent: &str) -> bool {
         "httpclient",
         "okhttp",
         "go-http-client",
-        "zalo",
         "zalobot",
-        "micromessenger",
     ]
     .iter()
     .any(|bot| ua.contains(bot))

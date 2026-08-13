@@ -63,6 +63,10 @@ export default function Track() {
       .then((data: Track) => {
         setTrackData(data);
         setLoading(false);
+        const { currentTrack, loadTrack } = usePlayerStore.getState();
+        if (!currentTrack || currentTrack.id !== data.id) {
+          loadTrack(data, [data]);
+        }
         libraryService.getRelatedContent(data.artist || data.title, 'track', 6)
           .then(res => setRelatedTracks(res.tracks || []))
           .catch(() => {});
