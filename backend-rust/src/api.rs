@@ -1,7 +1,8 @@
 use axum::{
+    body::Body,
     extract::{Path, Query, State},
     http::StatusCode,
-    response::IntoResponse,
+    response::{IntoResponse, Response},
     Json,
 };
 use serde::{Deserialize, Serialize};
@@ -15,6 +16,7 @@ pub struct AppState {
     pub spotdl: SpotdlService,
     pub auth: AuthStore,
     pub ytm: YtmBridge,
+    pub index_html: Arc<Vec<u8>>,
 }
 
 // ── Auth handlers ────────────────────────────────────────────────────────────
@@ -242,8 +244,11 @@ fn is_link_preview_bot(user_agent: &str) -> bool {
     let ua = user_agent.to_lowercase();
     [
         "facebookexternalhit",
+        "facebookcatalog",
         "facebot",
         "meta-externalagent",
+        "meta-externalfetcher",
+        "messenger",
         "twitterbot",
         "linkedinbot",
         "slackbot",
@@ -278,21 +283,19 @@ fn is_link_preview_bot(user_agent: &str) -> bool {
         "httpclient",
         "okhttp",
         "go-http-client",
+        "zalo",
+        "zalobot",
+        "micromessenger",
     ]
     .iter()
     .any(|bot| ua.contains(bot))
 }
 
-/// Serve a small server-rendered page for shared track links so that link
-/// previews (Messenger, Facebook, iMessage, etc.) can read Open Graph tags and
-/// display the album thumbnail instead of a bare URL. Humans clicking the link
-/// are redirected with a 302 straight into the app (auto-play on /track/:id) so
-/// the shared link always opens the player, even in restricted in-app browsers.
-pub async fn share_handler(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<String>,
-    headers: axum::http::HeaderMap,
-) -> impl IntoResponse {
+pub async fn build_og_response(
+    state: &AppState,
+    id: &str,
+    headers: &axum::http::HeaderMap,
+) -> Response {
     let host = headers
         .get("host")
         .and_then(|v| v.to_str().ok())
@@ -312,15 +315,7 @@ pub async fn share_handler(
     let share_url = format!("{}/share/track/{}", base, id);
     let app_url = format!("{}/track/{}", base, id);
 
-    let user_agent = headers
-        .get("user-agent")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !is_link_preview_bot(user_agent) {
-        return (StatusCode::FOUND, [(axum::http::header::LOCATION, app_url)], ()).into_response();
-    }
-
-    let (title, artist, cover_url) = state.spotdl.resolve_share_preview(&id).await;
+    let (title, artist, cover_url) = state.spotdl.resolve_share_preview(id).await;
 
     let e_title = html_escape(&title);
     let e_artist = html_escape(&artist);
@@ -339,13 +334,17 @@ pub async fn share_handler(
   <title>{e_title} - {e_artist} | kv-music</title>
   <meta name="description" content="{e_desc}" />
 
-  <!-- Open Graph (Messenger / Facebook) -->
+  <!-- Open Graph (Messenger / Facebook / Social) -->
   <meta property="og:type" content="music.song" />
   <meta property="og:site_name" content="kv-music" />
   <meta property="og:title" content="{e_title}" />
   <meta property="og:description" content="{e_desc}" />
   <meta property="og:url" content="{e_share_url}" />
   <meta property="og:image" content="{e_cover}" />
+  <meta property="og:image:secure_url" content="{e_cover}" />
+  <meta property="og:image:type" content="image/jpeg" />
+  <meta property="og:image:width" content="500" />
+  <meta property="og:image:height" content="500" />
   <meta property="og:image:alt" content="{e_title} by {e_artist}" />
   <meta property="music:musician" content="{e_artist}" />
   <meta property="music:duration" content="0" />
@@ -356,7 +355,7 @@ pub async fn share_handler(
   <meta name="twitter:description" content="{e_desc}" />
   <meta name="twitter:image" content="{e_cover}" />
 
-  <meta http-equiv="refresh" content="1;url={e_app_url}" />
+  <meta http-equiv="refresh" content="0;url={e_app_url}" />
   <style>
     * {{ margin:0; padding:0; box-sizing:border-box; }}
     body {{ font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: radial-gradient(1200px 600px at 20% -10%, #142044, #0b132d 60%); min-height:100vh; display:flex; align-items:center; justify-content:center; color:#fff; }}
@@ -387,8 +386,6 @@ pub async fn share_handler(
                 axum::http::header::CONTENT_TYPE,
                 axum::http::HeaderValue::from_static("text/html; charset=utf-8"),
             ),
-            // Never let the in-app browser serve a stale copy of this page -
-            // it must always re-fetch (and follow the redirect / refresh).
             (
                 axum::http::header::CACHE_CONTROL,
                 axum::http::HeaderValue::from_static("no-cache, no-store, must-revalidate"),
@@ -396,6 +393,61 @@ pub async fn share_handler(
         ],
         html,
     )
+        .into_response()
+}
+
+pub async fn share_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if is_link_preview_bot(user_agent) {
+        return build_og_response(&state, &id, &headers).await;
+    }
+
+    let host = headers
+        .get("host")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost:8080");
+    let scheme = if headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .map(|s| s == "https")
+        .unwrap_or(false)
+    {
+        "https"
+    } else {
+        "http"
+    };
+    let app_url = format!("{}://{}/track/{}", scheme, host, id);
+    (StatusCode::FOUND, [(axum::http::header::LOCATION, app_url)], ()).into_response()
+}
+
+pub async fn track_page_handler(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: axum::http::HeaderMap,
+) -> impl IntoResponse {
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+
+    if is_link_preview_bot(user_agent) {
+        return build_og_response(&state, &id, &headers).await;
+    }
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(axum::http::header::CONTENT_TYPE, "text/html; charset=utf-8")
+        .header(axum::http::header::CACHE_CONTROL, "no-cache")
+        .body(Body::from(state.index_html.as_ref().clone()))
+        .unwrap()
         .into_response()
 }
 

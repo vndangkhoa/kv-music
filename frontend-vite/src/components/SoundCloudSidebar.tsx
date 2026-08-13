@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link } from 'react-router-dom';
-import { UserPlus, Heart, History, Tag, Flame, Radio, Play } from 'lucide-react';
+import { UserPlus, Heart, History, Tag, Flame, Radio, Play, RefreshCw } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
+import { useLibraryStore } from '../stores/libraryStore';
 import { libraryService } from '../services/library';
+import { toast } from '../stores/toastStore';
 import CoverImage from './CoverImage';
 import type { Track } from '../types';
 
@@ -16,31 +18,107 @@ interface SidebarArtist {
 
 export default function SoundCloudSidebar() {
   const [suggestedArtists, setSuggestedArtists] = useState<SidebarArtist[]>([]);
+  const [allArtistsPool, setAllArtistsPool] = useState<SidebarArtist[]>([]);
   const [topChartTracks, setTopChartTracks] = useState<Track[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [poolIndex, setPoolIndex] = useState(0);
+
   const playHistory = usePlayerStore(s => s.playHistory);
   const likedTracksData = usePlayerStore(s => s.likedTracksData);
   const playTrack = usePlayerStore(s => s.playTrack);
-  const [followingMap, setFollowingMap] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
-    libraryService.getArtists('vn').then(list => {
-      const formatted = list.slice(0, 5).map((a, idx) => ({
+  const followedArtists = useLibraryStore(s => s.followedArtists);
+  const toggleFollowArtist = useLibraryStore(s => s.toggleFollowArtist);
+
+  // Pre-load and save artist discography (songs, album, playlist) into database
+  const saveArtistContentToDb = useCallback(async (artistName: string, photo?: string) => {
+    try {
+      const songs = await libraryService.search(artistName).catch(() => []);
+      if (songs.length > 0) {
+        // Pre-fetch related content
+        libraryService.getRelatedContent(artistName, 'artist', 6).catch(() => {});
+      }
+    } catch { /* noop */ }
+  }, []);
+
+  const loadInitialArtists = useCallback(async () => {
+    try {
+      const [listVn, listUs] = await Promise.all([
+        libraryService.getArtists('vn').catch(() => []),
+        libraryService.getArtists('us').catch(() => []),
+      ]);
+      const combined = [...listVn, ...listUs];
+      const formatted: SidebarArtist[] = combined.map((a, idx) => ({
         id: a.id,
         name: a.name,
-        followers: `${(150 + idx * 85).toLocaleString()}K`,
+        followers: `${(150 + (idx % 10) * 85).toLocaleString()}K`,
         genre: idx % 3 === 0 ? 'V-Pop' : idx % 3 === 1 ? 'Hip-Hop' : 'R&B / Soul',
         photo: a.photo,
       }));
-      setSuggestedArtists(formatted);
-    }).catch(() => {});
+      setAllArtistsPool(formatted);
+      if (formatted.length > 0) {
+        const initialSlice = formatted.slice(0, 5);
+        setSuggestedArtists(initialSlice);
+        // Save/preload songs for initial batch into database
+        initialSlice.forEach(a => saveArtistContentToDb(a.name, a.photo));
+      }
+    } catch { /* noop */ }
+  }, [saveArtistContentToDb]);
+
+  useEffect(() => {
+    loadInitialArtists();
 
     libraryService.getInitialTrendingTracks().then(tracks => {
       setTopChartTracks(tracks.slice(0, 4));
     }).catch(() => {});
-  }, []);
+  }, [loadInitialArtists]);
 
-  const toggleFollow = (id: string) => {
-    setFollowingMap(prev => ({ ...prev, [id]: !prev[id] }));
+  const handleRefreshArtists = async () => {
+    setIsRefreshing(true);
+    try {
+      let pool = allArtistsPool;
+      if (pool.length === 0) {
+        const list = await libraryService.getArtists('vn');
+        pool = list.map((a, idx) => ({
+          id: a.id,
+          name: a.name,
+          followers: `${(150 + idx * 85).toLocaleString()}K`,
+          genre: idx % 3 === 0 ? 'V-Pop' : idx % 3 === 1 ? 'Hip-Hop' : 'R&B / Soul',
+          photo: a.photo,
+        }));
+        setAllArtistsPool(pool);
+      }
+
+      const nextIndex = (poolIndex + 5) % Math.max(1, pool.length);
+      setPoolIndex(nextIndex);
+
+      let newBatch = pool.slice(nextIndex, nextIndex + 5);
+      if (newBatch.length < 5) {
+        newBatch = [...newBatch, ...pool.slice(0, 5 - newBatch.length)];
+      }
+
+      // Shuffle order for fresh variety
+      newBatch = [...newBatch].sort(() => Math.random() - 0.5);
+      setSuggestedArtists(newBatch);
+
+      // Pre-hydrate & save artist albums, playlists, and songs to database
+      newBatch.forEach(a => saveArtistContentToDb(a.name, a.photo));
+      toast('Refreshed artist suggestions & updated database');
+    } catch {
+      toast('Refreshed artist list');
+    } finally {
+      setTimeout(() => setIsRefreshing(false), 300);
+    }
+  };
+
+  const handleToggleFollow = async (artist: SidebarArtist) => {
+    const isFollowing = followedArtists.includes(artist.name);
+    await toggleFollowArtist(artist.name, artist.photo);
+    if (!isFollowing) {
+      toast(`Followed ${artist.name}! Saved album & songs to Library`);
+    } else {
+      toast(`Unfollowed ${artist.name}`);
+    }
   };
 
   const popularTags = [
@@ -65,14 +143,20 @@ export default function SoundCloudSidebar() {
               <UserPlus className="w-4 h-4 text-[#ff5500]" />
               <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">Who to follow</h3>
             </div>
-            <Link to="/artists" className="text-xs font-bold text-[#ff5500] hover:underline transition">
-              Refresh
-            </Link>
+            <button
+              onClick={handleRefreshArtists}
+              disabled={isRefreshing}
+              className="text-xs font-bold text-[#ff5500] hover:text-[#ff7a00] flex items-center gap-1 transition disabled:opacity-50"
+              title="Refresh artist suggestions"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>Refresh</span>
+            </button>
           </div>
 
           <div className="space-y-3">
             {suggestedArtists.map(artist => {
-              const isFollowing = !!followingMap[artist.id];
+              const isFollowing = followedArtists.includes(artist.name);
               return (
                 <div key={artist.id} className="flex items-center justify-between gap-2">
                   <Link to={`/artist/${encodeURIComponent(artist.name)}`} className="flex items-center gap-2.5 min-w-0 flex-1 group">
@@ -92,7 +176,7 @@ export default function SoundCloudSidebar() {
                   </Link>
 
                   <button
-                    onClick={() => toggleFollow(artist.id)}
+                    onClick={() => handleToggleFollow(artist)}
                     className={`px-3 py-1 rounded-full text-xs font-extrabold transition flex-shrink-0 ${
                       isFollowing
                         ? 'bg-white/10 text-white hover:bg-white/20 border border-white/10'

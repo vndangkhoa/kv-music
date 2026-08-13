@@ -63,10 +63,10 @@ export default function BottomNav() {
           <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Stream</span>
         </button>
 
-        {/* Center Prominent PLAY Button (Replaces Upload button) */}
+        {/* Center Prominent PLAY Button */}
         <button
           onClick={handleCenterPlayClick}
-          className="w-11 h-11 -mt-4 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-lg shadow-orange-500/40 hover:bg-[#ff7a00] active:scale-95 transition border-2 border-[#121212]"
+          className="w-10 h-10 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-lg shadow-orange-500/30 hover:bg-[#ff7a00] active:scale-95 transition border border-white/10"
           aria-label={isPlaying ? 'Pause' : 'Play'}
         >
           {isBuffering ? (

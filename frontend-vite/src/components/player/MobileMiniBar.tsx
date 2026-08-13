@@ -27,7 +27,7 @@ export default function MobileMiniBar() {
   if (!currentTrack) return null;
 
   return (
-    <div className="fixed bottom-[60px] left-2 right-2 z-50 md:hidden select-none">
+    <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom)+8px)] left-2 right-2 z-50 md:hidden select-none">
       <motion.div
         {...swipe}
         initial={{ y: 60, opacity: 0 }}

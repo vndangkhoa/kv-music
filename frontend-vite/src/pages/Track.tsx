@@ -147,52 +147,52 @@ export default function Track() {
     <div className="min-h-full text-white bg-[#121212]">
       <div className="max-w-[1240px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-6">
         {/* SoundCloud Single Track Hero Banner Header */}
-        <div className="relative w-full rounded-xl overflow-hidden bg-gradient-to-r from-[#241a15] via-[#1a1a1a] to-[#121212] border border-white/10 p-4 md:p-8 flex flex-col justify-between min-h-[300px] shadow-2xl">
-          <div className="flex items-start justify-between gap-6 z-10">
+        <div className="relative w-full rounded-xl overflow-hidden bg-gradient-to-r from-[#241a15] via-[#1a1a1a] to-[#121212] border border-white/10 p-4 sm:p-6 md:p-8 flex flex-col justify-between min-h-[260px] md:min-h-[300px] shadow-2xl">
+          <div className="flex flex-col-reverse sm:flex-row items-center sm:items-start justify-between gap-4 sm:gap-6 z-10">
             {/* Play Button & Titles */}
-            <div className="flex items-start gap-4 flex-1 min-w-0">
+            <div className="flex items-start gap-3 sm:gap-4 flex-1 min-w-0 w-full sm:w-auto">
               <button
                 onClick={handlePlay}
-                className="w-14 h-14 md:w-16 md:h-16 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform flex-shrink-0"
+                className="w-12 h-12 sm:w-14 sm:h-14 md:w-16 md:h-16 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform flex-shrink-0"
                 aria-label={isCurrent && isPlaying ? 'Pause' : 'Play'}
               >
                 {isCurrent && isPlaying ? (
-                  <Pause className="w-8 h-8 fill-current" />
+                  <Pause className="w-6 h-6 sm:w-8 sm:h-8 fill-current" />
                 ) : (
-                  <Play className="w-8 h-8 fill-current ml-1" />
+                  <Play className="w-6 h-6 sm:w-8 sm:h-8 fill-current ml-0.5 sm:ml-1" />
                 )}
               </button>
 
               <div className="min-w-0 flex-1">
-                <Link to={`/artist/${encodeURIComponent(activeTrack.artist || '')}`} className="text-sm md:text-base text-neutral-300 hover:text-white font-semibold transition block">
+                <Link to={`/artist/${encodeURIComponent(activeTrack.artist || '')}`} className="text-xs sm:text-sm md:text-base text-neutral-300 hover:text-white font-semibold transition block truncate">
                   {activeTrack.artist}
                 </Link>
-                <h1 className="text-2xl md:text-4xl font-extrabold text-white leading-tight truncate">
+                <h1 className="text-lg sm:text-2xl md:text-4xl font-extrabold text-white leading-tight break-words line-clamp-2 sm:line-clamp-none">
                   {activeTrack.title}
                 </h1>
-                <div className="flex items-center gap-2 mt-2">
-                  <span className="bg-white/10 text-neutral-300 text-xs font-semibold px-2.5 py-0.5 rounded-full">
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <span className="bg-white/10 text-neutral-300 text-[10px] sm:text-xs font-semibold px-2.5 py-0.5 rounded-full">
                     #Music
                   </span>
-                  <span className="text-xs text-neutral-400">Uploaded 2 days ago</span>
+                  <span className="text-[11px] sm:text-xs text-neutral-400">Uploaded 2 days ago</span>
                 </div>
               </div>
             </div>
 
             {/* Artwork */}
-            <div className="w-36 h-36 md:w-56 md:h-56 flex-shrink-0 rounded-lg overflow-hidden shadow-2xl bg-neutral-900 border border-white/10">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 md:w-56 md:h-56 flex-shrink-0 rounded-lg overflow-hidden shadow-2xl bg-neutral-900 border border-white/10">
               <CoverImage src={activeTrack.cover_url} alt={activeTrack.title} className="w-full h-full object-cover" fallbackText="♪" />
             </div>
           </div>
 
           {/* Large Waveform Player */}
-          <div className="mt-6 z-10">
+          <div className="mt-4 sm:mt-6 z-10">
             <Waveform
               trackId={activeTrack.id}
               played={playedFraction}
               interactive
               onSeek={handleSeek}
-              height={70}
+              height={60}
               className="w-full"
             />
             <div className="flex justify-between items-center text-xs text-neutral-400 font-mono mt-1">
@@ -216,10 +216,10 @@ export default function Track() {
           <div className="flex-1 min-w-0 space-y-6">
             {/* Social Action Bar */}
             <div className="flex items-center justify-between gap-3 pb-3 border-b border-white/10">
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5 flex-1 min-w-0">
                 <button
                   onClick={handleLike}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border transition ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border transition flex-shrink-0 whitespace-nowrap ${
                     isLiked
                       ? 'bg-[#ff5500]/10 border-[#ff5500] text-[#ff5500]'
                       : 'bg-white/5 border-white/10 text-neutral-300 hover:text-white'
@@ -231,7 +231,7 @@ export default function Track() {
 
                 <button
                   onClick={() => { setIsReposted(v => !v); toast(isReposted ? 'Repost removed' : 'Track reposted'); }}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border transition ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold border transition flex-shrink-0 whitespace-nowrap ${
                     isReposted
                       ? 'bg-green-500/10 border-green-500 text-green-400'
                       : 'bg-white/5 border-white/10 text-neutral-300 hover:text-white'
@@ -243,7 +243,7 @@ export default function Track() {
 
                 <button
                   onClick={handleShare}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold bg-white/5 border border-white/10 text-neutral-300 hover:text-white transition"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold bg-white/5 border border-white/10 text-neutral-300 hover:text-white transition flex-shrink-0 whitespace-nowrap"
                 >
                   <Share2 className="w-4 h-4" />
                   <span>Share</span>
@@ -251,14 +251,14 @@ export default function Track() {
 
                 <button
                   onClick={() => setOpenAddToPlaylist(true)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold bg-white/5 border border-white/10 text-neutral-300 hover:text-white transition"
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded text-xs font-bold bg-white/5 border border-white/10 text-neutral-300 hover:text-white transition flex-shrink-0 whitespace-nowrap"
                 >
                   <ListPlus className="w-4 h-4" />
                   <span>Add to playlist</span>
                 </button>
               </div>
 
-              <div className="flex items-center gap-3 text-xs text-neutral-400 font-medium">
+              <div className="flex items-center gap-3 text-xs text-neutral-400 font-medium flex-shrink-0">
                 {activeTrack.view_count != null && (
                   <span className="flex items-center gap-1"><Eye className="w-3.5 h-3.5" />{formatCount(activeTrack.view_count)}</span>
                 )}
@@ -273,7 +273,7 @@ export default function Track() {
               <div className="w-8 h-8 rounded-full bg-[#ff5500] text-white font-bold flex items-center justify-center text-xs flex-shrink-0">
                 SC
               </div>
-              <div className="flex-1 relative flex items-center">
+              <div className="flex-1 relative flex items-center min-w-0">
                 <input
                   type="text"
                   value={newComment}
@@ -303,8 +303,8 @@ export default function Track() {
                       {c.user[0]}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="font-bold text-white">{c.user}</span>
+                      <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-xs mb-1">
+                        <span className="font-bold text-white truncate">{c.user}</span>
                         <span className="text-[10px] text-neutral-500 font-mono">at {c.timestamp} • {c.timeAgo}</span>
                       </div>
                       <p className="text-xs text-neutral-300 leading-relaxed">{c.text}</p>

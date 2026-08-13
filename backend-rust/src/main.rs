@@ -72,8 +72,6 @@ async fn main() {
     println!("Auth store ready. Accounts persist at: {}", auth_file);
     std::io::stdout().flush().unwrap();
     
-    let app_state = Arc::new(AppState { spotdl, auth, ytm: YtmBridge::new() });
-
     let static_dir = resolve_static_dir();
     println!("Serving static files from: {}", static_dir);
 
@@ -88,6 +86,13 @@ async fn main() {
             Vec::new()
         }),
     );
+
+    let app_state = Arc::new(AppState {
+        spotdl,
+        auth,
+        ytm: YtmBridge::new(),
+        index_html: index_html.clone(),
+    });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -119,6 +124,7 @@ let app = Router::new()
         .route("/api/collection", get(api::collection_handler))
         .route("/api/stream/{id}", get(api::stream_handler))
         .route("/api/track/{id}", get(api::track_info_handler))
+        .route("/track/{id}", get(api::track_page_handler))
         .route("/share/track/{id}", get(api::share_handler))
         .route("/api/download/{id}", get(api::download_handler))
         .route("/api/artist/info", get(api::artist_info_handler))

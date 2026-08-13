@@ -53,7 +53,7 @@ export default function AppLayout() {
       <Header />
 
       {/* Main Responsive Content Area */}
-      <main className="flex-1 overflow-y-auto no-scrollbar pb-[130px] md:pb-[68px] relative scroll-smooth bg-[#121212]">
+      <main className="flex-1 overflow-y-auto no-scrollbar pb-[140px] md:pb-[80px] relative scroll-smooth bg-[#121212]">
         <Outlet />
       </main>
 

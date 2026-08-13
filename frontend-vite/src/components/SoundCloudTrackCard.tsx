@@ -107,7 +107,7 @@ export default function SoundCloudTrackCard({
 
       <div className="flex gap-3 md:gap-4">
         {/* Cover Artwork with SoundCloud Play Overlay Button */}
-        <div className="relative group/art w-24 h-24 sm:w-32 sm:h-32 md:w-36 md:h-36 flex-shrink-0 bg-neutral-900 rounded overflow-hidden">
+        <div className="relative group/art w-20 h-20 sm:w-28 sm:h-28 md:w-36 md:h-36 flex-shrink-0 bg-neutral-900 rounded overflow-hidden">
           <CoverImage
             src={track.cover_url}
             alt={track.title}
@@ -121,11 +121,11 @@ export default function SoundCloudTrackCard({
             }`}
             aria-label={isCurrent && isPlaying ? 'Pause' : 'Play'}
           >
-            <div className="w-12 h-12 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform">
+            <div className="w-9 h-9 sm:w-12 sm:h-12 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition-transform">
               {isCurrent && isPlaying ? (
-                <Pause className="w-6 h-6 fill-current" />
+                <Pause className="w-4 h-4 sm:w-6 sm:h-6 fill-current" />
               ) : (
-                <Play className="w-6 h-6 fill-current ml-0.5" />
+                <Play className="w-4 h-4 sm:w-6 sm:h-6 fill-current ml-0.5" />
               )}
             </div>
           </button>
@@ -142,7 +142,7 @@ export default function SoundCloudTrackCard({
                 </p>
                 <Link
                   to={`/track/${encodeURIComponent(track.id)}`}
-                  className="text-sm md:text-base font-bold text-white hover:text-[#ff5500] truncate block transition-colors leading-tight"
+                  className="text-xs sm:text-sm md:text-base font-bold text-white hover:text-[#ff5500] truncate block transition-colors leading-tight"
                 >
                   {track.title}
                 </Link>
@@ -155,16 +155,16 @@ export default function SoundCloudTrackCard({
             </div>
 
             {/* Interactive SoundCloud Waveform */}
-            <div className="mt-2 relative w-full max-w-full overflow-hidden">
+            <div className="mt-1 sm:mt-2 relative w-full max-w-full overflow-hidden">
               <Waveform
                 trackId={track.id}
                 played={playedFraction}
                 interactive
                 onSeek={handleSeek}
-                height={50}
+                height={40}
                 className="w-full"
               />
-              <div className="flex justify-between items-center text-[10px] text-neutral-400 font-mono mt-1">
+              <div className="flex justify-between items-center text-[10px] text-neutral-400 font-mono mt-0.5">
                 <span>
                   {isCurrent
                     ? `${Math.floor(progress / 60)}:${Math.floor(progress % 60).toString().padStart(2, '0')}`
@@ -180,12 +180,12 @@ export default function SoundCloudTrackCard({
           </div>
 
           {/* Action Bar & Stats Footer */}
-          <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/5 mt-2">
+          <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-white/5 mt-1 sm:mt-2">
             {/* Left Action Buttons */}
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 flex-1 min-w-0">
               <button
                 onClick={handleLike}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold border transition ${
+                className={`flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold border transition flex-shrink-0 whitespace-nowrap ${
                   isLiked
                     ? 'bg-[#ff5500]/10 border-[#ff5500] text-[#ff5500]'
                     : 'bg-white/5 border-white/10 text-neutral-300 hover:text-white hover:border-white/20'
@@ -197,7 +197,7 @@ export default function SoundCloudTrackCard({
 
               <button
                 onClick={handleRepost}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold border transition ${
+                className={`flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold border transition flex-shrink-0 whitespace-nowrap ${
                   isReposted
                     ? 'bg-green-500/10 border-green-500 text-green-400'
                     : 'bg-white/5 border-white/10 text-neutral-300 hover:text-white hover:border-white/20'
@@ -209,7 +209,7 @@ export default function SoundCloudTrackCard({
 
               <button
                 onClick={handleShare}
-                className="flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold bg-white/5 border border-white/10 text-neutral-300 hover:text-white hover:border-white/20 transition"
+                className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded text-[11px] sm:text-xs font-semibold bg-white/5 border border-white/10 text-neutral-300 hover:text-white hover:border-white/20 transition flex-shrink-0 whitespace-nowrap"
               >
                 <Share2 className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">Share</span>
@@ -217,18 +217,18 @@ export default function SoundCloudTrackCard({
 
               <button
                 onClick={() => setOpenAddToPlaylist(true)}
-                className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold bg-white/5 border border-white/10 text-neutral-300 hover:text-white hover:border-white/20 transition"
+                className="hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-semibold bg-white/5 border border-white/10 text-neutral-300 hover:text-white hover:border-white/20 transition flex-shrink-0 whitespace-nowrap"
               >
                 <ListPlus className="w-3.5 h-3.5" />
                 <span>Add to playlist</span>
               </button>
 
-              <div className="relative">
+              <div className="relative flex-shrink-0">
                 <button
                   onClick={() => setShowMenu(v => !v)}
                   className="p-1 rounded bg-white/5 border border-white/10 text-neutral-400 hover:text-white transition"
                 >
-                  <MoreHorizontal className="w-4 h-4" />
+                  <MoreHorizontal className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 </button>
 
                 {showMenu && (
@@ -251,7 +251,7 @@ export default function SoundCloudTrackCard({
             </div>
 
             {/* Right Stats */}
-            <div className="flex items-center gap-2.5 text-[11px] text-neutral-500 font-medium">
+            <div className="flex items-center gap-2 text-[10px] sm:text-[11px] text-neutral-500 font-medium flex-shrink-0">
               {track.view_count != null && (
                 <span className="flex items-center gap-1" title="Plays">
                   <Eye className="w-3 h-3 text-neutral-500" />
