@@ -3,14 +3,40 @@ import { GENERATED_CONTENT } from '../data/seed_data';
 import { safeStorage } from '../utils/safeStorage';
 
 const artistCoverMap = new Map<string, string>();
+
+// Initialize from seed data
 for (const entry of Object.values(GENERATED_CONTENT)) {
   if (entry.type === 'Artist' && entry.cover_url) {
     artistCoverMap.set(entry.title.toLowerCase(), entry.cover_url);
   }
 }
 
+// Hydrate from localStorage
+try {
+  const saved = JSON.parse(safeStorage.getItem('sc_artist_photos') || '{}');
+  for (const [k, v] of Object.entries(saved)) {
+    if (typeof v === 'string' && v) {
+      artistCoverMap.set(k.toLowerCase(), v);
+    }
+  }
+} catch (e) {}
+
+export function setArtistCoverUrl(name: string, url: string): void {
+  if (!name || !url) return;
+  const key = name.toLowerCase();
+  artistCoverMap.set(key, url);
+  try {
+    const saved = JSON.parse(safeStorage.getItem('sc_artist_photos') || '{}');
+    saved[key] = url;
+    safeStorage.setItem('sc_artist_photos', JSON.stringify(saved));
+  } catch (e) {}
+}
+
 export function getArtistCoverUrl(name: string): string | undefined {
-  return artistCoverMap.get(name.toLowerCase()) || artistCoverMap.get(decodeURIComponent(name).toLowerCase());
+  if (!name) return undefined;
+  const key = name.toLowerCase();
+  const decodedKey = decodeURIComponent(name).toLowerCase();
+  return artistCoverMap.get(key) || artistCoverMap.get(decodedKey);
 }
 
 // Build the stream URL with the right audio format for the current browser.

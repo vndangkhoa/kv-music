@@ -3,7 +3,7 @@ import { persist } from 'zustand/middleware';
 import { dbService, Playlist } from '../services/db';
 import { Track, StaticPlaylist } from '../types';
 import { GENERATED_CONTENT } from '../data/seed_data';
-import { libraryService } from '../services/library';
+import { libraryService, setArtistCoverUrl } from '../services/library';
 import { safeStorage } from '../utils/safeStorage';
 
 type FilterType = 'all' | 'playlists' | 'artists' | 'albums' | 'liked';
@@ -81,11 +81,16 @@ export const useLibraryStore = create<LibraryState>()(
           updatedArtists = followedArtists.filter(a => a !== artistName);
           set({ followedArtists: updatedArtists });
         } else {
-          updatedArtists = [...followedArtists, artistName];
+          // Prepend newly followed artist to top of array (index 0)
+          updatedArtists = [artistName, ...followedArtists.filter(a => a !== artistName)];
           
           // Dynamically fetch artist top tracks to populate user's account with artist's songs, albums, and playlists!
           const songs = await libraryService.search(artistName).catch(() => []);
           const cover = coverPhoto || (songs.length > 0 ? songs[0].cover_url : `https://ui-avatars.com/api/?name=${encodeURIComponent(artistName)}&background=ff5500&color=fff`);
+
+          if (cover) {
+            setArtistCoverUrl(artistName, cover);
+          }
 
           // Create artist album entry
           const newAlbum: SavedAlbum = {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
 import CoverImage from '../components/CoverImage';
+import ArtistAvatar from '../components/ArtistAvatar';
 import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
 import SoundCloudSidebar from '../components/SoundCloudSidebar';
 import { dbService } from '../services/db';
@@ -248,11 +249,9 @@ export default function Library() {
                                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
                                     {followedArtists.map((artistName) => (
                                         <Link to={`/artist/${encodeURIComponent(artistName)}`} key={artistName} className="group text-center flex flex-col items-center bg-[#181818] hover:bg-[#202020] p-3 rounded-xl border border-white/5 hover:border-white/20 transition">
-                                            <CoverImage
-                                                src={getArtistCoverUrl(artistName)}
-                                                alt={artistName}
-                                                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full object-cover border-2 border-white/10 group-hover:border-[#ff5500] transition shadow"
-                                                fallbackText={artistName?.substring(0, 2).toUpperCase()}
+                                            <ArtistAvatar
+                                                artistName={artistName}
+                                                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full"
                                             />
                                             <h3 className="font-extrabold text-white truncate text-xs mt-2.5 group-hover:text-[#ff5500] transition max-w-full">{artistName}</h3>
                                             <span className="text-[10px] text-[#ff5500] font-semibold flex items-center gap-1 mt-0.5">
