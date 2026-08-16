@@ -39,3 +39,11 @@ cache/
 *_backup.*
 nul
 *.pid
+
+# Local runtime data & secrets (never commit)
+users/
+cookies.txt
+.opencode/
+# Android machine-local config & build cache
+android/local.properties
+.gradle/
