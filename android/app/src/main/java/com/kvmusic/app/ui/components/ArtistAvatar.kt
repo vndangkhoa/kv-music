@@ -1,6 +1,7 @@
 package com.kvmusic.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -20,7 +21,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.kvmusic.app.ui.theme.GlassBorder
 
 @Composable
 fun ArtistAvatar(url: String?, name: String, size: Dp, modifier: Modifier = Modifier) {
@@ -31,7 +34,8 @@ fun ArtistAvatar(url: String?, name: String, size: Dp, modifier: Modifier = Modi
         modifier = modifier
             .size(size)
             .clip(CircleShape)
-            .background(coverGradient(name)),
+            .background(coverGradient(name))
+            .border(2.dp, GlassBorder, CircleShape),
         contentAlignment = Alignment.Center
     ) {
         if (hasImage) {

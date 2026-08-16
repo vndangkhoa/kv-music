@@ -1,6 +1,7 @@
 package com.kvmusic.app.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -22,23 +23,28 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.kvmusic.app.ui.theme.ArtA
+import com.kvmusic.app.ui.theme.ArtBorder
+import com.kvmusic.app.ui.theme.ArtC
+import com.kvmusic.app.ui.theme.T1End
+import com.kvmusic.app.ui.theme.T1Start
+import com.kvmusic.app.ui.theme.T2End
+import com.kvmusic.app.ui.theme.T2Start
 
-private val CoverPalette = listOf("#1DB954", "#FF6B6B", "#4ECDC4", "#45B7D1", "#6C5CE7", "#FDCB6E")
-
-internal fun coverColor(seed: String): Color {
-    val hex = CoverPalette[Math.floorMod(seed.hashCode(), CoverPalette.size)]
-    val rgb = hex.removePrefix("#").toLong(16)
-    return Color(0xFF000000L or rgb)
-}
+private val ArtPalettes = listOf(
+    listOf(ArtA, ArtC),
+    listOf(T1Start, T1End),
+    listOf(T2Start, T2End),
+)
 
 internal fun coverGradient(seed: String): Brush {
-    val base = coverColor(seed)
-    val dark = Color(base.red * 0.5f, base.green * 0.5f, base.blue * 0.5f)
-    return Brush.linearGradient(listOf(base, dark))
+    val palette = ArtPalettes[Math.floorMod(seed.hashCode(), ArtPalettes.size)]
+    return Brush.linearGradient(palette)
 }
 
 @Composable
@@ -53,11 +59,14 @@ fun CoverImage(
     val shape = RoundedCornerShape(cornerRadius)
     val hasImage = !url.isNullOrBlank()
     var loaded by remember(url) { mutableStateOf(false) }
+    val seed = url?.takeIf { it.isNotBlank() } ?: title
+    val brush = remember(seed) { coverGradient(seed) }
     Box(
         modifier = modifier
             .size(size)
             .clip(shape)
-            .background(coverGradient(title)),
+            .background(brush)
+            .border(1.dp, ArtBorder, shape),
         contentAlignment = Alignment.Center
     ) {
         if (hasImage) {
@@ -79,9 +88,10 @@ fun CoverImage(
                 if (text.isNotEmpty()) {
                     Text(
                         text = text,
-                        fontSize = with(LocalDensity.current) { (size * 0.34f).toSp() },
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.6f),
+                        fontSize = with(LocalDensity.current) { (size * 0.30f).toSp() },
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White.copy(alpha = 0.66f),
                     )
                 } else {
                     FallbackIcon(size)
@@ -98,7 +108,7 @@ private fun FallbackIcon(size: Dp) {
     Icon(
         imageVector = Icons.Rounded.MusicNote,
         contentDescription = null,
-        tint = Color.White.copy(alpha = 0.7f),
+        tint = Color.White.copy(alpha = 0.6f),
         modifier = Modifier.size(size * 0.35f)
     )
 }

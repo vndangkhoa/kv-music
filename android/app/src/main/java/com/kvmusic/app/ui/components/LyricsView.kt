@@ -12,12 +12,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kvmusic.app.data.model.LyricLine
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Muted
 import kotlin.math.max
 
 @Composable
@@ -38,17 +39,19 @@ fun LyricsView(lines: List<LyricLine>, currentTime: Double, onLineClick: (Double
     LazyColumn(
         state = listState,
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(vertical = 24.dp)
     ) {
         itemsIndexed(lines) { i, line ->
             val isActive = i == activeIndex
             Text(
                 text = line.text,
-                fontSize = if (isActive) 16.sp else 14.sp,
-                fontWeight = if (isActive) FontWeight.Medium else FontWeight.Normal,
-                color = if (isActive) Color.White else KvMuted,
-                modifier = Modifier.clickable { onLineClick(line.time) }
+                fontSize = if (isActive) 17.sp else 14.sp,
+                fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+                color = if (isActive) Fg else Muted.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .then(if (isActive) Modifier.graphicsLayer { scaleX = 1.05f; scaleY = 1.05f } else Modifier)
+                    .clickable { onLineClick(line.time) }
             )
         }
     }

@@ -7,23 +7,28 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -34,6 +39,7 @@ import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
@@ -51,6 +57,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -61,21 +68,32 @@ import com.kvmusic.app.KvMusicApp
 import com.kvmusic.app.data.local.FollowedArtistEntity
 import com.kvmusic.app.data.local.PlaylistEntity
 import com.kvmusic.app.data.local.SavedAlbumEntity
+import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.model.User
 import com.kvmusic.app.ui.AppUi
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.ArtistAvatar
 import com.kvmusic.app.ui.components.CoverImage
+import com.kvmusic.app.ui.components.PlaylistArtStack
 import com.kvmusic.app.ui.components.TrackRow
 import com.kvmusic.app.ui.navigation.LocalNav
 import com.kvmusic.app.ui.navigation.Routes
-import com.kvmusic.app.ui.theme.KvBorder
-import com.kvmusic.app.ui.theme.KvFaint
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.AccentSoft
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.Glass
+import com.kvmusic.app.ui.theme.GlassBorder
+import com.kvmusic.app.ui.theme.GlassStrong
+import com.kvmusic.app.ui.theme.GlyphBg
+import com.kvmusic.app.ui.theme.Hair
+import com.kvmusic.app.ui.theme.HeroTitle
 import com.kvmusic.app.ui.theme.KvOrange
 import com.kvmusic.app.ui.theme.KvOrange2
-import com.kvmusic.app.ui.theme.KvRow
-import com.kvmusic.app.ui.theme.glassCard
+import com.kvmusic.app.ui.theme.KvShapeCard
+import com.kvmusic.app.ui.theme.KvShapePill
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.glass
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -97,6 +115,8 @@ fun ProfileScreen() {
     val followedArtists by container.libraryRepository.followedArtists.collectAsStateWithLifecycle(initialValue = emptyList())
     val savedAlbums by container.libraryRepository.savedAlbums.collectAsStateWithLifecycle(initialValue = emptyList())
     val history by container.libraryRepository.history.collectAsStateWithLifecycle(initialValue = emptyList())
+    val playlistCounts by container.libraryRepository.playlistCounts()
+        .collectAsStateWithLifecycle(initialValue = emptyMap())
 
     var tab by remember { mutableStateOf(ProfileTab.OVERVIEW) }
 
@@ -107,8 +127,10 @@ fun ProfileScreen() {
     }
 
     LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 160.dp),
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.navigationBars),
+        contentPadding = PaddingValues(top = 18.dp, bottom = 160.dp),
     ) {
         item {
             ProfileHeader(
@@ -151,28 +173,26 @@ fun ProfileScreen() {
                 if (likedTracks.isEmpty()) {
                     item { TabEmpty("Danh sách bài hát yêu thích trống") }
                 } else {
-                    itemsIndexed(likedTracks, key = { _, track -> track.id }) { index, track ->
-                        TrackRow(
-                            track = track,
-                            isCurrent = playerState.currentTrack?.id == track.id,
-                            trailing = {
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        container.libraryRepository.toggleLiked(track)
-                                        Toaster.show("Đã bỏ thích")
-                                    }
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Rounded.Favorite,
-                                        contentDescription = "Bỏ thích",
-                                        tint = KvOrange,
-                                        modifier = Modifier.size(20.dp),
-                                    )
+                    glassTrackItems(
+                        tracks = likedTracks,
+                        currentTrackId = playerState.currentTrack?.id,
+                        onClick = { index -> container.playerController.playQueue(likedTracks, index) },
+                        trailing = { track ->
+                            IconButton(onClick = {
+                                scope.launch {
+                                    container.libraryRepository.toggleLiked(track)
+                                    Toaster.show("Đã bỏ thích")
                                 }
-                            },
-                            onClick = { container.playerController.playQueue(likedTracks, index) },
-                        )
-                    }
+                            }) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Favorite,
+                                    contentDescription = "Bỏ thích",
+                                    tint = KvOrange,
+                                    modifier = Modifier.size(20.dp),
+                                )
+                            }
+                        },
+                    )
                 }
             }
             ProfileTab.PLAYLISTS -> {
@@ -189,6 +209,7 @@ fun ProfileScreen() {
                             pair.forEach { playlist ->
                                 PlaylistGridCard(
                                     playlist = playlist,
+                                    count = playlistCounts[playlist.id] ?: 0,
                                     modifier = Modifier.weight(1f),
                                     onClick = { nav.navigate(Routes.playlist(playlist.id.toString())) },
                                 )
@@ -246,44 +267,25 @@ fun ProfileScreen() {
             }
             ProfileTab.HISTORY -> {
                 item {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = "Lịch sử nghe",
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            modifier = Modifier.weight(1f),
-                        )
-                        if (history.isNotEmpty()) {
-                            Text(
-                                text = "Xóa lịch sử",
-                                fontSize = 12.sp,
-                                color = KvMuted,
-                                modifier = Modifier.clickable {
-                                    scope.launch {
-                                        container.libraryRepository.clearHistory()
-                                        Toaster.show("Đã xóa lịch sử")
-                                    }
-                                },
-                            )
-                        }
-                    }
+                    HistoryHeader(
+                        count = history.size,
+                        onClear = {
+                            scope.launch {
+                                container.libraryRepository.clearHistory()
+                                Toaster.show("Đã xóa lịch sử")
+                            }
+                        },
+                    )
                 }
                 if (history.isEmpty()) {
                     item { TabEmpty("Chưa có lịch sử nghe") }
                 } else {
-                    itemsIndexed(history, key = { index, track -> "h-$index-${track.id}" }) { index, track ->
-                        TrackRow(
-                            track = track,
-                            isCurrent = playerState.currentTrack?.id == track.id,
-                            onClick = { container.playerController.playQueue(history, index) },
-                        )
-                    }
+                    glassTrackItems(
+                        tracks = history,
+                        currentTrackId = playerState.currentTrack?.id,
+                        onClick = { index -> container.playerController.playQueue(history, index) },
+                        keyById = false,
+                    )
                 }
             }
         }
@@ -320,28 +322,35 @@ private fun LoginPrompt() {
             modifier = Modifier
                 .padding(horizontal = 32.dp)
                 .fillMaxWidth()
-                .glassCard(rounded = 20.dp)
+                .glass(KvShapeCard)
                 .padding(horizontal = 24.dp, vertical = 36.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                imageVector = Icons.Rounded.Person,
-                contentDescription = null,
-                tint = KvMuted,
-                modifier = Modifier.size(64.dp),
-            )
+            Box(
+                modifier = Modifier
+                    .size(72.dp)
+                    .background(AccentSoft, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Person,
+                    contentDescription = null,
+                    tint = KvOrange,
+                    modifier = Modifier.size(36.dp),
+                )
+            }
             Spacer(Modifier.height(16.dp))
             Text(
                 text = "Đăng nhập để đồng bộ",
                 fontSize = 17.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = Fg,
             )
             Spacer(Modifier.height(6.dp))
             Text(
                 text = "Đồng bộ thư viện nhạc của bạn trên mọi thiết bị",
                 fontSize = 13.sp,
-                color = KvMuted,
+                color = Muted,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(24.dp))
@@ -362,7 +371,7 @@ private fun ProfileHeader(user: User, onSettings: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 16.dp, end = 8.dp, top = 20.dp),
+            .padding(start = 16.dp, end = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         ProfileAvatar(user)
@@ -370,9 +379,8 @@ private fun ProfileHeader(user: User, onSettings: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = user.name,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
+                style = HeroTitle,
+                color = Fg,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -380,17 +388,23 @@ private fun ProfileHeader(user: User, onSettings: () -> Unit) {
             Text(
                 text = user.email,
                 fontSize = 13.sp,
-                color = KvMuted,
+                color = Muted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = onSettings) {
+        Box(
+            modifier = Modifier
+                .size(38.dp)
+                .glass(CircleShape)
+                .clickable(onClick = onSettings),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 imageVector = Icons.Rounded.Settings,
                 contentDescription = "Cài Đặt",
-                tint = Color.White,
-                modifier = Modifier.size(22.dp),
+                tint = Muted,
+                modifier = Modifier.size(20.dp),
             )
         }
     }
@@ -401,18 +415,26 @@ private fun ProfileAvatar(user: User) {
     val (from, to) = remember(user.avatar_color) { parseAvatarGradient(user.avatar_color) }
     Box(
         modifier = Modifier
-            .size(72.dp)
-            .clip(CircleShape)
-            .background(Brush.linearGradient(listOf(from, to)))
-            .border(3.dp, KvOrange, CircleShape),
+            .size(80.dp)
+            .glass(CircleShape)
+            .padding(4.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = nameInitials(user.name),
-            fontSize = 24.sp,
-            fontWeight = FontWeight.ExtraBold,
-            color = Color.White,
-        )
+        Box(
+            modifier = Modifier
+                .size(72.dp)
+                .clip(CircleShape)
+                .background(Brush.linearGradient(listOf(from, to)))
+                .border(1.dp, GlassBorder, CircleShape),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = nameInitials(user.name),
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Fg,
+            )
+        }
     }
 }
 
@@ -445,10 +467,11 @@ private fun StatCell(value: Int, label: String, modifier: Modifier = Modifier) {
             text = value.toString(),
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = Fg,
+            fontFamily = FontFamily.Monospace,
         )
         Spacer(Modifier.height(4.dp))
-        Text(text = label, fontSize = 11.sp, color = KvMuted)
+        Text(text = label, fontSize = 11.sp, color = Muted)
     }
 }
 
@@ -458,7 +481,7 @@ private fun VerticalDivider() {
         modifier = Modifier
             .fillMaxHeight()
             .width(1.dp)
-            .background(KvBorder),
+            .background(Hair),
     )
 }
 
@@ -488,22 +511,28 @@ private fun TabBar(
             ProfileTab.HISTORY to "Lịch sử ($history)",
         ).forEach { (tab, label) ->
             val selected = tab == active
-            val shape = RoundedCornerShape(50)
-            Box(
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (selected) Fg else Fg2,
                 modifier = Modifier
-                    .clip(shape)
-                    .background(if (selected) KvOrange else KvRow)
-                    .then(if (selected) Modifier else Modifier.border(1.dp, KvBorder, shape))
+                    .clip(KvShapePill)
+                    .then(
+                        if (selected) {
+                            Modifier
+                                .background(
+                                    Brush.verticalGradient(listOf(GlassStrong, Glass)),
+                                    KvShapePill,
+                                )
+                                .border(0.5.dp, GlassBorder, KvShapePill)
+                        } else {
+                            Modifier
+                        },
+                    )
                     .clickable { onSelect(tab) }
-                    .padding(horizontal = 14.dp, vertical = 7.dp),
-            ) {
-                Text(
-                    text = label,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = if (selected) Color.White else KvMuted,
-                )
-            }
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
+            )
         }
     }
 }
@@ -518,11 +547,16 @@ private fun OverviewShortcuts(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .glass(KvShapeCard)
+            .padding(vertical = 4.dp),
     ) {
         ShortcutRow(icon = Icons.Rounded.Favorite, label = "Bài hát đã thích", onClick = onCollection)
+        HorizontalDivider(color = Hair, thickness = 0.5.dp)
         ShortcutRow(icon = Icons.Rounded.QueueMusic, label = "Playlist", onClick = onPlaylists)
+        HorizontalDivider(color = Hair, thickness = 0.5.dp)
         ShortcutRow(icon = Icons.Rounded.Person, label = "Nghệ sĩ", onClick = onArtists)
+        HorizontalDivider(color = Hair, thickness = 0.5.dp)
         ShortcutRow(icon = Icons.Rounded.MusicNote, label = "Album", onClick = onAlbums)
     }
 }
@@ -532,65 +566,138 @@ private fun ShortcutRow(icon: ImageVector, label: String, onClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 10.dp)
-            .glassCard(rounded = 14.dp)
+            .height(48.dp)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 14.dp),
+            .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = KvOrange, modifier = Modifier.size(20.dp))
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(GlyphBg, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = KvOrange, modifier = Modifier.size(19.dp))
+        }
         Spacer(Modifier.width(12.dp))
         Text(
             text = label,
-            fontSize = 14.sp,
+            fontSize = 15.sp,
             fontWeight = FontWeight.Medium,
-            color = Color.White,
+            color = Fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
         Icon(
             imageVector = Icons.Rounded.ChevronRight,
             contentDescription = null,
-            tint = KvFaint,
-            modifier = Modifier.size(20.dp),
+            tint = Faint,
+            modifier = Modifier.size(16.dp),
         )
     }
 }
 
+private fun LazyListScope.glassTrackItems(
+    tracks: List<Track>,
+    currentTrackId: String?,
+    onClick: (Int) -> Unit,
+    keyById: Boolean = true,
+    trailing: @Composable (Track) -> Unit = {},
+) {
+    itemsIndexed(
+        items = tracks,
+        key = if (keyById) { _, track -> track.id } else null,
+    ) { index, track ->
+        GlassTrackRow(
+            isFirst = index == 0,
+            isLast = index == tracks.lastIndex,
+            showDivider = index > 0,
+        ) {
+            TrackRow(
+                track = track,
+                isCurrent = currentTrackId == track.id,
+                trailing = { trailing(track) },
+                onClick = { onClick(index) },
+            )
+        }
+    }
+}
+
 @Composable
-private fun PlaylistGridCard(playlist: PlaylistEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
+private fun GlassTrackRow(
+    isFirst: Boolean,
+    isLast: Boolean,
+    showDivider: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val shape = when {
+        isFirst && isLast -> RoundedCornerShape(20.dp)
+        isFirst -> RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+        isLast -> RoundedCornerShape(bottomStart = 20.dp, bottomEnd = 20.dp)
+        else -> RectangleShape
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.04f), shape)
+            .padding(top = if (isFirst) 4.dp else 0.dp, bottom = if (isLast) 4.dp else 0.dp),
+    ) {
+        if (showDivider) {
+            HorizontalDivider(color = Hair, thickness = 0.5.dp)
+        }
+        content()
+    }
+}
+
+@Composable
+private fun PlaylistGridCard(
+    playlist: PlaylistEntity,
+    count: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.05f), shape)
+            .border(0.5.dp, GlassBorder, shape)
             .clickable(onClick = onClick)
-            .padding(4.dp),
+            .padding(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            CoverImage(url = null, title = playlist.title, size = 110.dp, cornerRadius = 12.dp, initials = true)
-        }
+        PlaylistArtStack()
         Spacer(Modifier.height(8.dp))
         Text(
             text = playlist.title,
             fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
+        )
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = "$count bài",
+            fontSize = 11.sp,
+            color = Muted,
+            fontFamily = FontFamily.Monospace,
         )
     }
 }
 
 @Composable
 private fun ArtistGridCard(artist: FollowedArtistEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.05f), shape)
+            .border(0.5.dp, GlassBorder, shape)
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
+            .padding(vertical = 12.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         ArtistAvatar(url = artist.photo, name = artist.name, size = 72.dp)
@@ -599,7 +706,7 @@ private fun ArtistGridCard(artist: FollowedArtistEntity, onClick: () -> Unit, mo
             text = artist.name,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color.White,
+            color = Fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.Center,
@@ -609,26 +716,30 @@ private fun ArtistGridCard(artist: FollowedArtistEntity, onClick: () -> Unit, mo
 
 @Composable
 private fun AlbumGridCard(album: SavedAlbumEntity, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    val shape = RoundedCornerShape(16.dp)
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(shape)
+            .background(Color.White.copy(alpha = 0.05f), shape)
+            .border(0.5.dp, GlassBorder, shape)
             .clickable(onClick = onClick)
-            .padding(4.dp),
+            .padding(8.dp),
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f),
-            contentAlignment = Alignment.Center,
-        ) {
-            CoverImage(url = album.coverUrl, title = album.title, size = 110.dp, cornerRadius = 12.dp, initials = true)
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            CoverImage(
+                url = album.coverUrl,
+                title = album.title,
+                size = maxWidth,
+                cornerRadius = 12.dp,
+                initials = true,
+            )
         }
         Spacer(Modifier.height(8.dp))
         Text(
             text = album.title,
             fontSize = 13.sp,
-            fontWeight = FontWeight.Bold,
-            color = Color.White,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -636,10 +747,36 @@ private fun AlbumGridCard(album: SavedAlbumEntity, onClick: () -> Unit, modifier
         Text(
             text = album.artist,
             fontSize = 11.sp,
-            color = KvMuted,
+            color = Muted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
+    }
+}
+
+@Composable
+private fun HistoryHeader(count: Int, onClear: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = "Lịch sử nghe",
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            color = Fg,
+            modifier = Modifier.weight(1f),
+        )
+        if (count > 0) {
+            Text(
+                text = "Xóa lịch sử",
+                fontSize = 12.sp,
+                color = LogoutRed,
+                modifier = Modifier.clickable(onClick = onClear),
+            )
+        }
     }
 }
 
@@ -648,10 +785,12 @@ private fun TabEmpty(message: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 32.dp),
+            .padding(horizontal = 16.dp, vertical = 8.dp)
+            .glass(KvShapeCard)
+            .padding(horizontal = 16.dp, vertical = 28.dp),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text = message, fontSize = 13.sp, color = KvMuted)
+        Text(text = message, fontSize = 13.sp, color = Muted)
     }
 }
 

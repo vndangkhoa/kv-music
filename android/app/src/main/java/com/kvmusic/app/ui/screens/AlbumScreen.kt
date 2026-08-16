@@ -5,6 +5,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,16 +19,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
-import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Schedule
+import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -38,31 +38,44 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import com.kvmusic.app.KvMusicApp
 import com.kvmusic.app.data.model.CollectionResponse
 import com.kvmusic.app.data.model.Recommendations
+import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.AlbumRecCard
+import com.kvmusic.app.ui.components.EqIndicator
+import com.kvmusic.app.ui.components.KvPlayButton
 import com.kvmusic.app.ui.components.CoverImage
-import com.kvmusic.app.ui.components.TrackCard
 import com.kvmusic.app.ui.components.SectionHeader
 import com.kvmusic.app.ui.components.SkeletonBox
-import com.kvmusic.app.ui.components.TrackRow
+import com.kvmusic.app.ui.components.TrackCard
 import com.kvmusic.app.ui.components.TrackRowSkeleton
 import com.kvmusic.app.ui.navigation.LocalNav
 import com.kvmusic.app.ui.navigation.Routes
-import com.kvmusic.app.ui.theme.KvFaint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.Hair
+import com.kvmusic.app.ui.theme.HeroTitle
 import com.kvmusic.app.ui.theme.KvMuted
 import com.kvmusic.app.ui.theme.KvOrange
+import com.kvmusic.app.ui.theme.KvShapeCard
+import com.kvmusic.app.ui.theme.KvShapePill
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.NavTitle
+import com.kvmusic.app.ui.theme.glass
 import com.kvmusic.app.util.Formatters
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun AlbumScreen(albumId: String) {
     val context = LocalContext.current
@@ -102,109 +115,110 @@ fun AlbumScreen(albumId: String) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                        .padding(horizontal = 16.dp),
                 ) {
-                    CoverImage(url = cover, title = title, size = 180.dp, cornerRadius = 16.dp)
-                    Spacer(Modifier.height(16.dp))
-                    Text(
-                        "Album",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White.copy(alpha = 0.7f),
-                        letterSpacing = 2.sp,
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        title,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        textAlign = TextAlign.Center,
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(artist, fontSize = 14.sp, color = KvMuted, textAlign = TextAlign.Center)
-                    Spacer(Modifier.height(16.dp))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .background(KvOrange, CircleShape)
-                                .clickable { if (tracks.isNotEmpty()) container.playerController.playQueue(tracks, 0) },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                Icons.Rounded.PlayArrow,
-                                contentDescription = "Phát",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp),
-                            )
-                        }
+                        GlassBack(onClick = { nav.popBackStack() })
                         Spacer(Modifier.width(12.dp))
-                        IconButton(
-                            onClick = {
-                                scope.launch {
-                                    container.libraryRepository.toggleSavedAlbum(albumId, title, artist, cover)
-                                    Toaster.show(if (isSaved) "Đã bỏ lưu album" else "Đã lưu album")
-                                }
-                            },
-                        ) {
-                            Icon(
-                                imageVector = if (isSaved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                                contentDescription = "Lưu album",
-                                tint = if (isSaved) KvOrange else Color.White,
-                                modifier = Modifier.size(28.dp),
+                        Text("Album", style = NavTitle, color = Fg)
+                    }
+                    Spacer(Modifier.height(18.dp))
+                    Row {
+                        CoverImage(url = cover, title = title, size = 128.dp, cornerRadius = 20.dp)
+                        Spacer(Modifier.width(16.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                "Album",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                letterSpacing = 0.08.em,
+                                color = Muted,
                             )
+                            Spacer(Modifier.height(4.dp))
+                            Text(
+                                title,
+                                style = HeroTitle,
+                                color = Fg,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = "$artist · ${tracks.size} bài hát",
+                                fontSize = 13.sp,
+                                color = Muted,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            FlowRow(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                KvPlayButton(
+                                    onClick = { if (tracks.isNotEmpty()) container.playerController.playQueue(tracks, 0) },
+                                    modifier = Modifier.align(Alignment.CenterVertically),
+                                    contentDescription = "Phát",
+                                )
+                                ShufflePill(
+                                    modifier = Modifier.align(Alignment.CenterVertically),
+                                    onClick = { if (tracks.isNotEmpty()) container.playerController.playQueue(tracks.shuffled(), 0) },
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(44.dp)
+                                        .align(Alignment.CenterVertically)
+                                        .clickable {
+                                            scope.launch {
+                                                container.libraryRepository.toggleSavedAlbum(albumId, title, artist, cover)
+                                                Toaster.show(if (isSaved) "Đã bỏ lưu album" else "Đã lưu album")
+                                            }
+                                        },
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Icon(
+                                        imageVector = if (isSaved) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                                        contentDescription = "Lưu album",
+                                        tint = if (isSaved) KvOrange else Fg2,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                }
+                            }
                         }
                     }
+                    Spacer(Modifier.height(18.dp))
                 }
             }
 
-            if (tracks.isEmpty()) {
-                item {
+            item {
+                if (tracks.isEmpty()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(32.dp),
+                            .padding(vertical = 32.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("Không có bài hát nào", fontSize = 14.sp, color = KvMuted)
+                        Text("Không có bài hát nào", fontSize = 13.sp, color = Muted)
                     }
-                }
-            } else {
-                item {
-                    Row(
+                } else {
+                    Column(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(horizontal = 16.dp)
+                            .glass(KvShapeCard),
                     ) {
-                        Text(
-                            "#",
-                            fontSize = 12.sp,
-                            color = KvFaint,
-                            modifier = Modifier.width(28.dp),
-                            textAlign = TextAlign.Center,
-                        )
-                        Text("Title", fontSize = 12.sp, color = KvFaint, modifier = Modifier.weight(1f))
-                        Icon(
-                            Icons.Rounded.Schedule,
-                            contentDescription = null,
-                            tint = KvFaint,
-                            modifier = Modifier.size(14.dp),
-                        )
+                        tracks.forEachIndexed { index, track ->
+                            CollectionTrackRow(
+                                index = index,
+                                track = track,
+                                isCurrent = playerState.currentTrack?.id == track.id,
+                                isPlaying = playerState.isPlaying,
+                                onClick = { container.playerController.playQueue(tracks, index) },
+                            )
+                            if (index < tracks.lastIndex) {
+                                Box(Modifier.fillMaxWidth().height(0.5.dp).background(Hair))
+                            }
+                        }
                     }
-                }
-                itemsIndexed(tracks) { index, track ->
-                    TrackRow(
-                        track = track,
-                        index = index + 1,
-                        isCurrent = playerState.currentTrack?.id == track.id,
-                        trailing = {
-                            Text(Formatters.duration(track.duration), fontSize = 12.sp, color = KvFaint)
-                        },
-                        onClick = { container.playerController.playQueue(tracks, index) },
-                    )
                 }
             }
 
@@ -212,7 +226,7 @@ fun AlbumScreen(albumId: String) {
             if (rec != null && (rec.tracks.isNotEmpty() || rec.albums.isNotEmpty())) {
                 item { Spacer(Modifier.height(20.dp)) }
                 item {
-                    SectionHeader(title = "Gợi ý", modifier = Modifier.padding(horizontal = 16.dp))
+                    SectionHeader(title = "Có thể bạn thích", modifier = Modifier.padding(horizontal = 16.dp))
                 }
                 if (rec.tracks.isNotEmpty()) {
                     item {
@@ -249,7 +263,108 @@ fun AlbumScreen(albumId: String) {
     }
 }
 
+@Composable
+private fun CollectionTrackRow(
+    index: Int,
+    track: Track,
+    isCurrent: Boolean,
+    isPlaying: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+    ) {
+        Text(
+            text = "${index + 1}",
+            modifier = Modifier.width(22.dp),
+            textAlign = TextAlign.End,
+            fontSize = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            color = if (isCurrent) Fg else Muted,
+            fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+        )
+        if (isCurrent) {
+            Spacer(Modifier.width(6.dp))
+            EqIndicator(playing = isPlaying)
+        } else {
+            Spacer(Modifier.width(22.dp))
+        }
+        Spacer(Modifier.width(12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = track.title,
+                fontSize = 15.sp,
+                fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
+                color = Fg,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = track.artist,
+                fontSize = 12.sp,
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = Formatters.duration(track.duration),
+            fontSize = 13.sp,
+            fontFamily = FontFamily.Monospace,
+            color = Muted,
+        )
+    }
+}
 
+@Composable
+private fun GlassBack(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .glass(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "Quay lại",
+            tint = Fg2,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
+private fun ShufflePill(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(44.dp)
+            .glass(KvShapePill)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 18.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Shuffle,
+            contentDescription = null,
+            tint = Fg2,
+            modifier = Modifier.size(17.dp),
+        )
+        Spacer(Modifier.width(8.dp))
+        Text(
+            text = "Phát ngẫu nhiên",
+            fontSize = 15.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg2,
+        )
+    }
+}
 
 @Composable
 private fun CollectionSkeleton() {
@@ -259,7 +374,7 @@ private fun CollectionSkeleton() {
             .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        SkeletonBox(width = 180.dp, height = 180.dp, shape = RoundedCornerShape(16.dp))
+        SkeletonBox(width = 128.dp, height = 128.dp, shape = RoundedCornerShape(20.dp))
         Spacer(Modifier.height(20.dp))
         SkeletonBox(width = 200.dp, height = 18.dp, shape = RoundedCornerShape(9.dp))
         Spacer(Modifier.height(8.dp))

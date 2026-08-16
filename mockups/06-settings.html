@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>06 · Settings — kv-music · iOS 26 wireframe</title>
+<style>
+  /* ─── iOS 26 wireframe tokens ─────────────────────────────────────── */
+  :root {
+    --bg: #111214;
+    --glass-hi: rgba(64,66,72,0.85);
+    --glass-lo: rgba(26,27,30,0.6);
+    --glass: rgba(30,31,34,0.7);
+    --glass-strong: rgba(46,48,53,0.92);
+    --glass-border: rgba(255,255,255,0.12);
+    --hair: rgba(255,255,255,0.09);
+    --inner-shade: rgba(0,0,0,0.4);
+    --shadow: rgba(0,0,0,0.5);
+    --glyph-bg: rgba(255,255,255,0.08);
+    --art-border: rgba(255,255,255,0.08);
+    --tag-bg: rgba(16,17,19,0.6);
+    --art-a: #3c3e42;
+    --art-b: #35373b;
+    --art-c: #2d2f33;
+    --fg: #f2f2f3;
+    --fg-2: #c9c9cd;
+    --muted: #9a9aa1;
+    --faint: #78797e;
+    --accent: #ff5500;
+    --accent-soft: rgba(255,85,0,0.16);
+    --on-accent: #f6f6f7;
+    --wash-a: rgba(255,85,0,0.16);
+    --wash-b: rgba(255,120,40,0.08);
+    --wash-c: rgba(255,85,0,0.10);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  .wash {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(520px 380px at 12% -6%, var(--wash-a), transparent 62%),
+      radial-gradient(460px 340px at 108% 18%, var(--wash-b), transparent 60%),
+      radial-gradient(620px 420px at 50% 114%, var(--wash-c), transparent 65%);
+  }
+
+  .screen { position: relative; z-index: 1; padding: 18px 16px 0; }
+
+  /* ─── glass material (Liquid Glass) ───────────────────────────────── */
+  .glass {
+    position: relative;
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    backdrop-filter: blur(26px) saturate(180%);
+    box-shadow:
+      0 0 0 0.5px var(--glass-border),
+      inset 0 -1px 0 var(--inner-shade),
+      0 12px 28px -10px var(--shadow);
+  }
+  .glass::after {
+    content: "";
+    position: absolute; top: 0; left: 8px; right: 8px; height: 1.5px;
+    background: linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.55) 22%,
+      rgba(255,255,255,0.18) 60%,
+      rgba(255,255,255,0) 100%);
+    border-radius: 999px;
+    pointer-events: none;
+  }
+
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ─── title row ───────────────────────────────────────────────────── */
+  .title-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .large-title { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+  .done { font-size: 16px; color: var(--fg-2); font-weight: 500; padding: 8px 4px; }
+
+  /* ─── grouped list ────────────────────────────────────────────────── */
+  .ghead {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+    margin: 16px 8px 6px;
+  }
+  .group { border-radius: 20px; overflow: hidden; padding: 4px 0; }
+  .lrow {
+    display: flex; align-items: center; gap: 12px;
+    height: 44px; padding: 0 14px;
+    border-bottom: 0.5px solid var(--hair);
+  }
+  .lrow:last-child { border-bottom: 0; }
+  .lrow .ll { flex: 1; min-width: 0; font-size: 16px; font-weight: 400; letter-spacing: -0.01em; }
+  .lrow .lc { font-size: 14px; color: var(--muted); }
+  .lrow .chev { width: 16px; height: 16px; color: var(--faint); flex: none; display: grid; place-items: center; }
+  .lrow .chev svg { width: 16px; height: 16px; }
+
+  /* ─── switch (iOS) ────────────────────────────────────────────────── */
+  .switch {
+    width: 51px; height: 31px; border-radius: 999px; flex: none;
+    background: var(--faint); position: relative;
+    transition: background 0.18s ease;
+  }
+  .switch.on { background: var(--accent); }
+  .switch .knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 27px; height: 27px; border-radius: 50%;
+    background: var(--on-accent);
+    box-shadow: 0 1px 3px rgba(28,28,30,0.3);
+    transition: left 0.18s ease;
+  }
+  .switch.on .knob { left: 22px; }
+
+  .version { text-align: center; font-size: 11px; color: var(--muted); margin-top: 18px; }
+
+  /* ─── wireframe art block ─────────────────────────────────────────── */
+  .wf {
+    position: relative; overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid var(--art-border);
+    background: linear-gradient(155deg, var(--art-a), var(--art-c));
+    display: grid; place-items: center;
+  }
+  .wf-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+    padding: 3px 7px; border-radius: 6px;
+    background: var(--tag-bg);
+  }
+
+  /* ─── floating mini-player (docked — pushed screen, no tab bar) ───── */
+  .mini {
+    position: fixed; left: 16px; right: 16px; bottom: 16px;
+    height: 60px; border-radius: 22px; z-index: 25;
+    display: flex; align-items: center; gap: 10px; padding: 0 10px;
+  }
+  .mini .art { width: 42px; height: 42px; border-radius: 12px; flex: none; }
+  .mini .meta { flex: 1; min-width: 0; }
+  .mini .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini .a { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn {
+    width: 44px; height: 44px; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: none; color: var(--fg);
+  }
+  .iconbtn svg { width: 24px; height: 24px; }
+  /* ─── waveform (SoundCloud signature) ─────────────────────────────── */
+  .wave { display: flex; align-items: center; gap: 2px; height: 100%; }
+  .wave i { flex: 1 1 0; height: 30%; background: var(--faint); border-radius: 2px; opacity: 0.5; }
+  .wave i.on { background: var(--accent); opacity: 1; }
+  .mini .wave { position: absolute; top: 0; left: 12px; right: 12px; height: 9px; gap: 1.5px; z-index: 1; }
+  .mini .wave i { border-radius: 1px; }
+</style>
+</head>
+<body>
+  <div class="wash" aria-hidden="true"></div>
+
+  <div class="screen" data-od-id="screen-settings">
+    <div class="title-row">
+      <h1 class="large-title">Settings</h1>
+      <a class="done" href="03-library.html" data-od-id="settings-done">Done</a>
+    </div>
+
+    <p class="ghead">Playback</p>
+    <div class="group glass" data-od-id="group-playback">
+      <a class="lrow" href="#">
+        <span class="ll">Audio Quality</span>
+        <span class="lc">High</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+      <div class="lrow" role="switch" aria-checked="true" aria-label="Gapless Playback">
+        <span class="ll">Gapless Playback</span>
+        <span class="switch on"><span class="knob"></span></span>
+      </div>
+      <a class="lrow" href="#">
+        <span class="ll">Crossfade</span>
+        <span class="lc">Off</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+    </div>
+
+    <p class="ghead">Downloads</p>
+    <div class="group glass" data-od-id="group-downloads">
+      <a class="lrow" href="#">
+        <span class="ll">Download Quality</span>
+        <span class="lc">High</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+      <div class="lrow" role="switch" aria-checked="false" aria-label="Downloads on Wi-Fi only">
+        <span class="ll">Downloads on Wi-Fi only</span>
+        <span class="switch"><span class="knob"></span></span>
+      </div>
+      <a class="lrow" href="#">
+        <span class="ll">Storage</span>
+        <span class="lc mono">2.4 GB</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+    </div>
+
+    <p class="ghead">General</p>
+    <div class="group glass" data-od-id="group-general">
+      <a class="lrow" href="#">
+        <span class="ll">Notifications</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+      <a class="lrow" href="#">
+        <span class="ll">Theme</span>
+        <span class="lc">System</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+      <a class="lrow" href="#">
+        <span class="ll">About</span>
+        <span class="lc mono">v1.0.0</span>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9.5 6 6 6-6 6"/></svg></span>
+      </a>
+    </div>
+
+    <p class="version mono">kv-music · iOS 26 wireframe · Step 1</p>
+  </div>
+
+  <a class="mini glass" href="05-now-playing.html" data-od-id="mini-player">
+    <div class="wave" data-bars="46" data-played="0.36" aria-hidden="true"></div>
+    <div class="wf art"><span class="wf-tag">42</span></div>
+    <div class="meta">
+      <p class="t">Song title placeholder</p>
+      <p class="a">Artist name</p>
+    </div>
+    <span class="iconbtn" role="presentation" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 6.5v11"/><path d="M17 6.5v11"/></svg>
+    </span>
+    <span class="iconbtn" role="presentation" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.2 5.2v13.6c0 .9 1 1.5 1.8 1L20 13c.8-.5.8-1.5 0-2L10 4.2c-.8-.5-1.8.1-1.8 1z"/></svg>
+    </span>
+  </a>
+<script>
+(function () {
+  try {
+    var doc = window.parent.document;
+    doc.documentElement.style.setProperty('--statusbar-fg', '#f4f4f5');
+    doc.documentElement.style.setProperty('--home-fg', '#f4f4f5');
+    var st = doc.createElement('style');
+    st.textContent = '.statusbar{background:#121316}.screen{background:#121316}.inner{background:#121316}';
+    doc.head.appendChild(st);
+  } catch (e) {}
+  var seed = 7;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  document.querySelectorAll('.wave').forEach(function (w) {
+    var n = parseInt(w.getAttribute('data-bars'), 10) || 40;
+    var played = parseFloat(w.getAttribute('data-played')) || 0.4;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < n; i++) {
+      var b = document.createElement('i');
+      b.style.height = (22 + rnd() * 78).toFixed(0) + '%';
+      if (i / n < played) b.classList.add('on');
+      frag.appendChild(b);
+    }
+    w.appendChild(frag);
+  });
+})();
+</script>
+</body>
+</html>

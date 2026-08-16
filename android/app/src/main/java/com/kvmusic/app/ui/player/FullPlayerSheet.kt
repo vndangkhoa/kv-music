@@ -3,23 +3,26 @@ package com.kvmusic.app.ui.player
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -39,11 +43,12 @@ import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Lyrics
+import androidx.compose.material.icons.rounded.MoreVert
 import androidx.compose.material.icons.rounded.MusicNote
-import androidx.compose.material.icons.rounded.PauseCircleFilled
-import androidx.compose.material.icons.rounded.PlayCircleFilled
+import androidx.compose.material.icons.rounded.Pause
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
-import androidx.compose.material.icons.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material.icons.rounded.RepeatOne
 import androidx.compose.material.icons.rounded.Share
@@ -51,6 +56,7 @@ import androidx.compose.material.icons.rounded.Shuffle
 import androidx.compose.material.icons.rounded.SkipNext
 import androidx.compose.material.icons.rounded.SkipPrevious
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -78,6 +84,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kvmusic.app.KvMusicApp
@@ -86,15 +93,26 @@ import com.kvmusic.app.player.PlayerController
 import com.kvmusic.app.ui.AppUi
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.CoverImage
+import com.kvmusic.app.ui.components.EqIndicator
+import com.kvmusic.app.ui.components.KvPlayButton
 import com.kvmusic.app.ui.components.KvBottomSheet
 import com.kvmusic.app.ui.components.Peaks
 import com.kvmusic.app.ui.components.Waveform
+import com.kvmusic.app.ui.theme.ArtBorder
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.Hair
 import com.kvmusic.app.ui.theme.KvBase
-import com.kvmusic.app.ui.theme.KvBorder
-import com.kvmusic.app.ui.theme.KvFaint
-import com.kvmusic.app.ui.theme.KvMuted
 import com.kvmusic.app.ui.theme.KvOrange
+import com.kvmusic.app.ui.theme.KvShapeHero
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.OnAccent
+import com.kvmusic.app.ui.theme.PlayButtonColors
+import com.kvmusic.app.ui.theme.PlayerTitle
+import com.kvmusic.app.ui.theme.glass
 import com.kvmusic.app.util.Downloader
+import com.kvmusic.app.util.Formatters
 import com.kvmusic.app.util.Share
 import kotlin.math.roundToInt
 import kotlinx.coroutines.launch
@@ -180,6 +198,7 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                 .fillMaxSize()
                 .statusBarsPadding()
                 .navigationBarsPadding()
+                .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp),
         ) {
             Box(
@@ -208,37 +227,34 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
             )
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(modifier = Modifier.size(48.dp).clickable { AppUi.fullPlayerOpen = false }, contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Rounded.KeyboardArrowDown,
-                        contentDescription = "Thu gọn",
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(26.dp),
-                    )
-                }
+                GlassCircleButton(
+                    icon = Icons.Rounded.KeyboardArrowDown,
+                    contentDescription = "Thu gọn",
+                    onClick = { AppUi.fullPlayerOpen = false },
+                )
                 Text(
                     text = "ĐANG PHÁT",
                     fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = KvMuted,
-                    letterSpacing = 2.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Muted,
+                    letterSpacing = 0.14.em,
                     textAlign = TextAlign.Center,
                     modifier = Modifier.weight(1f),
                 )
-                Box(modifier = Modifier.size(48.dp).clickable { AppUi.queueOpen = true }, contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = Icons.Rounded.QueueMusic,
-                        contentDescription = "Hàng đợi",
-                        tint = Color.White.copy(alpha = 0.8f),
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
+                GlassCircleButton(
+                    icon = Icons.Rounded.MoreVert,
+                    contentDescription = "Hàng đợi",
+                    iconSize = 20.dp,
+                    onClick = { AppUi.queueOpen = true },
+                )
             }
+
+            Spacer(Modifier.height(20.dp))
 
             Box(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+                    .align(Alignment.CenterHorizontally)
+                    .size(256.dp)
                     .pointerInput(track.id) {
                         var accumulated = 0f
                         val swipeThresholdPx = with(density) { 80.dp.toPx() }
@@ -256,51 +272,67 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                     },
                 contentAlignment = Alignment.Center,
             ) {
-                AnimatedContent(
-                    targetState = track,
-                    transitionSpec = {
-                        (slideInHorizontally { it } + fadeIn()) togetherWith (slideOutHorizontally { -it } + fadeOut())
-                    },
-                    label = "artwork",
-                ) { t ->
-                    CoverImage(url = t.cover_url, title = t.title, size = 280.dp, cornerRadius = 20.dp)
+                Box(modifier = Modifier.size(256.dp).border(1.dp, ArtBorder, KvShapeHero)) {
+                    AnimatedContent(
+                        targetState = track,
+                        transitionSpec = {
+                            (slideInHorizontally { it } + fadeIn()) togetherWith (slideOutHorizontally { -it } + fadeOut())
+                        },
+                        label = "artwork",
+                    ) { t ->
+                        CoverImage(url = t.cover_url, title = t.title, size = 256.dp, cornerRadius = 24.dp)
+                    }
                 }
             }
 
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.height(18.dp))
+
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 Text(
                     text = track.title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.White,
+                    style = PlayerTitle,
+                    color = Fg,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(Modifier.height(2.dp))
+                Spacer(Modifier.height(3.dp))
                 Text(
-                    text = track.artist,
-                    fontSize = 14.sp,
-                    color = KvMuted,
+                    text = if (track.album.isNotBlank()) "${track.artist} — ${track.album}" else track.artist,
+                    fontSize = 15.sp,
+                    color = Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Spacer(Modifier.height(14.dp))
 
-            Waveform(
-                peaks = remember(track.id) { Peaks.pseudo(track.id) },
-                progress = fraction,
-                onSeek = { ratio -> player.seekTo((ratio * durationMs).toLong()) },
-                active = true,
-                modifier = Modifier.fillMaxWidth(),
-                barCount = 60,
-            )
+            Spacer(Modifier.height(16.dp))
+
+            BoxWithConstraints(
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Waveform(
+                    peaks = remember(track.id) { Peaks.pseudo(track.id) },
+                    progress = fraction,
+                    onSeek = { ratio -> player.seekTo((ratio * durationMs).toLong()) },
+                    active = true,
+                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                    barCount = 60,
+                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(2.dp)
+                        .offset(x = ((maxWidth - 2.dp) * fraction).coerceAtLeast(0.dp))
+                        .background(OnAccent.copy(alpha = 0.9f), RoundedCornerShape(1.dp)),
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(formatTime(positionMs), fontSize = 11.sp, color = KvFaint, fontFamily = FontFamily.Monospace)
-                Text(formatTime(durationMs), fontSize = 11.sp, color = KvFaint, fontFamily = FontFamily.Monospace)
+                Text(formatTime(positionMs), fontSize = 11.sp, color = Muted, fontFamily = FontFamily.Monospace)
+                Text(formatTime(durationMs), fontSize = 11.sp, color = Muted, fontFamily = FontFamily.Monospace)
             }
 
             Row(
@@ -308,9 +340,70 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                 horizontalArrangement = Arrangement.SpaceEvenly,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                ActionIcon(
+                IconBtn(
+                    icon = Icons.Rounded.Shuffle,
+                    tint = if (state.shuffle) KvOrange else Muted,
+                    contentDescription = "Xáo trộn",
+                    iconSize = 22.dp,
+                    onClick = { player.setShuffle(!state.shuffle) },
+                )
+                IconBtn(
+                    icon = Icons.Rounded.SkipPrevious,
+                    tint = Fg,
+                    contentDescription = "Bài trước",
+                    iconSize = 26.dp,
+                    onClick = { player.previous() },
+                )
+                if (state.isBuffering) {
+                    KvPlayButton(
+                        size = 64.dp,
+                        shadowRadius = 12.dp,
+                        iconSize = 28.dp,
+                        icon = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Tạm dừng" else "Phát",
+                        onClick = { player.togglePlayPause() },
+                        content = {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(26.dp),
+                                color = PlayButtonColors.fg,
+                                strokeWidth = 2.5.dp,
+                            )
+                        },
+                    )
+                } else {
+                    KvPlayButton(
+                        size = 64.dp,
+                        shadowRadius = 12.dp,
+                        iconSize = 28.dp,
+                        icon = if (state.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                        contentDescription = if (state.isPlaying) "Tạm dừng" else "Phát",
+                        onClick = { player.togglePlayPause() },
+                    )
+                }
+                IconBtn(
+                    icon = Icons.Rounded.SkipNext,
+                    tint = Fg,
+                    contentDescription = "Bài tiếp",
+                    iconSize = 26.dp,
+                    onClick = { player.next() },
+                )
+                IconBtn(
+                    icon = if (state.repeatMode == 2) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
+                    tint = if (state.repeatMode == 0) Muted else KvOrange,
+                    contentDescription = "Lặp lại",
+                    iconSize = 22.dp,
+                    onClick = { player.cycleRepeat() },
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                IconBtn(
                     icon = if (liked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
-                    tint = if (liked) KvOrange else Color.White.copy(alpha = 0.6f),
+                    tint = if (liked) KvOrange else Fg,
                     contentDescription = "Yêu thích",
                     onClick = {
                         scope.launch {
@@ -320,33 +413,33 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                         }
                     },
                 )
-                ActionIcon(
+                IconBtn(
                     icon = Icons.Rounded.PlaylistAdd,
-                    tint = Color.White.copy(alpha = 0.6f),
+                    tint = Fg,
                     contentDescription = "Thêm vào playlist",
                     onClick = { AppUi.addToPlaylistTrack = track },
                 )
-                ActionIcon(
+                IconBtn(
                     icon = Icons.Rounded.Share,
-                    tint = Color.White.copy(alpha = 0.6f),
+                    tint = Fg,
                     contentDescription = "Chia sẻ",
                     onClick = { Share.track(context, track, musicRepository.streamUrl(track.id)) },
                 )
-                ActionIcon(
+                IconBtn(
                     icon = Icons.Rounded.Download,
-                    tint = Color.White.copy(alpha = 0.6f),
+                    tint = Fg,
                     contentDescription = "Tải xuống",
                     onClick = { downloadMenuOpen = true },
                 )
-                ActionIcon(
-                    icon = Icons.Rounded.QueueMusic,
-                    tint = Color.White.copy(alpha = 0.6f),
+                IconBtn(
+                    icon = Icons.Rounded.Lyrics,
+                    tint = Fg,
                     contentDescription = "Lời bài hát",
                     onClick = { AppUi.lyricsOpen = true },
                 )
-                ActionIcon(
+                IconBtn(
                     icon = Icons.Rounded.Videocam,
-                    tint = Color.White.copy(alpha = 0.6f),
+                    tint = Fg,
                     contentDescription = "Xem video",
                     onClick = {
                         if (container.apiClient.baseUrl().isNotBlank()) {
@@ -358,60 +451,17 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                PlayerIcon(
-                    icon = Icons.Rounded.Shuffle,
-                    tint = if (state.shuffle) KvOrange else KvMuted,
-                    contentDescription = "Xáo trộn",
-                    size = 24.dp,
-                    onClick = { player.setShuffle(!state.shuffle) },
-                )
-                PlayerIcon(
-                    icon = Icons.Rounded.SkipPrevious,
-                    tint = Color.White,
-                    contentDescription = "Bài trước",
-                    size = 34.dp,
-                    onClick = { player.previous() },
-                )
-                Box(modifier = Modifier.size(72.dp).clickable { player.togglePlayPause() }, contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = if (state.isPlaying) Icons.Rounded.PauseCircleFilled else Icons.Rounded.PlayCircleFilled,
-                        contentDescription = if (state.isPlaying) "Tạm dừng" else "Phát",
-                        tint = KvOrange,
-                        modifier = Modifier.size(72.dp),
-                    )
-                }
-                PlayerIcon(
-                    icon = Icons.Rounded.SkipNext,
-                    tint = Color.White,
-                    contentDescription = "Bài tiếp",
-                    size = 34.dp,
-                    onClick = { player.next() },
-                )
-                PlayerIcon(
-                    icon = if (state.repeatMode == 2) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat,
-                    tint = if (state.repeatMode == 0) KvMuted else KvOrange,
-                    contentDescription = "Lặp lại",
-                    size = 24.dp,
-                    onClick = { player.cycleRepeat() },
-                )
-            }
-
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Tiếp theo", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
-                Spacer(Modifier.width(6.dp))
-                Text("${state.queue.size}", fontSize = 11.sp, color = KvMuted)
+                Text("Tiếp theo", fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Fg)
+                Spacer(Modifier.width(8.dp))
+                Text("${state.queue.size}", fontSize = 11.sp, color = Muted, fontFamily = FontFamily.Monospace)
                 Spacer(Modifier.weight(1f))
             }
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(4.dp))
             if (state.queue.isEmpty()) {
                 Box(Modifier.fillMaxWidth().height(44.dp), contentAlignment = Alignment.Center) {
-                    Text("Hàng đợi trống", fontSize = 12.sp, color = KvFaint)
+                    Text("Hàng đợi trống", fontSize = 12.sp, color = Faint)
                 }
             } else {
                 Column(
@@ -426,41 +476,59 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                             verticalAlignment = Alignment.CenterVertically,
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .height(42.dp)
                                 .clickable { player.playQueue(state.queue, index) }
-                                .padding(vertical = 6.dp, horizontal = 4.dp),
+                                .padding(horizontal = 4.dp),
                         ) {
-                            CoverImage(url = queueTrack.cover_url, title = queueTrack.title, size = 40.dp, cornerRadius = 8.dp)
+                            CoverImage(url = queueTrack.cover_url, title = queueTrack.title, size = 32.dp, cornerRadius = 8.dp)
                             Spacer(Modifier.width(10.dp))
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = queueTrack.title,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (isCurrent) KvOrange else Color.White,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                )
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isCurrent) {
+                                        EqIndicator(playing = state.isPlaying)
+                                        Spacer(Modifier.width(4.dp))
+                                    }
+                                    Text(
+                                        text = queueTrack.title,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.Medium,
+                                        color = if (isCurrent) KvOrange else Fg2,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
                                 Text(
                                     text = queueTrack.artist,
-                                    fontSize = 10.sp,
-                                    color = KvMuted,
+                                    fontSize = 11.sp,
+                                    color = Muted,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
                             }
-                            Box(modifier = Modifier.size(32.dp).clickable { player.removeFromQueue(index) }, contentAlignment = Alignment.Center) {
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                Formatters.duration(queueTrack.duration),
+                                fontSize = 12.sp,
+                                color = Muted,
+                                fontFamily = FontFamily.Monospace,
+                            )
+                            Spacer(Modifier.width(4.dp))
+                            Box(
+                                modifier = Modifier.size(28.dp).clickable { player.removeFromQueue(index) },
+                                contentAlignment = Alignment.Center,
+                            ) {
                                 Icon(
                                     imageVector = Icons.Rounded.Close,
                                     contentDescription = "Xóa khỏi hàng đợi",
-                                    tint = KvFaint,
-                                    modifier = Modifier.size(16.dp),
+                                    tint = Faint,
+                                    modifier = Modifier.size(14.dp),
                                 )
                             }
                         }
                     }
                 }
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(16.dp))
         }
     }
 
@@ -470,17 +538,17 @@ private fun FullPlayerSheetContent(player: PlayerController, track: Track) {
                 "Tải xuống",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = Fg,
                 modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp),
             )
             DownloadOption(icon = Icons.Rounded.MusicNote, label = "Tải nhạc (WebM)", subtitle = "Opus • tệp nhỏ", tint = KvOrange) {
                 startDownload(fmt = "", ext = "webm")
             }
-            Spacer(Modifier.fillMaxWidth().height(1.dp).background(KvBorder))
-            DownloadOption(icon = Icons.Rounded.Download, label = "Tải nhạc (M4A)", subtitle = "AAC • chất lượng tốt", tint = KvMuted) {
+            Spacer(Modifier.fillMaxWidth().height(1.dp).background(Hair))
+            DownloadOption(icon = Icons.Rounded.Download, label = "Tải nhạc (M4A)", subtitle = "AAC • chất lượng tốt", tint = Muted) {
                 startDownload(fmt = "m4a", ext = "m4a")
             }
-            Spacer(Modifier.fillMaxWidth().height(1.dp).background(KvBorder))
+            Spacer(Modifier.fillMaxWidth().height(1.dp).background(Hair))
             DownloadOption(icon = Icons.Rounded.Videocam, label = "Tải video (MP4)", subtitle = "Video kèm âm thanh", tint = Color(0xFFE05050)) {
                 startDownload(fmt = "video", ext = "mp4")
             }
@@ -501,23 +569,39 @@ private fun DownloadOption(icon: ImageVector, label: String, subtitle: String, t
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
         Column {
-            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color.White)
-            Text(subtitle, fontSize = 11.sp, color = KvMuted)
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, color = Fg)
+            Text(subtitle, fontSize = 11.sp, color = Muted)
         }
     }
 }
 
 @Composable
-private fun ActionIcon(icon: ImageVector, tint: Color, contentDescription: String, onClick: () -> Unit) {
-    Box(modifier = Modifier.size(40.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(22.dp))
+private fun GlassCircleButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 18.dp,
+) {
+    Box(
+        modifier = modifier.size(36.dp).glass(CircleShape).clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(icon, contentDescription = contentDescription, tint = Fg2, modifier = Modifier.size(iconSize))
     }
 }
 
 @Composable
-private fun PlayerIcon(icon: ImageVector, tint: Color, contentDescription: String, size: Dp, onClick: () -> Unit) {
-    Box(modifier = Modifier.size(48.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(size))
+private fun IconBtn(
+    icon: ImageVector,
+    tint: Color,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    iconSize: Dp = 22.dp,
+) {
+    Box(modifier = modifier.size(44.dp).clickable(onClick = onClick), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(iconSize))
     }
 }
 

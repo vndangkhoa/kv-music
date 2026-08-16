@@ -1,0 +1,292 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>02 · Search — kv-music · iOS 26 wireframe</title>
+<style>
+  /* ─── iOS 26 wireframe tokens ─────────────────────────────────────── */
+  :root {
+    --bg: #111214;
+    --glass-hi: rgba(64,66,72,0.85);
+    --glass-lo: rgba(26,27,30,0.6);
+    --glass: rgba(30,31,34,0.7);
+    --glass-strong: rgba(46,48,53,0.92);
+    --glass-border: rgba(255,255,255,0.12);
+    --hair: rgba(255,255,255,0.09);
+    --inner-shade: rgba(0,0,0,0.4);
+    --shadow: rgba(0,0,0,0.5);
+    --art-border: rgba(255,255,255,0.08);
+    --tag-bg: rgba(16,17,19,0.6);
+    --lift: rgba(0,0,0,0.45);
+    --on-accent: #f6f6f7;
+    --sheen: linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.55) 22%,
+      rgba(255,255,255,0.18) 60%,
+      rgba(255,255,255,0) 100%);
+    --fg: #f2f2f3;
+    --fg-2: #c9c9cd;
+    --muted: #9a9aa1;
+    --faint: #78797e;
+    --accent: #ff5500;
+    --accent-soft: rgba(255,85,0,0.16);
+    --wash-a: rgba(255,85,0,0.16);
+    --wash-b: rgba(255,120,40,0.08);
+    --wash-c: rgba(255,85,0,0.10);
+    --art-a: #3c3e42;
+    --art-b: #35373b;
+    --art-c: #2d2f33;
+    --art-t1a: #4d3a2c;
+    --art-t1b: #372720;
+    --art-t2a: #3b3e4a;
+    --art-t2b: #2c2e38;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  .wash {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(520px 380px at 12% -6%, var(--wash-a), transparent 62%),
+      radial-gradient(460px 340px at 108% 18%, var(--wash-b), transparent 60%),
+      radial-gradient(620px 420px at 50% 114%, var(--wash-c), transparent 65%);
+  }
+
+  .screen { position: relative; z-index: 1; padding: 18px 16px 0; }
+
+  /* ─── glass material (Liquid Glass) ───────────────────────────────── */
+  .glass {
+    position: relative;
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    backdrop-filter: blur(26px) saturate(180%);
+    box-shadow:
+      0 0 0 0.5px var(--glass-border),
+      inset 0 -1px 0 var(--inner-shade),
+      0 12px 28px -10px var(--shadow);
+  }
+  .glass::after {
+    content: "";
+    position: absolute; top: 0; left: 8px; right: 8px; height: 1.5px;
+    background: var(--sheen);
+    border-radius: 999px;
+    pointer-events: none;
+  }
+
+  /* ─── type ────────────────────────────────────────────────────────── */
+  .large-title { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; margin-bottom: 14px; }
+  .h2row { display: flex; align-items: baseline; justify-content: space-between; margin: 26px 0 12px; }
+  .h2row h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.01em; }
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ─── search field ────────────────────────────────────────────────── */
+  .field {
+    display: flex; align-items: center; gap: 8px;
+    height: 46px; border-radius: 23px; padding: 0 16px;
+    margin-bottom: 14px;
+  }
+  .field svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+  .field input {
+    flex: 1; min-width: 0; border: 0; background: none;
+    font: inherit; font-size: 16px; color: var(--fg);
+  }
+  .field input::placeholder { color: var(--muted); }
+
+  /* ─── chips ───────────────────────────────────────────────────────── */
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; padding-bottom: 2px; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip {
+    flex: none; padding: 9px 16px; border-radius: 999px;
+    font-size: 14px; font-weight: 500; color: var(--fg-2);
+  }
+  .chip.on { background: var(--glass-strong); color: var(--fg); font-weight: 600; }
+
+  /* ─── wireframe art blocks ────────────────────────────────────────── */
+  .wf {
+    position: relative; overflow: hidden;
+    border-radius: 20px;
+    border: 1px solid var(--art-border);
+    background: linear-gradient(155deg, var(--art-a), var(--art-c));
+    display: grid; place-items: center;
+  }
+  .wf.t1 { background: linear-gradient(155deg, var(--art-t1a), var(--art-t1b)); }
+  .wf.t2 { background: linear-gradient(155deg, var(--art-t2a), var(--art-t2b)); }
+
+  /* ─── browse grid ─────────────────────────────────────────────────── */
+  .browse { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .bcard {
+    position: relative; height: 92px; border-radius: 20px;
+    display: flex; align-items: flex-end;
+    padding: 12px;
+  }
+  .bcard .bl { font-size: 14px; font-weight: 700; letter-spacing: -0.01em; color: var(--fg); text-shadow: 0 1px 0 var(--lift); }
+  .bcard .wf-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+    position: absolute; top: 8px; right: 10px;
+    padding: 2px 6px; border-radius: 6px; background: var(--tag-bg);
+  }
+
+  /* ─── floating tab bar ────────────────────────────────────────────── */
+  .tabbar {
+    position: fixed; left: 16px; right: 16px; bottom: 14px;
+    height: 64px; border-radius: 34px; z-index: 30;
+    display: flex; align-items: center; justify-content: space-around;
+    padding: 0 10px;
+  }
+  .tab {
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    width: 84px; padding: 6px 0 4px; border-radius: 14px;
+    font-size: 10px; font-weight: 500; color: var(--muted);
+    letter-spacing: 0.01em;
+  }
+  .tab .tbg { width: 50px; height: 30px; border-radius: 15px; display: grid; place-items: center; }
+  .tab svg { width: 24px; height: 24px; }
+  .tab.on { color: var(--accent); }
+  .tab.on .tbg { background: var(--accent-soft); }
+
+  /* ─── floating mini-player ────────────────────────────────────────── */
+  .mini {
+    position: fixed; left: 16px; right: 16px; bottom: 90px;
+    height: 60px; border-radius: 22px; z-index: 25;
+    display: flex; align-items: center; gap: 10px; padding: 0 10px;
+  }
+  .mini .art { width: 42px; height: 42px; border-radius: 12px; flex: none; }
+  .mini .meta { flex: 1; min-width: 0; }
+  .mini .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini .a { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn {
+    width: 44px; height: 44px; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: none; color: var(--fg);
+  }
+  .iconbtn svg { width: 24px; height: 24px; }
+  /* ─── waveform (SoundCloud signature) ─────────────────────────────── */
+  .wave { display: flex; align-items: center; gap: 2px; height: 100%; }
+  .wave i { flex: 1 1 0; height: 30%; background: var(--faint); border-radius: 2px; opacity: 0.5; }
+  .wave i.on { background: var(--accent); opacity: 1; }
+  .mini .wave { position: absolute; top: 0; left: 12px; right: 12px; height: 9px; gap: 1.5px; z-index: 1; }
+  .mini .wave i { border-radius: 1px; }
+</style>
+</head>
+<body>
+  <div class="wash" aria-hidden="true"></div>
+
+  <div class="screen" data-od-id="screen-search">
+    <h1 class="large-title">Search</h1>
+
+    <div class="field glass" role="search" data-od-id="search-field">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m15.8 15.8 4.2 4.2"/></svg>
+      <input type="search" placeholder="Search songs, artists, albums" aria-label="Search" />
+    </div>
+
+    <div class="chips" data-od-id="chips" role="list" aria-label="Browse categories">
+      <a class="chip on" href="#" role="listitem">Moods</a>
+      <a class="chip" href="#" role="listitem">Genres</a>
+      <a class="chip" href="#" role="listitem">Top 100</a>
+      <a class="chip" href="#" role="listitem">Charts</a>
+      <a class="chip" href="#" role="listitem">Indie</a>
+      <a class="chip" href="#" role="listitem">Focus</a>
+    </div>
+
+    <div class="h2row">
+      <h2>Browse</h2>
+    </div>
+
+    <div class="browse" data-od-id="browse-grid">
+      <a class="bcard wf t1" href="#">
+        <span class="wf-tag">ART 1:1</span>
+        <span class="bl">Mood placeholder</span>
+      </a>
+      <a class="bcard wf" href="#">
+        <span class="wf-tag">ART 1:1</span>
+        <span class="bl">Genre placeholder</span>
+      </a>
+      <a class="bcard wf t2" href="#">
+        <span class="wf-tag">ART 1:1</span>
+        <span class="bl">Chart placeholder</span>
+      </a>
+      <a class="bcard wf" href="#">
+        <span class="wf-tag">ART 1:1</span>
+        <span class="bl">Station placeholder</span>
+      </a>
+      <a class="bcard wf" href="#">
+        <span class="wf-tag">ART 1:1</span>
+        <span class="bl">Artist placeholder</span>
+      </a>
+      <a class="bcard wf t1" href="#">
+        <span class="wf-tag">ART 1:1</span>
+        <span class="bl">Label placeholder</span>
+      </a>
+    </div>
+  </div>
+
+  <a class="mini glass" href="05-now-playing.html" data-od-id="mini-player">
+    <div class="wave" data-bars="46" data-played="0.36" aria-hidden="true"></div>
+    <div class="wf art t1"><span class="wf-tag">42</span></div>
+    <div class="meta">
+      <p class="t">Song title placeholder</p>
+      <p class="a">Artist name</p>
+    </div>
+    <span class="iconbtn" role="presentation" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 6.5v11"/><path d="M17 6.5v11"/></svg>
+    </span>
+    <span class="iconbtn" role="presentation" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.2 5.2v13.6c0 .9 1 1.5 1.8 1L20 13c.8-.5.8-1.5 0-2L10 4.2c-.8-.5-1.8.1-1.8 1z"/></svg>
+    </span>
+  </a>
+
+  <nav class="tabbar glass" data-od-id="tab-bar" aria-label="Primary tabs">
+    <a class="tab" href="01-home.html">
+      <span class="tbg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M4.5 10.3 12 4l7.5 6.3"/><path d="M6.5 8.8V19a1 1 0 0 0 1 1h9a1 1 0 0 0 1-1V8.8"/></svg></span>
+      Home
+    </a>
+    <a class="tab on" href="02-search.html" aria-current="page">
+      <span class="tbg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m15.8 15.8 4.2 4.2"/></svg></span>
+      Search
+    </a>
+    <a class="tab" href="03-library.html">
+      <span class="tbg"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M5 8.5h14v8.5a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2z"/><path d="M7.5 5.5h11A1.5 1.5 0 0 1 20 7v1.5"/></svg></span>
+      Library
+    </a>
+  </nav>
+<script>
+(function () {
+  try {
+    var doc = window.parent.document;
+    doc.documentElement.style.setProperty('--statusbar-fg', '#f4f4f5');
+    doc.documentElement.style.setProperty('--home-fg', '#f4f4f5');
+    var st = doc.createElement('style');
+    st.textContent = '.statusbar{background:#121316}.screen{background:#121316}.inner{background:#121316}';
+    doc.head.appendChild(st);
+  } catch (e) {}
+  var seed = 7;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  document.querySelectorAll('.wave').forEach(function (w) {
+    var n = parseInt(w.getAttribute('data-bars'), 10) || 40;
+    var played = parseFloat(w.getAttribute('data-played')) || 0.4;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < n; i++) {
+      var b = document.createElement('i');
+      b.style.height = (22 + rnd() * 78).toFixed(0) + '%';
+      if (i / n < played) b.classList.add('on');
+      frag.appendChild(b);
+    }
+    w.appendChild(frag);
+  });
+})();
+</script>
+</body>
+</html>

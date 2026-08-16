@@ -6,11 +6,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Environment
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -26,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Download
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.FavoriteBorder
@@ -35,8 +37,8 @@ import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PlaylistAdd
 import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Videocam
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,12 +50,11 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kvmusic.app.KvMusicApp
@@ -63,21 +64,30 @@ import com.kvmusic.app.data.model.VideoStats
 import com.kvmusic.app.ui.AppUi
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.CoverImage
-import com.kvmusic.app.ui.components.TrackCard
+import com.kvmusic.app.ui.components.KvPlayButton
 import com.kvmusic.app.ui.components.KvBottomSheet
 import com.kvmusic.app.ui.components.SectionHeader
 import com.kvmusic.app.ui.components.SkeletonBox
+import com.kvmusic.app.ui.components.TrackCard
 import com.kvmusic.app.ui.components.TrackRowSkeleton
 import com.kvmusic.app.ui.navigation.LocalNav
 import com.kvmusic.app.ui.navigation.Routes
-import com.kvmusic.app.ui.theme.KvBorder
-import com.kvmusic.app.ui.theme.KvFaint
+import com.kvmusic.app.ui.theme.AccentSoft
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.HeroTitle
 import com.kvmusic.app.ui.theme.KvMuted
 import com.kvmusic.app.ui.theme.KvOrange
-import com.kvmusic.app.ui.theme.KvRow
+import com.kvmusic.app.ui.theme.KvShapePill
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.NavTitle
+import com.kvmusic.app.ui.theme.PlayButtonColors
+import com.kvmusic.app.ui.theme.glass
 import com.kvmusic.app.util.Formatters
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TrackScreen(trackId: String) {
     val context = LocalContext.current
@@ -124,26 +134,36 @@ fun TrackScreen(trackId: String) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                            .padding(horizontal = 16.dp),
                     ) {
-                        CoverImage(url = current.cover_url, title = current.title, size = 200.dp, cornerRadius = 16.dp)
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            current.title,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                        )
-                        Spacer(Modifier.height(4.dp))
-                        Text(
-                            current.artist,
-                            fontSize = 14.sp,
-                            color = KvMuted,
-                            modifier = Modifier.clickable { nav.navigate(Routes.artist(current.artist, current.artist)) },
-                        )
-                        Spacer(Modifier.height(12.dp))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            GlassBack(onClick = { nav.popBackStack() })
+                            Spacer(Modifier.width(12.dp))
+                            Text("Bài hát", style = NavTitle, color = Fg)
+                        }
+                        Spacer(Modifier.height(18.dp))
+                        Row {
+                            CoverImage(url = current.cover_url, title = current.title, size = 128.dp, cornerRadius = 20.dp)
+                            Spacer(Modifier.width(16.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    current.title,
+                                    style = HeroTitle,
+                                    color = Fg,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Spacer(Modifier.height(4.dp))
+                                Text(
+                                    current.artist,
+                                    fontSize = 15.sp,
+                                    color = Fg2,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.clickable { nav.navigate(Routes.artist(current.artist, current.artist)) },
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -153,28 +173,31 @@ fun TrackScreen(trackId: String) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(bottom = 8.dp),
+                                .padding(vertical = 12.dp),
                             horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
                         ) {
                             if (s.view_count != null) {
                                 Text(
                                     "${Formatters.count(s.view_count)} lượt xem",
                                     fontSize = 12.sp,
-                                    color = KvFaint,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Faint,
                                 )
                             }
                             if (s.like_count != null) {
                                 Text(
                                     "${Formatters.count(s.like_count)} lượt thích",
                                     fontSize = 12.sp,
-                                    color = KvFaint,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Faint,
                                 )
                             }
                             if (s.comment_count != null) {
                                 Text(
                                     "${Formatters.count(s.comment_count)} bình luận",
                                     fontSize = 12.sp,
-                                    color = KvFaint,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = Faint,
                                 )
                             }
                         }
@@ -182,37 +205,53 @@ fun TrackScreen(trackId: String) {
                 }
 
                 item {
-                    Row(
+                    FlowRow(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                        verticalAlignment = Alignment.CenterVertically,
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(56.dp)
-                                .background(KvOrange, CircleShape)
-                                .clickable {
+                        if (playerState.isBuffering) {
+                            KvPlayButton(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                icon = if (isCurrent && playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                contentDescription = "Phát / Tạm dừng",
+                                onClick = {
                                     if (isCurrent) {
                                         container.playerController.togglePlayPause()
                                     } else {
                                         container.playerController.playTrack(current, listOf(current), 0)
                                     }
                                 },
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Icon(
-                                imageVector = if (isCurrent && playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
+                                content = {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        color = PlayButtonColors.fg,
+                                        strokeWidth = 2.5.dp,
+                                    )
+                                },
+                            )
+                        } else {
+                            KvPlayButton(
+                                modifier = Modifier.align(Alignment.CenterVertically),
+                                icon = if (isCurrent && playerState.isPlaying) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
                                 contentDescription = "Phát / Tạm dừng",
-                                tint = Color.White,
-                                modifier = Modifier.size(32.dp),
+                                onClick = {
+                                    if (isCurrent) {
+                                        container.playerController.togglePlayPause()
+                                    } else {
+                                        container.playerController.playTrack(current, listOf(current), 0)
+                                    }
+                                },
                             )
                         }
-                        ActionIconButton(
+                        ActionPill(
+                            modifier = Modifier.align(Alignment.CenterVertically),
                             icon = if (isLiked) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
                             contentDescription = "Yêu thích",
-                            tint = if (isLiked) KvOrange else Color.White,
+                            label = "Thích",
+                            active = isLiked,
                             onClick = {
                                 scope.launch {
                                     container.libraryRepository.toggleLiked(current)
@@ -220,22 +259,16 @@ fun TrackScreen(trackId: String) {
                                 }
                             },
                         )
-                        ActionIconButton(
+                        ActionPill(
+                            modifier = Modifier.align(Alignment.CenterVertically),
                             icon = Icons.Rounded.PlaylistAdd,
-                            contentDescription = "Thêm vào playlist",
-                            tint = Color.White,
+                            label = "Thêm vào playlist",
                             onClick = { AppUi.addToPlaylistTrack = current },
                         )
-                        ActionIconButton(
-                            icon = Icons.Rounded.Download,
-                            contentDescription = "Tải xuống",
-                            tint = Color.White,
-                            onClick = { showDownload = true },
-                        )
-                        ActionIconButton(
+                        ActionPill(
+                            modifier = Modifier.align(Alignment.CenterVertically),
                             icon = Icons.Rounded.Share,
-                            contentDescription = "Chia sẻ",
-                            tint = Color.White,
+                            label = "Chia sẻ",
                             onClick = {
                                 val streamUrl = container.musicRepository.streamUrl(current.id)
                                 val text = "${current.title} — ${current.artist}" +
@@ -252,6 +285,12 @@ fun TrackScreen(trackId: String) {
                                 }
                             },
                         )
+                        ActionPill(
+                            modifier = Modifier.align(Alignment.CenterVertically),
+                            icon = Icons.Rounded.Download,
+                            label = "Tải xuống",
+                            onClick = { showDownload = true },
+                        )
                     }
                 }
 
@@ -259,27 +298,27 @@ fun TrackScreen(trackId: String) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(bottom = 8.dp),
+                            .padding(bottom = 12.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        PillButton(icon = Icons.Rounded.Videocam, label = "Video") {
+                        ActionPill(icon = Icons.Rounded.Videocam, label = "Video", onClick = {
                             AppUi.videoTrack = current
-                        }
+                        })
                         Spacer(Modifier.width(12.dp))
-                        PillButton(icon = Icons.Rounded.Lyrics, label = "Lời bài hát") {
+                        ActionPill(icon = Icons.Rounded.Lyrics, label = "Lời bài hát", onClick = {
                             if (playerState.currentTrack?.id != current.id) {
                                 container.playerController.playTrack(current, listOf(current), 0)
                             }
                             AppUi.lyricsOpen = true
-                        }
+                        })
                     }
                 }
 
                 if (recTracks.isNotEmpty()) {
                     item {
                         Spacer(Modifier.height(12.dp))
-                        SectionHeader(title = "Gợi ý", modifier = Modifier.padding(horizontal = 16.dp))
+                        SectionHeader(title = "Có thể bạn thích", modifier = Modifier.padding(horizontal = 16.dp))
                     }
                     item {
                         LazyRow(
@@ -305,7 +344,7 @@ fun TrackScreen(trackId: String) {
                 "Tải xuống",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
-                color = Color.White,
+                color = Fg,
                 modifier = Modifier.padding(16.dp),
             )
             SheetOption(label = "Tải nhạc (WebM)") {
@@ -350,26 +389,56 @@ private fun sanitizeFileName(name: String): String =
     name.replace(Regex("[^\\p{L}\\p{N}\\s._-]+"), "_").trim().ifEmpty { "track" }
 
 @Composable
-private fun ActionIconButton(icon: ImageVector, contentDescription: String, tint: Color, onClick: () -> Unit) {
-    IconButton(onClick = onClick) {
-        Icon(icon, contentDescription = contentDescription, tint = tint, modifier = Modifier.size(24.dp))
+private fun GlassBack(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .size(36.dp)
+            .glass(CircleShape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
+            contentDescription = "Quay lại",
+            tint = Fg2,
+            modifier = Modifier.size(18.dp),
+        )
     }
 }
 
 @Composable
-private fun PillButton(icon: ImageVector, label: String, onClick: () -> Unit) {
+private fun ActionPill(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    active: Boolean = false,
+    contentDescription: String? = null,
+) {
     Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(KvRow)
-            .border(1.dp, KvBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
+        modifier = modifier
+            .height(40.dp)
+            .then(
+                if (active) Modifier.background(AccentSoft, KvShapePill)
+                else Modifier.glass(KvShapePill)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = KvOrange, modifier = Modifier.size(16.dp))
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = if (active) KvOrange else Fg2,
+            modifier = Modifier.size(16.dp),
+        )
         Spacer(Modifier.width(6.dp))
-        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
+        Text(
+            text = label,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            color = if (active) KvOrange else Fg2,
+        )
     }
 }
 
@@ -382,13 +451,11 @@ private fun SheetOption(label: String, onClick: () -> Unit) {
             .padding(horizontal = 20.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(Icons.Rounded.Download, contentDescription = null, tint = KvMuted, modifier = Modifier.size(20.dp))
+        Icon(Icons.Rounded.Download, contentDescription = null, tint = Muted, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(12.dp))
-        Text(label, fontSize = 14.sp, color = Color.White)
+        Text(label, fontSize = 14.sp, color = Fg)
     }
 }
-
-
 
 @Composable
 private fun TrackSkeleton() {
@@ -398,7 +465,7 @@ private fun TrackSkeleton() {
             .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        SkeletonBox(width = 200.dp, height = 200.dp, shape = RoundedCornerShape(16.dp))
+        SkeletonBox(width = 128.dp, height = 128.dp, shape = RoundedCornerShape(20.dp))
         Spacer(Modifier.height(20.dp))
         SkeletonBox(width = 220.dp, height = 18.dp, shape = RoundedCornerShape(9.dp))
         Spacer(Modifier.height(8.dp))

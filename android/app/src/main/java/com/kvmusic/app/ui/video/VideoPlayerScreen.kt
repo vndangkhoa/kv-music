@@ -20,13 +20,16 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.kvmusic.app.KvMusicApp
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.ui.AppUi
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.KvBackground
+import com.kvmusic.app.ui.theme.KvShapeHero
+import com.kvmusic.app.ui.theme.glass
 
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
@@ -41,31 +44,42 @@ fun VideoPlayerScreen(track: Track) {
 
     BackHandler { AppUi.videoTrack = null }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                WebView(ctx).apply {
-                    settings.javaScriptEnabled = true
-                    settings.mediaPlaybackRequiresUserGesture = false
-                    settings.domStorageEnabled = true
-                    webChromeClient = WebChromeClient()
-                    webViewClient = WebViewClient()
-                    loadUrl("https://www.youtube.com/embed/${track.id}?autoplay=1&playsinline=1&rel=0")
-                }
-            },
-        )
-        Icon(
-            imageVector = Icons.Rounded.Close,
-            contentDescription = "Đóng",
-            tint = Color.White,
+    Box(modifier = Modifier.fillMaxSize().background(KvBackground)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(12.dp)
+                .glass(KvShapeHero),
+        ) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    WebView(ctx).apply {
+                        settings.javaScriptEnabled = true
+                        settings.mediaPlaybackRequiresUserGesture = false
+                        settings.domStorageEnabled = true
+                        webChromeClient = WebChromeClient()
+                        webViewClient = WebViewClient()
+                        loadUrl("https://www.youtube.com/embed/${track.id}?autoplay=1&playsinline=1&rel=0")
+                    }
+                },
+            )
+        }
+        Box(
             modifier = Modifier
                 .align(Alignment.TopStart)
-                .padding(12.dp)
-                .size(40.dp)
-                .background(Color.Black.copy(alpha = 0.5f), CircleShape)
-                .clickable { AppUi.videoTrack = null }
-                .padding(8.dp),
-        )
+                .padding(20.dp)
+                .size(36.dp)
+                .glass(CircleShape)
+                .clickable { AppUi.videoTrack = null },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Close,
+                contentDescription = "Đóng",
+                tint = Fg2,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
 }

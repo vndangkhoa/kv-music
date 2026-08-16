@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>04 · Playlist — kv-music · iOS 26 wireframe</title>
+<style>
+  /* ─── iOS 26 wireframe tokens ─────────────────────────────────────── */
+  :root {
+    --bg: #111214;
+    --glass-hi: rgba(64,66,72,0.85);
+    --glass-lo: rgba(26,27,30,0.6);
+    --glass: rgba(30,31,34,0.7);
+    --glass-strong: rgba(46,48,53,0.92);
+    --glass-border: rgba(255,255,255,0.12);
+    --hair: rgba(255,255,255,0.09);
+    --inner-shade: rgba(0,0,0,0.4);
+    --shadow: rgba(0,0,0,0.5);
+    --art-border: rgba(255,255,255,0.08);
+    --glyph-bg: rgba(255,255,255,0.08);
+    --tag-bg: rgba(16,17,19,0.6);
+    --fg: #f2f2f3;
+    --fg-2: #c9c9cd;
+    --muted: #9a9aa1;
+    --faint: #78797e;
+    --accent: #ff5500;
+    --accent-soft: rgba(255,85,0,0.16);
+    --accent-glow: rgba(255,85,0,0.45);
+    --on-accent: #f6f6f7;
+    --wash-a: rgba(255,85,0,0.16);
+    --wash-b: rgba(255,120,40,0.08);
+    --wash-c: rgba(255,85,0,0.10);
+    --art-a: #3c3e42;
+    --art-b: #35373b;
+    --art-c: #2d2f33;
+    --art-t1a: #4d3a2c;
+    --art-t1b: #372720;
+    --art-t2a: #3b3e4a;
+    --art-t2b: #2c2e38;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  .wash {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(520px 380px at 12% -6%, var(--wash-a), transparent 62%),
+      radial-gradient(460px 340px at 108% 18%, var(--wash-b), transparent 60%),
+      radial-gradient(620px 420px at 50% 114%, var(--wash-c), transparent 65%);
+  }
+
+  .screen { position: relative; z-index: 1; padding: 18px 16px 0; }
+
+  /* ─── glass material (Liquid Glass) ───────────────────────────────── */
+  .glass {
+    position: relative;
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    backdrop-filter: blur(26px) saturate(180%);
+    box-shadow:
+      0 0 0 0.5px var(--glass-border),
+      inset 0 -1px 0 var(--inner-shade),
+      0 12px 28px -10px var(--shadow);
+  }
+  .glass::after {
+    content: "";
+    position: absolute; top: 0; left: 8px; right: 8px; height: 1.5px;
+    background: linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.55) 22%,
+      rgba(255,255,255,0.18) 60%,
+      rgba(255,255,255,0) 100%);
+    border-radius: 999px;
+    pointer-events: none;
+  }
+
+  /* ─── type ────────────────────────────────────────────────────────── */
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ─── nav row ─────────────────────────────────────────────────────── */
+  .navrow { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .back {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--fg-2);
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+    box-shadow: 0 0 0 0.5px var(--glass-border);
+  }
+  .back svg { width: 18px; height: 18px; }
+  .navtitle { font-size: 17px; font-weight: 600; letter-spacing: -0.01em; }
+
+  /* ─── playlist hero ───────────────────────────────────────────────── */
+  .pl-head { display: flex; gap: 16px; align-items: center; }
+  .pl-art { width: 128px; height: 128px; border-radius: 20px; flex: none; }
+  .pl-eyebrow { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .pl-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.1; margin-top: 4px; }
+  .pl-sub { font-size: 13px; color: var(--muted); margin-top: 6px; }
+  .pl-actions { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .pbtn {
+    width: 52px; height: 52px; border: 0; border-radius: 50%; flex: none;
+    background: var(--on-accent); color: var(--bg);
+    display: grid; place-items: center; cursor: pointer;
+    box-shadow: 0 8px 18px -6px var(--accent-glow);
+  }
+  .pbtn svg { width: 22px; height: 22px; }
+  .shuffle {
+    display: inline-flex; align-items: center; gap: 8px;
+    height: 44px; padding: 0 18px; border-radius: 999px;
+    font-size: 15px; font-weight: 600; color: var(--fg-2);
+  }
+  .shuffle svg { width: 17px; height: 17px; }
+
+  /* ─── wireframe art block ─────────────────────────────────────────── */
+  .wf {
+    position: relative; overflow: hidden;
+    border-radius: 18px;
+    border: 1px solid var(--art-border);
+    background: linear-gradient(155deg, var(--art-a), var(--art-c));
+    display: grid; place-items: center;
+  }
+  .wf.t2 { background: linear-gradient(155deg, var(--art-t2a), var(--art-t2b)); }
+  .wf-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+    padding: 3px 7px; border-radius: 6px;
+    background: var(--tag-bg);
+  }
+
+  /* ─── track list ──────────────────────────────────────────────────── */
+  .tracks { border-radius: 20px; overflow: hidden; padding: 4px 0; margin-top: 18px; }
+  .trow {
+    display: flex; align-items: center; gap: 12px;
+    height: 50px; padding: 0 14px;
+    border-bottom: 0.5px solid var(--hair);
+  }
+  .trow:last-child { border-bottom: 0; }
+  .trow .rank { width: 22px; flex: none; text-align: right; font-size: 13px; color: var(--muted); }
+  .trow.playing .rank { color: var(--fg); font-weight: 700; }
+  .trow .tmeta { flex: 1; min-width: 0; }
+  .trow .tt { font-size: 15px; font-weight: 500; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trow.playing .tt { font-weight: 700; }
+  .trow .ta { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .trow .td { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .eq {
+    width: 16px; height: 16px; flex: none; color: var(--accent);
+    display: flex; align-items: flex-end; justify-content: center; gap: 2px;
+  }
+  .eq i { width: 3px; border-radius: 2px; background: currentColor; }
+  .eq i:nth-child(1) { height: 8px; opacity: 0.5; }
+  .eq i:nth-child(2) { height: 14px; }
+  .eq i:nth-child(3) { height: 10px; opacity: 0.7; }
+
+  /* ─── floating mini-player (docked — pushed screen, no tab bar) ───── */
+  .mini {
+    position: fixed; left: 16px; right: 16px; bottom: 16px;
+    height: 60px; border-radius: 22px; z-index: 25;
+    display: flex; align-items: center; gap: 10px; padding: 0 10px;
+  }
+  .mini .art { width: 42px; height: 42px; border-radius: 12px; flex: none; }
+  .mini .meta { flex: 1; min-width: 0; }
+  .mini .t { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .mini .a { font-size: 12px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .iconbtn {
+    width: 44px; height: 44px; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: none; color: var(--fg);
+  }
+  .iconbtn svg { width: 24px; height: 24px; }
+  /* ─── waveform (SoundCloud signature) ─────────────────────────────── */
+  .wave { display: flex; align-items: center; gap: 2px; height: 100%; }
+  .wave i { flex: 1 1 0; height: 30%; background: var(--faint); border-radius: 2px; opacity: 0.5; }
+  .wave i.on { background: var(--accent); opacity: 1; }
+  .mini .wave { position: absolute; top: 0; left: 12px; right: 12px; height: 9px; gap: 1.5px; z-index: 1; }
+  .mini .wave i { border-radius: 1px; }
+</style>
+</head>
+<body>
+  <div class="wash" aria-hidden="true"></div>
+
+  <div class="screen" data-od-id="screen-playlist">
+    <nav class="navrow" aria-label="Playlist navigation" data-od-id="playlist-nav">
+      <a class="back" href="03-library.html" aria-label="Back to Library">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m14.5 6-6 6 6 6"/></svg>
+      </a>
+      <p class="navtitle">Playlist</p>
+    </nav>
+
+    <section class="pl-head" data-od-id="playlist-header">
+      <div class="pl-art wf t2"><span class="wf-tag">ART 1:1</span></div>
+      <div>
+        <p class="pl-eyebrow">Playlist</p>
+        <h1 class="pl-title">Playlist title</h1>
+        <p class="pl-sub">by Artist name · 24 songs</p>
+        <div class="pl-actions">
+          <a class="pbtn" href="05-now-playing.html" aria-label="Play playlist" data-od-id="playlist-play">
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.2 5.2v13.6c0 .9 1 1.5 1.8 1L20 13c.8-.5.8-1.5 0-2L10 4.2c-.8-.5-1.8.1-1.8 1z"/></svg>
+          </a>
+          <a class="shuffle glass" href="#" data-od-id="playlist-shuffle">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M18.5 5.5 21 8l-2.5 2.5"/><path d="M21 8h-3.6c-2.7 0-4.4 1.7-5.8 4"/><path d="M18.5 13.5 21 16l-2.5 2.5"/><path d="M21 16h-3.6c-2.7 0-4.4-1.7-5.8-4"/><path d="M4 8h2.4c1.2 0 2.1.8 2.8 2"/><path d="M4 16h2.4c1.2 0 2.1-.8 2.8-2"/></svg>
+            Shuffle
+          </a>
+        </div>
+      </div>
+    </section>
+
+    <section class="tracks glass" data-od-id="track-list" aria-label="Track list">
+      <div class="trow playing">
+        <span class="rank mono">1</span>
+        <span class="eq" aria-hidden="true"><i></i><i></i><i></i></span>
+        <div class="tmeta">
+          <p class="tt">Song title placeholder</p>
+          <p class="ta">Artist name</p>
+        </div>
+        <span class="td">3:45</span>
+      </div>
+      <div class="trow">
+        <span class="rank mono">2</span>
+        <div class="tmeta">
+          <p class="tt">Song title placeholder</p>
+          <p class="ta">Artist name</p>
+        </div>
+        <span class="td">3:12</span>
+      </div>
+      <div class="trow">
+        <span class="rank mono">3</span>
+        <div class="tmeta">
+          <p class="tt">Song title placeholder</p>
+          <p class="ta">Artist name</p>
+        </div>
+        <span class="td">2:58</span>
+      </div>
+      <div class="trow">
+        <span class="rank mono">4</span>
+        <div class="tmeta">
+          <p class="tt">Song title placeholder</p>
+          <p class="ta">Artist name</p>
+        </div>
+        <span class="td">4:02</span>
+      </div>
+      <div class="trow">
+        <span class="rank mono">5</span>
+        <div class="tmeta">
+          <p class="tt">Song title placeholder</p>
+          <p class="ta">Artist name</p>
+        </div>
+        <span class="td">3:33</span>
+      </div>
+      <div class="trow">
+        <span class="rank mono">6</span>
+        <div class="tmeta">
+          <p class="tt">Song title placeholder</p>
+          <p class="ta">Artist name</p>
+        </div>
+        <span class="td">3:18</span>
+      </div>
+    </section>
+  </div>
+
+  <a class="mini glass" href="05-now-playing.html" data-od-id="mini-player">
+    <div class="wave" data-bars="46" data-played="0.36" aria-hidden="true"></div>
+    <div class="wf art t2"><span class="wf-tag">42</span></div>
+    <div class="meta">
+      <p class="t">Song title placeholder</p>
+      <p class="a">Artist name</p>
+    </div>
+    <span class="iconbtn" role="presentation" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M7 6.5v11"/><path d="M17 6.5v11"/></svg>
+    </span>
+    <span class="iconbtn" role="presentation" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.2 5.2v13.6c0 .9 1 1.5 1.8 1L20 13c.8-.5.8-1.5 0-2L10 4.2c-.8-.5-1.8.1-1.8 1z"/></svg>
+    </span>
+  </a>
+<script>
+(function () {
+  try {
+    var doc = window.parent.document;
+    doc.documentElement.style.setProperty('--statusbar-fg', '#f4f4f5');
+    doc.documentElement.style.setProperty('--home-fg', '#f4f4f5');
+    var st = doc.createElement('style');
+    st.textContent = '.statusbar{background:#121316}.screen{background:#121316}.inner{background:#121316}';
+    doc.head.appendChild(st);
+  } catch (e) {}
+  var seed = 7;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  document.querySelectorAll('.wave').forEach(function (w) {
+    var n = parseInt(w.getAttribute('data-bars'), 10) || 40;
+    var played = parseFloat(w.getAttribute('data-played')) || 0.4;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < n; i++) {
+      var b = document.createElement('i');
+      b.style.height = (22 + rnd() * 78).toFixed(0) + '%';
+      if (i / n < played) b.classList.add('on');
+      frag.appendChild(b);
+    }
+    w.appendChild(frag);
+  });
+})();
+</script>
+</body>
+</html>

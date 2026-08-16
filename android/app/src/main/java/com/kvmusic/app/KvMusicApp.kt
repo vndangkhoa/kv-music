@@ -12,6 +12,7 @@ import com.kvmusic.app.player.PlayerController
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class AppContainer(context: Context) {
@@ -28,6 +29,10 @@ class AppContainer(context: Context) {
 
     init {
         applicationScope.launch { libraryRepository.ensureSeeded() }
+        applicationScope.launch {
+            val host = serverConfigStore.host.first()
+            if (host.isNotBlank()) authRepository.refreshMe()
+        }
     }
 }
 

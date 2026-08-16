@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="color-scheme" content="light" />
+<title>05 · Now Playing — kv-music · iOS 26 wireframe</title>
+<style>
+  /* ─── iOS 26 wireframe tokens ─────────────────────────────────────── */
+  :root {
+    --bg: #111214;
+    --glass-hi: rgba(64,66,72,0.85);
+    --glass-lo: rgba(26,27,30,0.6);
+    --glass: rgba(30,31,34,0.7);
+    --glass-strong: rgba(46,48,53,0.92);
+    --glass-border: rgba(255,255,255,0.12);
+    --hair: rgba(255,255,255,0.09);
+    --inner-shade: rgba(0,0,0,0.4);
+    --shadow: rgba(0,0,0,0.5);
+    --art-border: rgba(255,255,255,0.08);
+    --tag-bg: rgba(16,17,19,0.6);
+    --fg: #f2f2f3;
+    --fg-2: #c9c9cd;
+    --muted: #9a9aa1;
+    --faint: #78797e;
+    --accent: #ff5500;
+    --accent-soft: rgba(255,85,0,0.16);
+    --accent-glow: rgba(255,85,0,0.45);
+    --on-accent: #f6f6f7;
+    --wash-a: rgba(255,85,0,0.16);
+    --wash-b: rgba(255,120,40,0.08);
+    --wash-c: rgba(255,85,0,0.10);
+    --art-a: #3c3e42;
+    --art-b: #35373b;
+    --art-c: #2d2f33;
+    --art-t1a: #4d3a2c;
+    --art-t1b: #372720;
+    --art-t2a: #3b3e4a;
+    --art-t2b: #2c2e38;
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--fg);
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+  a { color: inherit; text-decoration: none; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+
+  .wash {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(560px 400px at 50% -10%, var(--wash-a), transparent 60%),
+      radial-gradient(460px 360px at 6% 60%, var(--wash-b), transparent 60%),
+      radial-gradient(620px 460px at 96% 96%, var(--wash-c), transparent 65%);
+  }
+
+  .screen { position: relative; z-index: 1; padding: 12px 16px 0; display: flex; flex-direction: column; align-items: center; }
+
+  /* ─── glass material (Liquid Glass) ───────────────────────────────── */
+  .glass {
+    position: relative;
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+    -webkit-backdrop-filter: blur(26px) saturate(180%);
+    backdrop-filter: blur(26px) saturate(180%);
+    box-shadow:
+      0 0 0 0.5px var(--glass-border),
+      inset 0 -1px 0 var(--inner-shade),
+      0 12px 28px -10px var(--shadow);
+  }
+  .glass::after {
+    content: "";
+    position: absolute; top: 0; left: 8px; right: 8px; height: 1.5px;
+    background: linear-gradient(90deg,
+      rgba(255,255,255,0) 0%,
+      rgba(255,255,255,0.55) 22%,
+      rgba(255,255,255,0.18) 60%,
+      rgba(255,255,255,0) 100%);
+    border-radius: 999px;
+    pointer-events: none;
+  }
+
+  .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+  /* ─── top row ─────────────────────────────────────────────────────── */
+  .np-top { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+  .collapse {
+    width: 36px; height: 36px; border-radius: 50%;
+    display: grid; place-items: center; color: var(--fg-2);
+    background: linear-gradient(180deg, var(--glass-hi), var(--glass-lo));
+    box-shadow: 0 0 0 0.5px var(--glass-border);
+  }
+  .collapse svg { width: 18px; height: 18px; }
+  .np-label { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+  .np-menu { width: 36px; height: 36px; display: grid; place-items: center; color: var(--muted); }
+  .np-menu svg { width: 20px; height: 20px; }
+
+  /* ─── artwork ─────────────────────────────────────────────────────── */
+  .np-art { width: 256px; height: 256px; border-radius: 24px; }
+  .wf {
+    position: relative; overflow: hidden;
+    border-radius: 24px;
+    border: 1px solid var(--art-border);
+    background: linear-gradient(155deg, var(--art-a), var(--art-c));
+    display: grid; place-items: center;
+  }
+  .wf.t2 { background: linear-gradient(155deg, var(--art-t2a), var(--art-t2b)); }
+  .wf-tag {
+    font-family: var(--mono); font-size: 9px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+    padding: 3px 7px; border-radius: 6px;
+    background: var(--tag-bg);
+  }
+
+  /* ─── title block ─────────────────────────────────────────────────── */
+  .np-title { width: 100%; text-align: center; margin-top: 16px; }
+  .np-title h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.015em; }
+  .np-title p { font-size: 15px; color: var(--muted); margin-top: 3px; }
+
+  /* ─── scrubber ────────────────────────────────────────────────────── */
+  .scrub { width: 100%; margin-top: 14px; }
+  .track { height: 5px; border-radius: 999px; background: var(--faint); position: relative; overflow: visible; }
+  .track .fill {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 38%;
+    border-radius: 999px; background: var(--accent);
+  }
+  .track .knob {
+    position: absolute; left: 38%; top: 50%; transform: translate(-50%, -50%);
+    width: 15px; height: 15px; border-radius: 50%;
+    background: var(--on-accent);
+    box-shadow: 0 1px 4px rgba(28,28,30,0.35);
+  }
+  .times { display: flex; justify-content: space-between; margin-top: 6px; font-size: 11px; color: var(--muted); }
+
+  /* ─── transport controls ──────────────────────────────────────────── */
+  .controls { width: 100%; display: flex; align-items: center; justify-content: space-between; margin-top: 12px; padding: 0 6px; }
+  .iconbtn {
+    width: 44px; height: 44px; border: 0; border-radius: 50%;
+    display: grid; place-items: center; background: none; color: var(--fg);
+  }
+  .iconbtn svg { width: 26px; height: 26px; }
+  .iconbtn.muted { color: var(--muted); }
+  .play-big {
+    width: 64px; height: 64px; border: 0; border-radius: 50%;
+    background: var(--on-accent); color: var(--bg);
+    display: grid; place-items: center;
+    box-shadow: 0 10px 22px -8px var(--accent-glow);
+  }
+  .play-big svg { width: 28px; height: 28px; }
+
+  /* ─── volume ──────────────────────────────────────────────────────── */
+  .volume { width: 100%; display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .volume .vicon { width: 28px; height: 28px; color: var(--muted); flex: none; display: grid; place-items: center; }
+  .volume .vicon svg { width: 20px; height: 20px; }
+  .volume .track { flex: 1; }
+  .volume .track .fill { width: 62%; background: var(--fg-2); }
+
+  /* ─── up next ─────────────────────────────────────────────────────── */
+  .upnext { width: 100%; margin-top: 20px; }
+  .upnext .h { font-size: 15px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 8px; }
+  .qrow { display: flex; align-items: center; gap: 10px; height: 42px; }
+  .qrow .qart { width: 32px; height: 32px; border-radius: 8px; flex: none; }
+  .qrow .qmeta { flex: 1; min-width: 0; }
+  .qrow .qt { font-size: 13px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qrow .qa { font-size: 11px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .qrow .qd { font-size: 12px; color: var(--muted); }
+  /* ─── waveform (SoundCloud signature) ─────────────────────────────── */
+  .wave { display: flex; align-items: center; gap: 2px; height: 100%; }
+  .wave i { flex: 1 1 0; height: 30%; background: var(--faint); border-radius: 2px; opacity: 0.5; }
+  .wave i.on { background: var(--accent); opacity: 1; }
+  .scrub { position: relative; }
+  .scrub .wave { height: 44px; gap: 2px; }
+  .scrub .playhead { position: absolute; top: -6px; bottom: -6px; left: 38%; width: 2px; border-radius: 2px; background: var(--on-accent); opacity: 0.9; pointer-events: none; }
+</style>
+</head>
+<body>
+  <div class="wash" aria-hidden="true"></div>
+
+  <div class="screen" data-od-id="screen-now-playing">
+    <div class="np-top">
+      <a class="collapse" href="01-home.html" aria-label="Collapse to mini player" data-od-id="now-playing-collapse">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="m6 9.5 6 6 6-6"/></svg>
+      </a>
+      <span class="np-label">Now Playing</span>
+      <span class="np-menu" role="presentation" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="5.5" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="12" cy="18.5" r="1.7"/></svg>
+      </span>
+    </div>
+
+    <div class="np-art wf t2" data-od-id="now-playing-art"><span class="wf-tag">ARTWORK 1:1</span></div>
+
+    <div class="np-title">
+      <h1>Song title placeholder</h1>
+      <p>Artist name — Album title</p>
+    </div>
+
+    <div class="scrub" data-od-id="scrubber">
+      <div class="wave" data-bars="64" data-played="0.38" role="slider" aria-label="Playback position" aria-valuenow="38" aria-valuemin="0" aria-valuemax="100"></div>
+      <span class="playhead" aria-hidden="true"></span>
+      <div class="times mono"><span>1:23</span><span>3:45</span></div>
+    </div>
+
+    <div class="controls" data-od-id="transport-controls">
+      <a class="iconbtn muted" href="#" aria-label="Shuffle">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M18.5 5.5 21 8l-2.5 2.5"/><path d="M21 8h-3.6c-2.7 0-4.4 1.7-5.8 4"/><path d="M18.5 13.5 21 16l-2.5 2.5"/><path d="M21 16h-3.6c-2.7 0-4.4-1.7-5.8-4"/><path d="M4 8h2.4c1.2 0 2.1.8 2.8 2"/><path d="M4 16h2.4c1.2 0 2.1-.8 2.8-2"/></svg>
+      </a>
+      <a class="iconbtn" href="#" aria-label="Previous">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M7 6.5v11"/><path d="m17 6.5-7.5 5.5 7.5 5.5z"/></svg>
+      </a>
+      <a class="play-big" href="#" aria-label="Play" data-od-id="now-playing-play">
+        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8.2 5.2v13.6c0 .9 1 1.5 1.8 1L20 13c.8-.5.8-1.5 0-2L10 4.2c-.8-.5-1.8.1-1.8 1z"/></svg>
+      </a>
+      <a class="iconbtn" href="#" aria-label="Next">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M17 6.5v11"/><path d="m7 6.5 7.5 5.5L7 17.5z"/></svg>
+      </a>
+      <a class="iconbtn muted" href="#" aria-label="Repeat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M18.5 8.5A6.5 6.5 0 1 1 19 12"/><path d="M18.5 4.5v4h-4"/><path d="M5.5 15.5A6.5 6.5 0 1 1 5 12"/><path d="M5.5 19.5v-4h4"/></svg>
+      </a>
+    </div>
+
+    <div class="volume" data-od-id="volume">
+      <span class="vicon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 9.5v5h3.2L12 18V6L7.2 9.5z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/></svg>
+      </span>
+      <div class="track" role="slider" aria-label="Volume" aria-valuenow="62" aria-valuemin="0" aria-valuemax="100"><div class="fill"></div></div>
+      <span class="vicon" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M4 9.5v5h3.2L12 18V6L7.2 9.5z"/><path d="M15.5 9a4.5 4.5 0 0 1 0 6"/><path d="M18 6.5a8 8 0 0 1 0 11"/></svg>
+      </span>
+    </div>
+
+    <section class="upnext" data-od-id="up-next">
+      <p class="h">Up Next</p>
+      <div class="qrow">
+        <div class="qart wf"><span class="wf-tag">32</span></div>
+        <div class="qmeta">
+          <p class="qt">Song title placeholder</p>
+          <p class="qa">Artist name</p>
+        </div>
+        <span class="qd mono">3:12</span>
+      </div>
+      <div class="qrow">
+        <div class="qart wf t2"><span class="wf-tag">32</span></div>
+        <div class="qmeta">
+          <p class="qt">Song title placeholder</p>
+          <p class="qa">Artist name</p>
+        </div>
+        <span class="qd mono">2:58</span>
+      </div>
+    </section>
+  </div>
+<script>
+(function () {
+  try {
+    var doc = window.parent.document;
+    doc.documentElement.style.setProperty('--statusbar-fg', '#f4f4f5');
+    doc.documentElement.style.setProperty('--home-fg', '#f4f4f5');
+    var st = doc.createElement('style');
+    st.textContent = '.statusbar{background:#121316}.screen{background:#121316}.inner{background:#121316}';
+    doc.head.appendChild(st);
+  } catch (e) {}
+  var seed = 7;
+  function rnd() { seed = (seed * 9301 + 49297) % 233280; return seed / 233280; }
+  document.querySelectorAll('.wave').forEach(function (w) {
+    var n = parseInt(w.getAttribute('data-bars'), 10) || 40;
+    var played = parseFloat(w.getAttribute('data-played')) || 0.4;
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < n; i++) {
+      var b = document.createElement('i');
+      b.style.height = (22 + rnd() * 78).toFixed(0) + '%';
+      if (i / n < played) b.classList.add('on');
+      frag.appendChild(b);
+    }
+    w.appendChild(frag);
+  });
+})();
+</script>
+</body>
+</html>

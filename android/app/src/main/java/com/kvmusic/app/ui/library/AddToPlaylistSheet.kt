@@ -1,7 +1,7 @@
 package com.kvmusic.app.ui.library
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -33,11 +33,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.PathEffect
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -48,9 +45,14 @@ import com.kvmusic.app.ui.AppUi
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.KvBottomSheet
 import com.kvmusic.app.ui.components.TrackRowSkeleton
-import com.kvmusic.app.ui.theme.KvFaint
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.GlyphBg
 import com.kvmusic.app.ui.theme.KvOrange
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.NavTitle
+import com.kvmusic.app.ui.theme.OnAccent
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -66,15 +68,20 @@ fun AddToPlaylistSheet() {
 
     val playlists by library.playlists.collectAsStateWithLifecycle(initialValue = emptyList())
     var contains by remember(track.id) { mutableStateOf(setOf<Long>()) }
+    var counts by remember(track.id) { mutableStateOf(mapOf<Long, Int>()) }
     var loading by remember(track.id) { mutableStateOf(true) }
     var busyId by remember { mutableStateOf<Long?>(null) }
 
     LaunchedEffect(track.id) {
         loading = true
-        val ids = library.playlists.first().mapNotNull { playlist ->
-            if (library.playlistTracks(playlist.id).first().any { it.id == track.id }) playlist.id else null
-        }.toSet()
-        contains = ids
+        val all = library.playlists.first()
+        val containsSet = buildSet {
+            all.forEach { playlist ->
+                if (library.isTrackInPlaylist(playlist.id, track.id)) add(playlist.id)
+            }
+        }
+        contains = containsSet
+        counts = library.playlistCounts().first()
         loading = false
     }
 
@@ -86,17 +93,17 @@ fun AddToPlaylistSheet() {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text("Thêm vào playlist", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                Text("Thêm vào playlist", style = NavTitle, color = Fg)
                 Text(
                     "${track.title} — ${track.artist}",
                     fontSize = 13.sp,
-                    color = KvMuted,
+                    color = Muted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
             IconButton(onClick = { AppUi.addToPlaylistTrack = null }) {
-                Icon(Icons.Rounded.Close, contentDescription = "Đóng", tint = KvMuted)
+                Icon(Icons.Rounded.Close, contentDescription = "Đóng", tint = Muted)
             }
         }
 
@@ -116,6 +123,7 @@ fun AddToPlaylistSheet() {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .height(44.dp)
                             .clip(RoundedCornerShape(10.dp))
                             .clickable(enabled = busyId == null) {
                                 scope.launch {
@@ -132,20 +140,39 @@ fun AddToPlaylistSheet() {
                                     busyId = null
                                 }
                             }
-                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                            .padding(horizontal = 20.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(Icons.Rounded.QueueMusic, contentDescription = null, tint = KvOrange, modifier = Modifier.size(20.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(GlyphBg),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Rounded.QueueMusic, contentDescription = null, tint = Fg2, modifier = Modifier.size(18.dp))
+                        }
                         Spacer(Modifier.width(12.dp))
                         Text(
                             playlist.title,
-                            fontSize = 13.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Medium,
-                            color = Color.White,
+                            color = Fg,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                             modifier = Modifier.weight(1f),
                         )
+                        Spacer(Modifier.width(8.dp))
+                        val count = counts[playlist.id] ?: 0
+                        if (count > 0) {
+                            Text(
+                                count.toString(),
+                                fontSize = 12.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = Muted,
+                            )
+                        }
+                        Spacer(Modifier.width(12.dp))
                         if (inPlaylist) {
                             Icon(Icons.Rounded.Check, contentDescription = null, tint = KvOrange, modifier = Modifier.size(18.dp))
                         }
@@ -153,35 +180,31 @@ fun AddToPlaylistSheet() {
                 }
                 if (playlists.isEmpty()) {
                     Box(Modifier.fillMaxWidth().height(96.dp), contentAlignment = Alignment.Center) {
-                        Text("Chưa có playlist nào", fontSize = 13.sp, color = KvFaint)
+                        Text("Chưa có playlist nào", fontSize = 13.sp, color = Faint)
                     }
                 }
             }
 
             Spacer(Modifier.height(10.dp))
-            Box(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp)
+                    .height(44.dp)
+                    .clip(RoundedCornerShape(10.dp))
                     .clickable { AppUi.createPlaylistOpen = true }
-                    .padding(vertical = 14.dp)
-                    .drawBehind {
-                        drawRoundRect(
-                            color = KvOrange.copy(alpha = 0.45f),
-                            style = Stroke(
-                                width = 1.dp.toPx(),
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 8f)),
-                            ),
-                            cornerRadius = CornerRadius(12.dp.toPx()),
-                        )
-                    },
-                contentAlignment = Alignment.Center,
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Rounded.Add, contentDescription = null, tint = KvOrange, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(8.dp))
-                    Text("Tạo playlist mới", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = KvOrange)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(KvOrange, RoundedCornerShape(percent = 50)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = null, tint = OnAccent, modifier = Modifier.size(20.dp))
                 }
+                Spacer(Modifier.width(12.dp))
+                Text("Thêm vào playlist mới", fontSize = 16.sp, fontWeight = FontWeight.Medium, color = Fg)
             }
             Spacer(Modifier.height(16.dp))
         }

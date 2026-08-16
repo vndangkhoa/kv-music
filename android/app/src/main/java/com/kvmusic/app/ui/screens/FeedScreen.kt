@@ -1,6 +1,7 @@
 package com.kvmusic.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -23,12 +25,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MusicNote
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Repeat
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -39,11 +45,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.kvmusic.app.AppContainer
@@ -54,15 +59,19 @@ import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
 import com.kvmusic.app.ui.components.SectionHeader
 import com.kvmusic.app.ui.components.ServerSetupCard
-import com.kvmusic.app.ui.components.TrackCard
 import com.kvmusic.app.ui.components.SkeletonBox
+import com.kvmusic.app.ui.components.TrackCard
 import com.kvmusic.app.ui.navigation.LocalNav
 import com.kvmusic.app.ui.navigation.Routes
-import com.kvmusic.app.ui.theme.KvCard
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.AccentSoft
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.GlassStrong
+import com.kvmusic.app.ui.theme.GlyphBg
 import com.kvmusic.app.ui.theme.KvOrange
-import com.kvmusic.app.ui.theme.KvSkeleton
-import com.kvmusic.app.ui.theme.KvSurface
+import com.kvmusic.app.ui.theme.KvShapeCard
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.glass
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -165,16 +174,27 @@ fun FeedScreen() {
         }
     }
 
+    val pullState = rememberPullToRefreshState()
+
     PullToRefreshBox(
         isRefreshing = state.refreshing,
         onRefresh = { scope.launch { state.refresh() } },
+        state = pullState,
         modifier = Modifier.fillMaxSize(),
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullState,
+                isRefreshing = state.refreshing,
+                containerColor = GlassStrong,
+                color = KvOrange,
+            )
+        },
     ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.navigationBars),
-            contentPadding = PaddingValues(bottom = 160.dp),
+            contentPadding = PaddingValues(top = 18.dp, bottom = 160.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp),
         ) {
             if (state.loading) {
@@ -247,35 +267,89 @@ private fun FeedSectionBlock(
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             itemsIndexed(section.items) { index, item ->
-                TrackCard(track = item.toTrack(), onPlay = { onItemClick(item, index, section.items) })
+                if (item.videoId != null) {
+                    TrackCard(track = item.toTrack(), onPlay = { onItemClick(item, index, section.items) })
+                } else {
+                    FeedRepostRow(item = item, onClick = { onItemClick(item, index, section.items) })
+                }
             }
         }
     }
 }
 
-
+@Composable
+private fun FeedRepostRow(item: FeedItem, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        modifier = Modifier
+            .width(216.dp)
+            .glass(shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .background(GlyphBg, RoundedCornerShape(10.dp)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = Icons.Rounded.Repeat,
+                contentDescription = null,
+                tint = KvOrange,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = item.title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Fg,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = item.artist ?: "YouTube Music",
+                fontSize = 11.sp,
+                color = Muted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        Spacer(Modifier.width(6.dp))
+        Icon(
+            imageVector = Icons.Rounded.ChevronRight,
+            contentDescription = null,
+            tint = Faint,
+            modifier = Modifier.size(16.dp),
+        )
+    }
+}
 
 @Composable
 private fun FeedRowSkeleton() {
+    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp)
             .height(112.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .background(KvSkeleton),
+            .glass(shape),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .padding(start = 12.dp)
-                .size(88.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(KvCard),
+        SkeletonBox(
+            width = 88.dp,
+            height = 88.dp,
+            shape = RoundedCornerShape(8.dp),
+            art = true,
+            modifier = Modifier.padding(start = 12.dp),
         )
         Column(
-            modifier = Modifier
-                .padding(start = 16.dp),
+            modifier = Modifier.padding(start = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             SkeletonBox(width = 200.dp, height = 12.dp, shape = RoundedCornerShape(4.dp))
@@ -290,21 +364,22 @@ private fun FeedEmpty(onRetry: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 32.dp, vertical = 48.dp),
+            .padding(horizontal = 16.dp, vertical = 24.dp)
+            .glass(KvShapeCard)
+            .padding(horizontal = 32.dp, vertical = 40.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(
             modifier = Modifier
                 .size(72.dp)
-                .clip(CircleShape)
-                .background(KvSurface),
+                .background(AccentSoft, CircleShape),
             contentAlignment = Alignment.Center,
         ) {
             Icon(
                 imageVector = Icons.Filled.MusicNote,
                 contentDescription = null,
-                tint = KvMuted,
-                modifier = Modifier.size(36.dp),
+                tint = KvOrange,
+                modifier = Modifier.size(32.dp),
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -312,13 +387,13 @@ private fun FeedEmpty(onRetry: () -> Unit) {
             text = "Không có nội dung mới",
             fontSize = 16.sp,
             fontWeight = FontWeight.Bold,
-            color = Color.White,
+            color = Fg,
         )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = "Kiểm tra kết nối máy chủ hoặc kéo xuống để làm mới",
             fontSize = 13.sp,
-            color = KvMuted,
+            color = Muted,
             textAlign = TextAlign.Center,
         )
         Spacer(modifier = Modifier.height(20.dp))
@@ -331,4 +406,3 @@ private fun FeedEmpty(onRetry: () -> Unit) {
         }
     }
 }
-

@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.Button
@@ -23,7 +22,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -32,12 +30,15 @@ import com.kvmusic.app.KvMusicApp
 import com.kvmusic.app.ui.AppUi
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.KvBottomSheet
-import com.kvmusic.app.ui.theme.KvBorder
-import com.kvmusic.app.ui.theme.KvCard
-import com.kvmusic.app.ui.theme.KvFaint
-import com.kvmusic.app.ui.theme.KvInput
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Glass
+import com.kvmusic.app.ui.theme.GlassBorder
 import com.kvmusic.app.ui.theme.KvOrange
+import com.kvmusic.app.ui.theme.KvShapePill
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.NavTitle
+import com.kvmusic.app.ui.theme.OnAccent
 import kotlinx.coroutines.launch
 
 @Composable
@@ -60,28 +61,27 @@ fun CreatePlaylistSheet() {
         ) {
             Text(
                 "Tạo playlist mới",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
+                style = NavTitle,
+                color = Fg,
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { AppUi.createPlaylistOpen = false }) {
-                Icon(Icons.Rounded.Close, contentDescription = "Đóng", tint = KvMuted)
+                Icon(Icons.Rounded.Close, contentDescription = "Đóng", tint = Muted)
             }
         }
         OutlinedTextField(
             value = title,
             onValueChange = { title = it },
-            placeholder = { Text("Tên playlist", color = KvFaint) },
+            placeholder = { Text("Tên playlist", color = Faint) },
             singleLine = true,
-            shape = RoundedCornerShape(12.dp),
+            shape = KvShapePill,
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = KvOrange,
-                unfocusedBorderColor = KvBorder,
-                focusedContainerColor = KvInput,
-                unfocusedContainerColor = KvInput,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White,
+                focusedBorderColor = GlassBorder,
+                unfocusedBorderColor = GlassBorder,
+                focusedContainerColor = Glass,
+                unfocusedContainerColor = Glass,
+                focusedTextColor = Fg,
+                unfocusedTextColor = Fg,
                 cursorColor = KvOrange,
             ),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
@@ -98,16 +98,16 @@ fun CreatePlaylistSheet() {
                 }
             },
             enabled = title.isNotBlank() && !creating,
-            shape = RoundedCornerShape(24.dp),
+            shape = KvShapePill,
             colors = ButtonDefaults.buttonColors(
                 containerColor = KvOrange,
-                contentColor = Color.White,
-                disabledContainerColor = KvCard,
-                disabledContentColor = KvFaint,
+                contentColor = OnAccent,
+                disabledContainerColor = Glass,
+                disabledContentColor = Faint,
             ),
             modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp),
         ) {
-            Text(if (creating) "Đang tạo..." else "Tạo", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(if (creating) "Đang tạo..." else "Tạo", fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
         }
         Spacer(Modifier.height(24.dp))
     }

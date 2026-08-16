@@ -10,9 +10,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import com.kvmusic.app.ui.theme.Faint
 import com.kvmusic.app.ui.theme.KvOrange
 import kotlin.math.PI
 import kotlin.math.abs
@@ -71,15 +71,16 @@ fun Waveform(
         val gap = size.width / count - barWidth
         val progressIdx = (progress.coerceIn(0f, 1f) * count).roundToInt()
         val minBarHeight = 2.dp.toPx()
+        val unplayed = Faint.copy(alpha = 0.5f)
         bars.forEachIndexed { i, peak ->
             val barHeight = (peak * size.height).coerceAtLeast(minBarHeight)
             val x = i * (barWidth + gap)
             val y = (size.height - barHeight) / 2f
             drawRoundRect(
                 color = when {
-                    !currentActive -> Color(0xFF404040)
+                    !currentActive -> unplayed
                     i <= progressIdx -> KvOrange
-                    else -> Color(0xFF404040)
+                    else -> unplayed
                 },
                 topLeft = Offset(x, y),
                 size = Size(barWidth, barHeight),

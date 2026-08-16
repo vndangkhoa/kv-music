@@ -1,7 +1,9 @@
 package com.kvmusic.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -20,23 +22,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Clear
-import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.SearchOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,13 +49,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.kvmusic.app.AppContainer
@@ -66,18 +72,30 @@ import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.model.UniversalSearchResponse
 import com.kvmusic.app.ui.components.ArtistAvatar
 import com.kvmusic.app.ui.components.CoverImage
-import com.kvmusic.app.ui.components.ServerSetupCard
 import com.kvmusic.app.ui.components.SectionHeader
+import com.kvmusic.app.ui.components.ServerSetupCard
 import com.kvmusic.app.ui.components.TrackRow
 import com.kvmusic.app.ui.components.TrackRowSkeleton
 import com.kvmusic.app.ui.navigation.LocalNav
 import com.kvmusic.app.ui.navigation.Routes
-import com.kvmusic.app.ui.theme.KvBorder
-import com.kvmusic.app.ui.theme.KvFaint
-import com.kvmusic.app.ui.theme.KvInput
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.ArtBorder
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.Glass
+import com.kvmusic.app.ui.theme.GlassBorder
+import com.kvmusic.app.ui.theme.GlassStrong
 import com.kvmusic.app.ui.theme.KvOrange
-import com.kvmusic.app.ui.theme.KvSurface
+import com.kvmusic.app.ui.theme.KvShapeCard
+import com.kvmusic.app.ui.theme.KvShapePill
+import com.kvmusic.app.ui.theme.LargeTitle
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.TagBg
+import com.kvmusic.app.ui.theme.T1End
+import com.kvmusic.app.ui.theme.T1Start
+import com.kvmusic.app.ui.theme.T2End
+import com.kvmusic.app.ui.theme.T2Start
+import com.kvmusic.app.ui.theme.glass
 import kotlinx.coroutines.delay
 
 private class SearchState(private val container: AppContainer) {
@@ -115,6 +133,9 @@ private class SearchState(private val container: AppContainer) {
     }
 }
 
+private val BrowseChips = listOf("Moods", "Genres", "Top 100", "Charts", "Indie", "Focus")
+private val BrowseTiles = listOf("Nhạc Việt", "US Hits", "Lo-fi", "Chill", "Workout", "Focus")
+
 @Composable
 fun SearchScreen() {
     val context = LocalContext.current
@@ -150,33 +171,49 @@ fun SearchScreen() {
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.navigationBars),
     ) {
+        Text(
+            text = "Tìm kiếm",
+            style = LargeTitle,
+            color = Fg,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 14.dp),
+        )
         SearchField(
             query = query,
             onQueryChange = { query = it },
             focusRequester = focusRequester,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+            modifier = Modifier.padding(horizontal = 16.dp),
         )
-        when {
-            query.isBlank() -> EmptyHint()
-            state.suggestions.isNotEmpty() -> SuggestionsList(
-                suggestions = state.suggestions,
-                onSuggestionClick = { query = it },
-            )
-            state.loading || state.results == null -> SearchSkeleton()
-            else -> {
-                val results = state.results
-                if (results != null) {
-                    ResultsList(
-                        results = results,
-                        isCurrent = { t -> playerState.currentTrack?.id == t.id },
-                        isPlaying = playerState.isPlaying,
-                        onPlay = { track, songs, index ->
-                            container.playerController.playTrack(track, songs, index)
-                        },
-                        onAlbumClick = { id -> nav.navigate(Routes.album(id)) },
-                        onPlaylistClick = { id -> nav.navigate(Routes.playlist(id)) },
-                        onArtistClick = { artist -> nav.navigate(Routes.artist(artist.id, artist.name)) },
-                    )
+        Spacer(modifier = Modifier.height(12.dp))
+        BrowseChipsRow(
+            activeChip = query,
+            onChipClick = { query = it },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+        Box(modifier = Modifier.weight(1f)) {
+            when {
+                query.isBlank() -> BrowseState(onTileClick = { query = it })
+                state.suggestions.isNotEmpty() -> SuggestionsPanel(
+                    suggestions = state.suggestions,
+                    onSuggestionClick = { query = it },
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                )
+                state.loading || state.results == null -> SearchSkeleton()
+                else -> {
+                    val results = state.results
+                    if (results != null) {
+                        ResultsList(
+                            results = results,
+                            isCurrent = { t -> playerState.currentTrack?.id == t.id },
+                            isPlaying = playerState.isPlaying,
+                            onPlay = { track, songs, index ->
+                                container.playerController.playTrack(track, songs, index)
+                            },
+                            onAlbumClick = { id -> nav.navigate(Routes.album(id)) },
+                            onPlaylistClick = { id -> nav.navigate(Routes.playlist(id)) },
+                            onArtistClick = { artist -> nav.navigate(Routes.artist(artist.id, artist.name)) },
+                        )
+                    }
                 }
             }
         }
@@ -190,112 +227,224 @@ private fun SearchField(
     focusRequester: FocusRequester,
     modifier: Modifier = Modifier,
 ) {
-    OutlinedTextField(
-        value = query,
-        onValueChange = onQueryChange,
+    Row(
         modifier = modifier
             .fillMaxWidth()
-            .focusRequester(focusRequester),
-        placeholder = {
-            Text(
-                text = "Tìm kiếm bài hát, nghệ sĩ, playlist...",
-                fontSize = 14.sp,
-                color = KvMuted,
-            )
-        },
-        leadingIcon = {
-            Icon(
-                imageVector = Icons.Rounded.Search,
-                contentDescription = null,
-                tint = KvMuted,
-            )
-        },
-        trailingIcon = {
-            if (query.isNotEmpty()) {
-                IconButton(onClick = { onQueryChange("") }) {
-                    Icon(
-                        imageVector = Icons.Rounded.Clear,
-                        contentDescription = "Xóa",
-                        tint = KvMuted,
-                    )
+            .height(46.dp)
+            .glass(RoundedCornerShape(23.dp))
+            .padding(horizontal = 16.dp)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+            ) { focusRequester.requestFocus() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = Icons.Rounded.Search,
+            contentDescription = null,
+            tint = Muted,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(modifier = Modifier.width(10.dp))
+        BasicTextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
+            singleLine = true,
+            textStyle = TextStyle(color = Fg, fontSize = 16.sp),
+            cursorBrush = SolidColor(KvOrange),
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+            decorationBox = { innerTextField ->
+                Box {
+                    if (query.isEmpty()) {
+                        Text(
+                            text = "Tìm kiếm bài hát, nghệ sĩ, playlist...",
+                            fontSize = 16.sp,
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    innerTextField()
                 }
+            },
+        )
+        if (query.isNotEmpty()) {
+            Spacer(modifier = Modifier.width(6.dp))
+            IconButton(
+                onClick = { onQueryChange("") },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.Clear,
+                    contentDescription = "Xóa",
+                    tint = Muted,
+                    modifier = Modifier.size(16.dp),
+                )
             }
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(24.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = KvInput,
-            unfocusedContainerColor = KvInput,
-            focusedBorderColor = KvOrange,
-            unfocusedBorderColor = KvBorder,
-            cursorColor = KvOrange,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-        ),
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-    )
+        }
+    }
 }
 
 @Composable
-private fun EmptyHint() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Box(
+private fun BrowseChipsRow(
+    activeChip: String,
+    onChipClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyRow(
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(BrowseChips) { chip ->
+            val active = activeChip == chip
+            Text(
+                text = chip,
+                fontSize = 14.sp,
+                fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
+                color = if (active) Fg else Fg2,
                 modifier = Modifier
-                    .size(88.dp)
-                    .clip(CircleShape)
-                    .background(KvSurface),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.MusicNote,
-                    contentDescription = null,
-                    tint = KvOrange,
-                    modifier = Modifier.size(40.dp),
-                )
-            }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = "Tìm kiếm nhạc của bạn",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = Color.White,
-            )
-            Spacer(Modifier.height(6.dp))
-            Text(
-                text = "Tìm bài hát, nghệ sĩ, album hoặc playlist",
-                fontSize = 13.sp,
-                color = KvMuted,
+                    .clip(KvShapePill)
+                    .then(
+                        if (active) {
+                            Modifier
+                                .background(
+                                    Brush.verticalGradient(listOf(GlassStrong, Glass)),
+                                    KvShapePill,
+                                )
+                                .border(0.5.dp, GlassBorder, KvShapePill)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .clickable { onChipClick(chip) }
+                    .padding(horizontal = 16.dp, vertical = 9.dp),
             )
         }
     }
 }
 
 @Composable
-private fun SuggestionsList(suggestions: List<String>, onSuggestionClick: (String) -> Unit) {
+private fun BrowseState(onTileClick: (String) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 160.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        item {
+            SectionHeader(
+                title = "Duyệt",
+                modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 2.dp),
+            )
+        }
+        item {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                BrowseTiles.chunked(2).forEachIndexed { rowIndex, row ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        row.forEachIndexed { colIndex, tile ->
+                            BrowseTile(
+                                label = tile,
+                                index = rowIndex * 2 + colIndex,
+                                onClick = { onTileClick(tile) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (row.size == 1) {
+                            Spacer(modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BrowseTile(
+    label: String,
+    index: Int,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(20.dp)
+    val palette = if (index % 2 == 0) listOf(T1Start, T1End) else listOf(T2Start, T2End)
+    Box(
+        modifier = modifier
+            .height(92.dp)
+            .clip(shape)
+            .background(Brush.linearGradient(palette))
+            .border(1.dp, ArtBorder, shape)
+            .clickable(onClick = onClick),
+    ) {
+        Text(
+            text = "MIX",
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+            letterSpacing = 0.09.em,
+            color = Muted,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(top = 8.dp, end = 10.dp)
+                .background(TagBg, RoundedCornerShape(6.dp))
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+        Text(
+            text = label,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = Fg,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .padding(12.dp),
+        )
+    }
+}
+
+@Composable
+private fun SuggestionsPanel(
+    suggestions: List<String>,
+    onSuggestionClick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    LazyColumn(
+        modifier = modifier
+            .fillMaxSize()
+            .glass(KvShapeCard),
+        contentPadding = PaddingValues(vertical = 4.dp),
     ) {
         items(suggestions, key = { it }) { suggestion ->
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .height(44.dp)
                     .clickable { onSuggestionClick(suggestion) }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Search,
                     contentDescription = null,
-                    tint = KvMuted,
+                    tint = Muted,
                     modifier = Modifier.size(18.dp),
                 )
-                Spacer(Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
                 Text(
                     text = suggestion,
-                    fontSize = 14.sp,
-                    color = Color.White,
+                    fontSize = 16.sp,
+                    color = Fg,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -306,7 +455,11 @@ private fun SuggestionsList(suggestions: List<String>, onSuggestionClick: (Strin
 
 @Composable
 private fun SearchSkeleton() {
-    Column(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 8.dp),
+    ) {
         repeat(6) {
             TrackRowSkeleton()
         }
@@ -336,23 +489,40 @@ private fun ResultsList(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 160.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         if (artists.isNotEmpty()) {
             item {
                 SectionHeader(
                     title = "Nghệ sĩ",
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 4.dp),
                 )
             }
-            items(artists, key = { it.id }) { artist ->
-                ArtistRow(artist = artist, onClick = { onArtistClick(artist) })
+            items(artists.chunked(2)) { row ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    row.forEach { artist ->
+                        ArtistGridItem(
+                            name = artist.name,
+                            photo = artist.photo,
+                            onClick = { onArtistClick(artist) },
+                        )
+                    }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
             }
         }
         if (songs.isNotEmpty()) {
             item {
                 SectionHeader(
                     title = "Bài hát",
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
                 )
             }
             itemsIndexed(songs, key = { _, t -> t.id }) { index, track ->
@@ -378,7 +548,7 @@ private fun ResultsList(
             item {
                 SectionHeader(
                     title = "Album",
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
                 )
             }
             items(albums.chunked(2)) { row ->
@@ -396,6 +566,9 @@ private fun ResultsList(
                             onClick = { onAlbumClick(album.id) },
                         )
                     }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -403,7 +576,7 @@ private fun ResultsList(
             item {
                 SectionHeader(
                     title = "Playlist",
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp),
                 )
             }
             items(playlists.chunked(2)) { row ->
@@ -421,6 +594,9 @@ private fun ResultsList(
                             onClick = { onPlaylistClick(playlist.id) },
                         )
                     }
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
             }
         }
@@ -428,31 +604,29 @@ private fun ResultsList(
 }
 
 @Composable
-private fun ArtistRow(artist: ArtistHit, onClick: () -> Unit) {
-    Row(
+private fun RowScope.ArtistGridItem(
+    name: String,
+    photo: String?,
+    onClick: () -> Unit,
+) {
+    Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .weight(1f)
+            .clickable(onClick = onClick),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        ArtistAvatar(url = artist.photo, name = artist.name, size = 56.dp)
-        Spacer(Modifier.width(12.dp))
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            ArtistAvatar(url = photo, name = name, size = maxWidth)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
-            text = artist.name,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.White,
+            text = name,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
-        )
-        Spacer(Modifier.width(8.dp))
-        Icon(
-            imageVector = Icons.Rounded.ChevronRight,
-            contentDescription = null,
-            tint = KvMuted,
-            modifier = Modifier.size(20.dp),
+            textAlign = TextAlign.Center,
         )
     }
 }
@@ -474,23 +648,23 @@ private fun RowScope.CoverGridItem(
                 url = url,
                 title = title,
                 size = maxWidth,
-                cornerRadius = 12.dp,
+                cornerRadius = 16.dp,
             )
         }
-        Spacer(Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         Text(
             text = title,
-            fontSize = 13.sp,
-            fontWeight = FontWeight.Medium,
-            color = Color.White,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = Fg,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(Modifier.height(2.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = subtitle,
             fontSize = 11.sp,
-            color = KvMuted,
+            color = Muted,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -509,25 +683,24 @@ private fun NoResults() {
             Icon(
                 imageVector = Icons.Rounded.SearchOff,
                 contentDescription = null,
-                tint = KvFaint,
+                tint = Faint,
                 modifier = Modifier.size(48.dp),
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Text(
                 text = "Không tìm thấy kết quả",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color.White,
+                color = Fg,
                 textAlign = TextAlign.Center,
             )
-            Spacer(Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = "Thử tìm kiếm với từ khóa khác",
                 fontSize = 13.sp,
-                color = KvMuted,
+                color = Muted,
                 textAlign = TextAlign.Center,
             )
         }
     }
 }
-

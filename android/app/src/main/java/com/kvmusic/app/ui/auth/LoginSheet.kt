@@ -1,12 +1,18 @@
 package com.kvmusic.app.ui.auth
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -18,22 +24,27 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Email
+import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Login
+import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.PersonAdd
 import androidx.compose.material.icons.rounded.QrCode
+import androidx.compose.material.icons.rounded.Visibility
+import androidx.compose.material.icons.rounded.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -44,12 +55,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -61,12 +77,18 @@ import com.kvmusic.app.KvMusicApp
 import com.kvmusic.app.ui.AppUi
 import com.kvmusic.app.ui.Toaster
 import com.kvmusic.app.ui.components.KvBottomSheet
-import com.kvmusic.app.ui.theme.KvBorder
-import com.kvmusic.app.ui.theme.KvCard
-import com.kvmusic.app.ui.theme.KvFaint
-import com.kvmusic.app.ui.theme.KvInput
-import com.kvmusic.app.ui.theme.KvMuted
+import com.kvmusic.app.ui.theme.AccentSoft
+import com.kvmusic.app.ui.theme.Eyebrow
+import com.kvmusic.app.ui.theme.Faint
+import com.kvmusic.app.ui.theme.Fg
+import com.kvmusic.app.ui.theme.Fg2
+import com.kvmusic.app.ui.theme.GlassBorder
+import com.kvmusic.app.ui.theme.Hair
 import com.kvmusic.app.ui.theme.KvOrange
+import com.kvmusic.app.ui.theme.KvShapePill
+import com.kvmusic.app.ui.theme.Muted
+import com.kvmusic.app.ui.theme.NavTitle
+import com.kvmusic.app.ui.theme.glass
 import kotlinx.coroutines.launch
 
 private data class AvatarGradient(val from: Color, val to: Color)
@@ -103,6 +125,8 @@ fun LoginSheet() {
     var loading by remember { mutableStateOf(false) }
     var linking by remember { mutableStateOf(false) }
     var generating by remember { mutableStateOf(false) }
+    var linkError by remember { mutableStateOf<String?>(null) }
+    var generateError by remember { mutableStateOf<String?>(null) }
 
     KvBottomSheet(
         onDismissRequest = { AppUi.loginOpen = false },
@@ -116,13 +140,12 @@ fun LoginSheet() {
         ) {
             Text(
                 "Tài khoản & Đồng bộ",
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color.White,
+                style = NavTitle,
+                color = Fg,
                 modifier = Modifier.weight(1f),
             )
             IconButton(onClick = { AppUi.loginOpen = false }) {
-                Icon(Icons.Rounded.Close, contentDescription = "Đóng", tint = KvMuted)
+                Icon(Icons.Rounded.Close, contentDescription = "Đóng", tint = Fg2, modifier = Modifier.size(20.dp))
             }
         }
 
@@ -130,29 +153,29 @@ fun LoginSheet() {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp)
-                .background(KvInput, RoundedCornerShape(12.dp))
-                .padding(3.dp),
+                .glass(KvShapePill)
+                .padding(4.dp),
         ) {
-            LoginTab(
+            AuthTab(
                 label = "Đăng nhập",
                 icon = Icons.Rounded.Login,
                 selected = tab == 0,
                 modifier = Modifier.weight(1f),
-                onClick = { tab = 0; error = null },
+                onClick = { tab = 0; error = null; linkError = null; generateError = null },
             )
-            LoginTab(
+            AuthTab(
                 label = "Đăng ký",
                 icon = Icons.Rounded.PersonAdd,
                 selected = tab == 1,
                 modifier = Modifier.weight(1f),
-                onClick = { tab = 1; error = null },
+                onClick = { tab = 1; error = null; linkError = null; generateError = null },
             )
-            LoginTab(
+            AuthTab(
                 label = "Mã ghép",
                 icon = Icons.Rounded.QrCode,
                 selected = tab == 2,
                 modifier = Modifier.weight(1f),
-                onClick = { tab = 2; error = null },
+                onClick = { tab = 2; error = null; linkError = null; generateError = null },
             )
         }
 
@@ -163,24 +186,16 @@ fun LoginSheet() {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 12.dp),
         ) {
-            error?.let { message ->
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(Color(0x1ACF6679), RoundedCornerShape(10.dp))
-                        .padding(10.dp),
-                ) {
-                    Text(message, fontSize = 12.sp, color = Color(0xFFCF6679), fontWeight = FontWeight.Medium)
-                }
-                Spacer(Modifier.height(12.dp))
-            }
-
             when (tab) {
                 0 -> {
-                    AuthField(value = email, onValueChange = { email = it }, label = "Email")
-                    Spacer(Modifier.height(10.dp))
-                    AuthField(value = password, onValueChange = { password = it }, label = "Mật khẩu", isPassword = true)
-                    Spacer(Modifier.height(16.dp))
+                    AuthField(value = email, onValueChange = { email = it }, label = "Email", leadingIcon = Icons.Rounded.Email)
+                    Spacer(Modifier.height(12.dp))
+                    AuthField(value = password, onValueChange = { password = it }, label = "Mật khẩu", leadingIcon = Icons.Rounded.Lock, isPassword = true)
+                    Spacer(Modifier.height(18.dp))
+                    error?.let { message ->
+                        ErrorBanner(message)
+                        Spacer(Modifier.height(12.dp))
+                    }
                     AuthButton(
                         text = "Đăng nhập",
                         loading = loading,
@@ -220,18 +235,27 @@ fun LoginSheet() {
                             )
                         }
                     }
-                    Spacer(Modifier.height(14.dp))
-                    AuthField(value = name, onValueChange = { name = it }, label = "Họ tên")
-                    Spacer(Modifier.height(10.dp))
-                    AuthField(value = email, onValueChange = { email = it }, label = "Email")
-                    Spacer(Modifier.height(10.dp))
-                    AuthField(value = password, onValueChange = { password = it }, label = "Mật khẩu (tối thiểu 6 ký tự)", isPassword = true)
+                    Spacer(Modifier.height(16.dp))
+                    AuthField(value = name, onValueChange = { name = it }, label = "Họ tên", leadingIcon = Icons.Rounded.Person)
+                    Spacer(Modifier.height(12.dp))
+                    AuthField(value = email, onValueChange = { email = it }, label = "Email", leadingIcon = Icons.Rounded.Email)
+                    Spacer(Modifier.height(12.dp))
+                    AuthField(value = password, onValueChange = { password = it }, label = "Mật khẩu (tối thiểu 6 ký tự)", leadingIcon = Icons.Rounded.Lock, isPassword = true)
                     if (password.isNotEmpty() && password.length < 6) {
-                        Spacer(Modifier.height(6.dp))
-                        Text("Mật khẩu phải có ít nhất 6 ký tự", fontSize = 11.sp, color = Color(0xFFCF6679))
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Mật khẩu phải có ít nhất 6 ký tự",
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.error,
+                        )
                     }
-                    Spacer(Modifier.height(14.dp))
-                    Text("Màu đại diện", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = KvMuted)
+                    Spacer(Modifier.height(16.dp))
+                    Text(
+                        "Màu đại diện",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Muted,
+                    )
                     Spacer(Modifier.height(10.dp))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -245,7 +269,7 @@ fun LoginSheet() {
                                     .size(32.dp)
                                     .clip(CircleShape)
                                     .background(Brush.linearGradient(listOf(gradient.from, gradient.to)))
-                                    .border(2.dp, if (isSelected) Color.White else Color.Transparent, CircleShape)
+                                    .border(2.dp, if (isSelected) KvOrange else Color.Transparent, CircleShape)
                                     .clickable { avatarIndex = index },
                                 contentAlignment = Alignment.Center,
                             ) {
@@ -261,6 +285,10 @@ fun LoginSheet() {
                         }
                     }
                     Spacer(Modifier.height(18.dp))
+                    error?.let { message ->
+                        ErrorBanner(message)
+                        Spacer(Modifier.height(12.dp))
+                    }
                     AuthButton(
                         text = "Đăng ký",
                         loading = loading,
@@ -286,13 +314,19 @@ fun LoginSheet() {
                     Text(
                         "Nhập mã ghép từ thiết bị khác để đồng bộ danh sách phát và tài khoản.",
                         fontSize = 12.sp,
-                        color = KvMuted,
+                        color = Muted,
                     )
+                    Spacer(Modifier.height(18.dp))
+                    Text("LIÊN KẾT MÃ", style = Eyebrow, color = Muted)
+                    Spacer(Modifier.height(10.dp))
+                    AuthField(value = pairInput, onValueChange = { pairInput = it }, label = "Mã ghép (VD: KV-849201)", leadingIcon = Icons.Rounded.QrCode)
                     Spacer(Modifier.height(12.dp))
-                    AuthField(value = pairInput, onValueChange = { pairInput = it }, label = "Mã ghép (VD: KV-849201)")
-                    Spacer(Modifier.height(16.dp))
+                    linkError?.let { message ->
+                        ErrorBanner(message)
+                        Spacer(Modifier.height(12.dp))
+                    }
                     AuthButton(
-                        text = "Ghép thiết bị",
+                        text = "Liên kết",
                         loading = linking,
                         enabled = pairInput.isNotBlank(),
                         onClick = {
@@ -305,13 +339,23 @@ fun LoginSheet() {
                                         AppUi.loginOpen = false
                                         Toaster.show("Đã ghép thiết bị thành công!")
                                     },
-                                    onFailure = { error = it.message ?: "Mã ghép không hợp lệ" },
+                                    onFailure = { linkError = it.message ?: "Mã ghép không hợp lệ" },
                                 )
                             }
                         },
                     )
+                    Spacer(Modifier.height(18.dp))
+                    Box(Modifier.fillMaxWidth().height(1.dp).background(Hair))
+                    Spacer(Modifier.height(18.dp))
+                    Text("TẠO MÃ", style = Eyebrow, color = Muted)
                     Spacer(Modifier.height(10.dp))
-                    OutlinedButton(
+                    generateError?.let { message ->
+                        ErrorBanner(message)
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    GenerateButton(
+                        text = "Tạo mã",
+                        loading = generating,
                         onClick = {
                             scope.launch {
                                 generating = true
@@ -322,50 +366,39 @@ fun LoginSheet() {
                                         generatedCode = code
                                         Toaster.show("Đã tạo mã ghép mới")
                                     },
-                                    onFailure = { error = it.message ?: "Không thể tạo mã ghép" },
+                                    onFailure = { generateError = it.message ?: "Không thể tạo mã ghép" },
                                 )
                             }
                         },
-                        enabled = !generating,
-                        shape = RoundedCornerShape(24.dp),
-                        border = BorderStroke(1.dp, KvBorder),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = KvOrange,
-                            disabledContentColor = KvFaint,
-                        ),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Tạo mã ghép mới", fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    }
+                    )
                     generatedCode?.let { code ->
-                        Spacer(Modifier.height(16.dp))
+                        Spacer(Modifier.height(18.dp))
                         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
                                 "MÃ GHÉP CỦA BẠN",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = KvMuted,
+                                color = Muted,
                                 letterSpacing = 1.sp,
                             )
-                            Spacer(Modifier.height(6.dp))
+                            Spacer(Modifier.height(8.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
                                     code,
-                                    fontSize = 22.sp,
-                                    fontWeight = FontWeight.Black,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.ExtraBold,
                                     color = KvOrange,
                                     letterSpacing = 4.sp,
                                     fontFamily = FontFamily.Monospace,
                                 )
-                                Spacer(Modifier.width(8.dp))
+                                Spacer(Modifier.width(10.dp))
                                 Box(
                                     modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .background(KvInput)
+                                        .size(38.dp)
+                                        .glass(KvShapePill)
                                         .clickable {
                                             clipboard.setText(AnnotatedString(code))
-                                            Toaster.show("Đã sao chép mã")
+                                            Toaster.show("Đã sao chép")
                                         },
                                     contentAlignment = Alignment.Center,
                                 ) {
@@ -387,23 +420,24 @@ fun LoginSheet() {
 }
 
 @Composable
-private fun LoginTab(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun AuthTab(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier = Modifier, onClick: () -> Unit) {
+    val tint = if (selected) KvOrange else Muted
     Row(
         modifier = modifier
-            .clip(RoundedCornerShape(9.dp))
-            .background(if (selected) KvOrange else Color.Transparent)
+            .clip(KvShapePill)
+            .background(if (selected) AccentSoft else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(vertical = 10.dp),
+            .padding(vertical = 10.dp, horizontal = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = if (selected) Color.White else KvMuted, modifier = Modifier.size(16.dp))
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(16.dp))
         Spacer(Modifier.width(6.dp))
         Text(
             label,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (selected) Color.White else KvMuted,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tint,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -411,46 +445,155 @@ private fun LoginTab(label: String, icon: ImageVector, selected: Boolean, modifi
 }
 
 @Composable
-private fun AuthField(value: String, onValueChange: (String) -> Unit, label: String, isPassword: Boolean = false) {
-    OutlinedTextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(label, color = KvMuted) },
-        singleLine = true,
-        visualTransformation = if (isPassword) PasswordVisualTransformation() else VisualTransformation.None,
-        shape = RoundedCornerShape(12.dp),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = KvOrange,
-            unfocusedBorderColor = KvBorder,
-            focusedContainerColor = KvInput,
-            unfocusedContainerColor = KvInput,
-            focusedTextColor = Color.White,
-            unfocusedTextColor = Color.White,
-            cursorColor = KvOrange,
-        ),
-        modifier = Modifier.fillMaxWidth(),
-    )
+private fun AuthField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    label: String,
+    leadingIcon: ImageVector,
+    isPassword: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val focusRequester = remember { FocusRequester() }
+    val interactionSource = remember { MutableInteractionSource() }
+    var passwordVisible by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .glass(KvShapePill)
+            .clickable(interactionSource = interactionSource, indication = null) { focusRequester.requestFocus() }
+            .padding(horizontal = 16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(leadingIcon, contentDescription = null, tint = Muted, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(12.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier
+                .weight(1f)
+                .focusRequester(focusRequester),
+            textStyle = TextStyle(color = Fg, fontSize = 16.sp, fontWeight = FontWeight.Medium),
+            cursorBrush = SolidColor(KvOrange),
+            singleLine = true,
+            visualTransformation = if (isPassword && !passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
+            decorationBox = { innerTextField ->
+                Box(contentAlignment = Alignment.CenterStart) {
+                    if (value.isEmpty()) {
+                        Text(
+                            label,
+                            fontSize = 16.sp,
+                            color = Muted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+        if (isPassword) {
+            Spacer(Modifier.width(6.dp))
+            IconButton(
+                onClick = { passwordVisible = !passwordVisible },
+                modifier = Modifier.size(32.dp),
+            ) {
+                Icon(
+                    imageVector = if (passwordVisible) Icons.Rounded.VisibilityOff else Icons.Rounded.Visibility,
+                    contentDescription = if (passwordVisible) "Ẩn mật khẩu" else "Hiện mật khẩu",
+                    tint = Fg2,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
 }
 
 @Composable
 private fun AuthButton(text: String, loading: Boolean, enabled: Boolean, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "authButtonScale",
+    )
     Button(
         onClick = onClick,
         enabled = enabled && !loading,
-        shape = RoundedCornerShape(24.dp),
+        interactionSource = interactionSource,
+        shape = KvShapePill,
         colors = ButtonDefaults.buttonColors(
             containerColor = KvOrange,
             contentColor = Color.White,
-            disabledContainerColor = KvCard,
-            disabledContentColor = KvFaint,
+            disabledContainerColor = Fg.copy(alpha = 0.08f),
+            disabledContentColor = Faint,
         ),
-        modifier = Modifier.fillMaxWidth(),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale },
     ) {
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
         } else {
-            Text(text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
         }
+    }
+}
+
+@Composable
+private fun GenerateButton(text: String, loading: Boolean, onClick: () -> Unit) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow),
+        label = "generateButtonScale",
+    )
+    Button(
+        onClick = onClick,
+        enabled = !loading,
+        interactionSource = interactionSource,
+        shape = KvShapePill,
+        border = BorderStroke(1.dp, GlassBorder),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Color.Transparent,
+            contentColor = KvOrange,
+            disabledContainerColor = Color.Transparent,
+            disabledContentColor = Faint,
+        ),
+        contentPadding = PaddingValues(horizontal = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(46.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale },
+    ) {
+        if (loading) {
+            CircularProgressIndicator(modifier = Modifier.size(18.dp), color = KvOrange, strokeWidth = 2.dp)
+        } else {
+            Text(text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun ErrorBanner(message: String, modifier: Modifier = Modifier) {
+    val errorColor = MaterialTheme.colorScheme.error
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(errorColor.copy(alpha = 0.12f), RoundedCornerShape(12.dp))
+            .border(0.5.dp, errorColor.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Rounded.ErrorOutline, contentDescription = null, tint = errorColor, modifier = Modifier.size(16.dp))
+        Spacer(Modifier.width(8.dp))
+        Text(message, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = errorColor)
     }
 }
 
