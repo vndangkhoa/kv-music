@@ -38,11 +38,44 @@ impl AuthStore {
     }
 
     fn load(&self) {
-        let Ok(content) = std::fs::read_to_string(&self.file_path) else { return };
-        let Ok(users) = serde_json::from_str::<Vec<UserRecord>>(&content) else { return };
-        if let Ok(mut map) = self.users.write() {
+        let content = match std::fs::read_to_string(&self.file_path) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!(
+                    "ERROR: users.json unreadable at {}: {} — all logins will fail until fixed",
+                    self.file_path, e
+                );
+                return;
+            }
+        };
+        let users = match serde_json::from_str::<Vec<UserRecord>>(&content) {
+            Ok(u) => u,
+            Err(e) => {
+                eprintln!(
+                    "ERROR: users.json at {} is corrupt or schema-drifted, ignoring contents: {}",
+                    self.file_path, e
+                );
+                return;
+            }
+        };
+        {
+            let mut map = match self.users.write() {
+                Ok(m) => m,
+                Err(_) => return,
+            };
+            for u in &users {
+                map.insert(u.id.clone(), u.clone());
+            }
+        }
+        {
+            let mut codes = match self.pair_codes.write() {
+                Ok(c) => c,
+                Err(_) => return,
+            };
             for u in users {
-                map.insert(u.id.clone(), u);
+                if !u.pair_code.is_empty() {
+                    codes.insert(u.pair_code.clone(), u.id.clone());
+                }
             }
         }
     }
@@ -53,10 +86,26 @@ impl AuthStore {
             Err(_) => return,
         };
         if let Some(parent) = std::path::Path::new(&self.file_path).parent() {
-            let _ = std::fs::create_dir_all(parent);
+            if let Err(e) = std::fs::create_dir_all(parent) {
+                eprintln!(
+                    "ERROR: failed to create directory {} for users.json: {}",
+                    parent.display(),
+                    e
+                );
+            }
         }
-        if let Ok(json) = serde_json::to_string_pretty(&list) {
-            let _ = std::fs::write(&self.file_path, json);
+        let json = match serde_json::to_string_pretty(&list) {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("ERROR: failed to serialize users for {}: {}", self.file_path, e);
+                return;
+            }
+        };
+        if let Err(e) = std::fs::write(&self.file_path, json) {
+            eprintln!(
+                "ERROR: failed to save users.json at {}: {} — registrations will be lost on restart",
+                self.file_path, e
+            );
         }
     }
 
@@ -171,27 +220,58 @@ impl AuthStore {
             sessions.get(token).cloned().ok_or("Chưa đăng nhập")?
         };
         let code = self.generate_pair_code();
-        {
+        let old_code = {
             let mut users = self.users.write().map_err(|e| e.to_string())?;
-            if let Some(u) = users.get_mut(&user_id) {
-                u.pair_code = code.clone();
+            users
+                .get_mut(&user_id)
+                .map(|u| std::mem::replace(&mut u.pair_code, code.clone()))
+        };
+        {
+            let mut codes = self.pair_codes.write().map_err(|e| e.to_string())?;
+            if let Some(old) = old_code {
+                if !old.is_empty() {
+                    codes.remove(&old);
+                }
             }
+            codes.insert(code.clone(), user_id);
         }
-        self.pair_codes.write().map_err(|e| e.to_string())?.insert(code.clone(), user_id);
         self.save();
         Ok(code)
     }
 
     pub async fn link_pair_code(&self, code: &str) -> Option<(UserRecord, String)> {
         let formatted = code.trim().to_uppercase();
-        let user_id = {
-            let codes = self.pair_codes.read().ok()?;
-            codes.get(&formatted)?.clone()
+        let user_id = match self.pair_codes.read().ok()?.get(&formatted).cloned() {
+            Some(id) => id,
+            None => {
+                eprintln!("[DEBUG] pair link failed: code not found");
+                return None;
+            }
         };
-        let user = self.get_user(&user_id).await?;
+        let user = match self.get_user(&user_id).await {
+            Some(u) => u,
+            None => {
+                eprintln!("[DEBUG] pair link failed: user not found");
+                return None;
+            }
+        };
         let token = Self::generate_token();
         self.sessions.write().ok()?.insert(token.clone(), user.id.clone());
-        Some((user, token))
+        {
+            let mut codes = self.pair_codes.write().ok()?;
+            codes.remove(&formatted);
+        }
+        let mut linked_user = user;
+        {
+            let mut users = self.users.write().ok()?;
+            if let Some(u) = users.get_mut(&user_id) {
+                u.pair_code.clear();
+            }
+            linked_user.pair_code.clear();
+        }
+        self.save();
+        eprintln!("[DEBUG] pair link attempt resolved");
+        Some((linked_user, token))
     }
 }
 

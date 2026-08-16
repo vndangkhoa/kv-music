@@ -32,8 +32,10 @@ backend-rust/cookies.txt
 .vscode/
 
 # Project
-data/
-cache/
+backend-rust/data/
+backend-rust/cache/
+/data/
+/cache/
 
 # Debug/Test
 *_backup.*
