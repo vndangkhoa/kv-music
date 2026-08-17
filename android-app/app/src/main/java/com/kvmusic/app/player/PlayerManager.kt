@@ -38,6 +38,9 @@ object PlayerManager {
     private val _isPlaying = MutableStateFlow(false)
     val isPlaying: StateFlow<Boolean> = _isPlaying
 
+    private val _currentCoverBitmap = MutableStateFlow<Bitmap?>(null)
+    val currentCoverBitmap: StateFlow<Bitmap?> = _currentCoverBitmap
+
     private val _currentPosition = MutableStateFlow(0L)
     val currentPosition: StateFlow<Long> = _currentPosition
 
@@ -173,6 +176,7 @@ object PlayerManager {
 
                     withContext(Dispatchers.Main) {
                         if (_currentTrack.value?.id == track.id) {
+                            _currentCoverBitmap.value = bitmap
                             val updatedMetadata = MediaMetadata.Builder()
                                 .setTitle(track.title)
                                 .setArtist(track.artist)

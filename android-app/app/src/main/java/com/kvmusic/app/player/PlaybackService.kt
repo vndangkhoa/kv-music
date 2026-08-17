@@ -77,11 +77,15 @@ class PlaybackService : MediaSessionService() {
                     startForegroundNotification()
                 } else {
                     releaseWakeLock()
+                    startForegroundNotification()
                 }
+            }
+
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                startForegroundNotification()
             }
         })
 
-        // Start foreground notification immediately on creation
         startForegroundNotification()
     }
 
@@ -107,28 +111,50 @@ class PlaybackService : MediaSessionService() {
 
     private fun buildNotification(): Notification {
         val track = PlayerManager.currentTrack.value
+        val isPlaying = PlayerManager.isPlaying.value
+        val coverBitmap = PlayerManager.currentCoverBitmap.value
         val title = track?.title ?: "KV Music"
         val artist = track?.artist ?: "Streaming Audio"
 
-        val intent = Intent(this, MainActivity::class.java)
-        val pendingIntent = PendingIntent.getActivity(
-            this, 0, intent,
+        val openAppIntent = Intent(this, MainActivity::class.java)
+        val openAppPendingIntent = PendingIntent.getActivity(
+            this, 0, openAppIntent,
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
         )
 
-        return NotificationCompat.Builder(this, CHANNEL_ID)
+        // Notification Action Intents
+        val prevIntent = Intent(this, PlaybackService::class.java).apply { action = ACTION_PREVIOUS }
+        val prevPendingIntent = PendingIntent.getService(this, 1, prevIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val playPauseIntent = Intent(this, PlaybackService::class.java).apply { action = ACTION_TOGGLE_PLAY }
+        val playPausePendingIntent = PendingIntent.getService(this, 2, playPauseIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val nextIntent = Intent(this, PlaybackService::class.java).apply { action = ACTION_NEXT }
+        val nextPendingIntent = PendingIntent.getService(this, 3, nextIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+
+        val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(title)
             .setContentText(artist)
-            .setContentIntent(pendingIntent)
-            .setOngoing(true)
+            .setSubText("KV Music")
+            .setContentIntent(openAppPendingIntent)
+            .setOngoing(isPlaying)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .addAction(android.R.drawable.ic_media_previous, "Previous", prevPendingIntent)
+            .addAction(if (isPlaying) android.R.drawable.ic_media_pause else android.R.drawable.ic_media_play, if (isPlaying) "Pause" else "Play", playPausePendingIntent)
+            .addAction(android.R.drawable.ic_media_next, "Next", nextPendingIntent)
             .setStyle(
                 androidx.media.app.NotificationCompat.MediaStyle()
                     .setMediaSession(mediaSession?.sessionCompatToken)
+                    .setShowActionsInCompactView(0, 1, 2)
             )
-            .build()
+
+        if (coverBitmap != null) {
+            builder.setLargeIcon(coverBitmap)
+        }
+
+        return builder.build()
     }
 
     private fun startForegroundNotification() {
@@ -150,6 +176,13 @@ class PlaybackService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        
+        when (intent?.action) {
+            ACTION_PREVIOUS -> PlayerManager.playPrevious()
+            ACTION_TOGGLE_PLAY -> PlayerManager.togglePlayPause()
+            ACTION_NEXT -> PlayerManager.playNext()
+        }
+
         acquireWakeLock()
         startForegroundNotification()
         return START_STICKY
@@ -188,5 +221,9 @@ class PlaybackService : MediaSessionService() {
     companion object {
         const val CHANNEL_ID = "kv_music_playback_channel"
         const val NOTIFICATION_ID = 1001
+
+        const val ACTION_PREVIOUS = "com.kvmusic.app.ACTION_PREVIOUS"
+        const val ACTION_TOGGLE_PLAY = "com.kvmusic.app.ACTION_TOGGLE_PLAY"
+        const val ACTION_NEXT = "com.kvmusic.app.ACTION_NEXT"
     }
 }
