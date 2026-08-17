@@ -129,7 +129,7 @@ export default function Waveform({
   return (
     <div
       ref={containerRef}
-      className={`w-full max-w-full overflow-hidden select-none relative ${interactive ? 'cursor-pointer' : ''} ${className}`}
+      className={`w-full max-w-full overflow-hidden select-none relative ${interactive ? 'cursor-pointer' : 'pointer-events-none'} ${className}`}
       style={{ height, touchAction: interactive ? 'none' : undefined }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

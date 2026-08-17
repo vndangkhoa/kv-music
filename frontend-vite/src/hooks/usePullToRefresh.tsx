@@ -29,9 +29,12 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void) {
             setPullDist(0);
             return;
         }
-        // Only pull while at the top; consume the gesture so the browser's
-        // native pull-to-refresh / overscroll never kicks in.
-        if (dy > 8) e.preventDefault();
+        // Track the pull only while at the top. We deliberately do NOT call
+        // preventDefault() or restrict touch-action here: doing so blocks
+        // horizontal gestures (row swipe actions) and can make the page feel
+        // "stuck" on touch devices. Overscroll on the container is already
+        // suppressed via overscroll-behavior, so there's no native
+        // pull-to-refresh to fight.
         pull.current = Math.min(dy * 0.35, 64);
         setPullDist(pull.current);
     }, []);
@@ -75,7 +78,7 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void) {
             onTouchStart,
             onTouchMove,
             onTouchEnd,
-            style: { overscrollBehaviorY: 'contain' as const, touchAction: 'pan-y' as const },
+            style: { overscrollBehaviorY: 'contain' as const },
         },
         indicator,
         refreshing,

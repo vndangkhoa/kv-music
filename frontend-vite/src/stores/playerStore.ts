@@ -86,7 +86,8 @@ export const usePlayerStore = create<PlayerState>()(
 
       playTrack: (track, newQueue, openFullPlayer = false) => {
         const state = get();
-        if (state.currentTrack?.id !== track.id) {
+        const isNewTrack = state.currentTrack?.id !== track.id;
+        if (isNewTrack) {
           set({ isBuffering: true });
           const filtered = state.playHistory.filter(t => t.id !== track.id);
           const playHistory = [track, ...filtered].slice(0, 20);
@@ -103,6 +104,13 @@ export const usePlayerStore = create<PlayerState>()(
           isRightPanelOpen: true,
           isFullScreenOpen: openFullPlayer ? true : state.isFullScreenOpen,
         };
+        if (isNewTrack) {
+          // A new song must always start from 0:00 — never carry over the
+          // previous track's position (progress/duration/pending seek).
+          updates.progress = 0;
+          updates.duration = 0;
+          updates.pendingSeek = null;
+        }
         if (newQueue) {
           const index = newQueue.findIndex(t => t.id === track.id);
           updates.queue = newQueue;
@@ -113,7 +121,8 @@ export const usePlayerStore = create<PlayerState>()(
 
       loadTrack: (track, newQueue) => {
         const state = get();
-        if (state.currentTrack?.id !== track.id) {
+        const isNewTrack = state.currentTrack?.id !== track.id;
+        if (isNewTrack) {
           const filtered = state.playHistory.filter(t => t.id !== track.id);
           const playHistory = [track, ...filtered].slice(0, 20);
           set({ playHistory });
@@ -128,6 +137,11 @@ export const usePlayerStore = create<PlayerState>()(
           isPlaying: false,
           isRightPanelOpen: true,
         };
+        if (isNewTrack) {
+          updates.progress = 0;
+          updates.duration = 0;
+          updates.pendingSeek = null;
+        }
         if (newQueue) {
           const index = newQueue.findIndex(t => t.id === track.id);
           updates.queue = newQueue;

@@ -16,6 +16,9 @@ export default function MiniPlayer() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const streamFailCount = useRef(0);
+  // Remembers which track the audio element is currently loaded for, so a
+  // track change ALWAYS reloads even when two songs resolve to the same URL.
+  const loadedTrackIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (currentTrack && audioRef.current && currentTrack.url) {
@@ -27,10 +30,17 @@ export default function MiniPlayer() {
       // Always reload when the element is in an error state - a previously
       // failed source (e.g. unsupported WebM) must be retried even if the URL
       // is unchanged, otherwise playback stays broken until a full reload.
-      if (isSameUrl && !hasError) return;
+      if (isSameUrl && !hasError && loadedTrackIdRef.current === currentTrack.id) return;
+      loadedTrackIdRef.current = currentTrack.id;
 
       audioRef.current.src = currentTrack.url;
       audioRef.current.load();
+      // A new song always starts from 0:00 — never inherit the previous
+      // track's position, and reset the UI progress right away so the
+      // progress bar / waveform don't show the old song's timestamp.
+      audioRef.current.currentTime = 0;
+      setProgress(0);
+      setDuration(0);
       streamFailCount.current = 0;
       if (isPlaying) {
         audioRef.current.play().catch(e => {
