@@ -11,6 +11,8 @@
 <p align="center">
   <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react" alt="React"/>
   <img src="https://img.shields.io/badge/Rust-1.88-000000?style=flat&logo=rust" alt="Rust"/>
+  <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat&logo=kotlin" alt="Kotlin"/>
+  <img src="https://img.shields.io/badge/Android-Native-3DDC84?style=flat&logo=android" alt="Android"/>
   <img src="https://img.shields.io/badge/Vite-5.4-646CFF?style=flat&logo=vite" alt="Vite"/>
   <img src="https://img.shields.io/badge/TailwindCSS-3.4-06B6D4?style=flat&logo=tailwindcss" alt="TailwindCSS"/>
   <img src="https://img.shields.io/badge/Axum-0.8-000000?style=flat" alt="Axum"/>

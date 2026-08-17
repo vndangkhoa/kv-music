@@ -48,6 +48,7 @@ function App() {
           <Route path="section" element={<Section />} />
           <Route path="charts" element={<ChartsSection />} />
           <Route path="track/:id" element={<Track />} />
+          <Route path="share/track/:id" element={<Track />} />
         </Route>
       </Routes>
     </BrowserRouter>
