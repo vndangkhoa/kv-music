@@ -104,6 +104,23 @@ object PlayerManager {
                                 playNext()
                             }
                         }
+
+                        override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                            if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_SEEK) {
+                                val currentMediaUri = mediaItem?.localConfiguration?.uri?.toString()
+                                val queueList = _queue.value
+                                if (currentMediaUri != null && queueList.isNotEmpty()) {
+                                    val matchedIndex = queueList.indexOfFirst { track ->
+                                        val trackRawUrl = if (track.url.startsWith("http")) track.url else RetrofitClient.getStreamUrl(track.id)
+                                        currentMediaUri.contains(track.id) || trackRawUrl.contains(currentMediaUri)
+                                    }
+                                    if (matchedIndex != -1 && matchedIndex != _queueIndex.value) {
+                                        _queueIndex.value = matchedIndex
+                                        _currentTrack.value = queueList[matchedIndex]
+                                    }
+                                }
+                            }
+                        }
                     })
                 }
         }
