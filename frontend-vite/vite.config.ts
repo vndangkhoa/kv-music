@@ -11,7 +11,11 @@ export default defineConfig({
     plugins: [
         react(),
         VitePWA({
-            registerType: 'autoUpdate',
+            // 'prompt' shows the in-app "update available" banner so users
+            // always reach the latest build (a cache-first SW otherwise keeps
+            // serving the old bundle and the app looks "stuck on an old
+            // version" after every release).
+            registerType: 'prompt',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
             manifest: {
                 name: 'kv-music',

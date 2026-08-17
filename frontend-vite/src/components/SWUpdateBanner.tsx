@@ -45,7 +45,12 @@ export default function SWUpdateBanner() {
         </div>
         {needRefresh ? (
           <button
-            onClick={() => window.location.reload()}
+            onClick={() => {
+              // Activate the waiting service worker (skipWaiting) so the
+              // reload serves the NEW bundle, not the cached old one.
+              (window as any).__kvMusicUpdateSW?.();
+              setTimeout(() => window.location.reload(), 350);
+            }}
             className="flex-shrink-0 px-3.5 py-2 rounded-full bg-[#ff5500] text-white text-xs font-bold hover:bg-[#ff7a00] transition"
           >
             Tải lại
