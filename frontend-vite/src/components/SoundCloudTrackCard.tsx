@@ -154,13 +154,17 @@ export default function SoundCloudTrackCard({
               </span>
             </div>
 
-            {/* Interactive SoundCloud Waveform */}
+            {/* SoundCloud Waveform — interactive seek bar ONLY for the current
+                track. Other cards render a passive display: interactive
+                waveforms carry `touch-action: none` which blocks page
+                scrolling when a swipe starts on them — with a waveform on
+                every card, the middle of the page became unscrollable. */}
             <div className="mt-1 sm:mt-2 relative w-full max-w-full overflow-hidden">
               <Waveform
                 trackId={track.id}
                 played={playedFraction}
-                interactive
-                onSeek={handleSeek}
+                interactive={isCurrent}
+                onSeek={isCurrent ? handleSeek : undefined}
                 height={40}
                 className="w-full"
               />
