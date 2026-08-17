@@ -8,6 +8,7 @@ import PlayerBar from './PlayerBar';
 import MiniPlayer from '../player/MiniPlayer';
 import SettingsModal from '../SettingsModal';
 import Toast from '../Toast';
+import SWUpdateBanner from '../SWUpdateBanner';
 import { usePlayerStore } from '../../stores/playerStore';
 import { libraryService } from '../../services/library';
 
@@ -69,6 +70,9 @@ export default function AppLayout() {
 
       {/* Mobile Full Screen Player Drawer */}
       {isMobile && <MobileFullPlayer />}
+
+      {/* PWA update banner (new version available -> reload) */}
+      <SWUpdateBanner />
 
       {/* Modals & Toasts */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
