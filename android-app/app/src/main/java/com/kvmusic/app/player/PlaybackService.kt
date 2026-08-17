@@ -33,16 +33,32 @@ class PlaybackService : MediaSessionService() {
 
         mediaSession = MediaSession.Builder(this, player)
             .setSessionActivity(pendingIntent)
-            .setCallback(object : MediaSession.Callback {})
+            .setCallback(object : MediaSession.Callback {
+                override fun onConnect(
+                    session: MediaSession,
+                    controller: MediaSession.ControllerInfo
+                ): MediaSession.ConnectionResult {
+                    val connectionResult = super.onConnect(session, controller)
+                    val sessionCommands = connectionResult.availableSessionCommands.buildUpon()
+                    return MediaSession.ConnectionResult.accept(
+                        sessionCommands.build(),
+                        connectionResult.availablePlayerCommands
+                    )
+                }
+            })
             .build()
 
-        // Configure DefaultMediaNotificationProvider with small icon and notification channel for swipe-down controls
         val notificationProvider = DefaultMediaNotificationProvider.Builder(this)
             .setNotificationId(NOTIFICATION_ID)
             .setChannelId(CHANNEL_ID)
             .build()
 
         setMediaNotificationProvider(notificationProvider)
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     private fun createNotificationChannel() {
