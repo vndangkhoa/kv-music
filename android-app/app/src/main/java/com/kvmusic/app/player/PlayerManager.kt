@@ -4,6 +4,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.drawable.BitmapDrawable
+import coil.imageLoader
+import coil.request.ImageRequest
+import coil.request.SuccessResult
+import java.io.ByteArrayOutputStream
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
@@ -144,6 +150,50 @@ object PlayerManager {
             context.startService(serviceIntent)
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+
+        // Asynchronously load artwork bytes for Android 13/14 System Lockscreen & Notification Media Control Card
+        scope.launch(Dispatchers.IO) {
+            try {
+                val context = KVMusicApp.instance
+                val request = ImageRequest.Builder(context)
+                    .data(track.coverUrl)
+                    .allowHardware(false)
+                    .build()
+                val result = (context.imageLoader.execute(request) as? SuccessResult)?.drawable
+                val bitmap = (result as? BitmapDrawable)?.bitmap
+                if (bitmap != null) {
+                    val stream = ByteArrayOutputStream()
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+                    val byteArray = stream.toByteArray()
+
+                    withContext(Dispatchers.Main) {
+                        if (_currentTrack.value?.id == track.id) {
+                            val updatedMetadata = MediaMetadata.Builder()
+                                .setTitle(track.title)
+                                .setArtist(track.artist)
+                                .setAlbumTitle(track.artist)
+                                .setArtworkData(byteArray, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+                                .setArtworkUri(Uri.parse(track.coverUrl))
+                                .setIsPlayable(true)
+                                .build()
+
+                            val updatedItem = mediaItem.buildUpon()
+                                .setMediaMetadata(updatedMetadata)
+                                .build()
+
+                            val p = exoPlayer
+                            if (p != null) {
+                                val curPos = p.currentPosition
+                                p.replaceMediaItem(p.currentMediaItemIndex.coerceAtLeast(0), updatedItem)
+                                p.seekTo(curPos)
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
