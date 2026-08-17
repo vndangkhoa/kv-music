@@ -147,7 +147,11 @@ object PlayerManager {
         try {
             val context = KVMusicApp.instance
             val serviceIntent = Intent(context, PlaybackService::class.java)
-            context.startService(serviceIntent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(serviceIntent)
+            } else {
+                context.startService(serviceIntent)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
         }

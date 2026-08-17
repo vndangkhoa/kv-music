@@ -1,8 +1,6 @@
 package com.kvmusic.app.player
 
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
+import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -27,7 +25,7 @@ class PlaybackService : MediaSessionService() {
 
         val player = PlayerManager.getExoPlayer(this)
 
-        // Acquire CPU Partial WakeLock to guarantee zero audio stoppage when screen is turned off
+        // Acquire CPU Partial WakeLock to guarantee continuous screen-off playback
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
@@ -76,17 +74,21 @@ class PlaybackService : MediaSessionService() {
             override fun onIsPlayingChanged(isPlaying: Boolean) {
                 if (isPlaying) {
                     acquireWakeLock()
+                    startForegroundNotification()
                 } else {
                     releaseWakeLock()
                 }
             }
         })
+
+        // Start foreground notification immediately on creation
+        startForegroundNotification()
     }
 
     private fun acquireWakeLock() {
         try {
             if (wakeLock?.isHeld == false) {
-                wakeLock?.acquire(24 * 60 * 60 * 1000L) // Hold wake lock for continuous screen-off playback
+                wakeLock?.acquire(24 * 60 * 60 * 1000L)
             }
         } catch (e: Exception) {
             e.printStackTrace()
@@ -103,9 +105,53 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    private fun buildNotification(): Notification {
+        val track = PlayerManager.currentTrack.value
+        val title = track?.title ?: "KV Music"
+        val artist = track?.artist ?: "Streaming Audio"
+
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
+        return NotificationCompat.Builder(this, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(title)
+            .setContentText(artist)
+            .setContentIntent(pendingIntent)
+            .setOngoing(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .setStyle(
+                androidx.media.app.NotificationCompat.MediaStyle()
+                    .setMediaSession(mediaSession?.sessionCompatToken)
+            )
+            .build()
+    }
+
+    private fun startForegroundNotification() {
+        try {
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         acquireWakeLock()
+        startForegroundNotification()
         return START_STICKY
     }
 
@@ -114,7 +160,7 @@ class PlaybackService : MediaSessionService() {
             val channel = NotificationChannel(
                 CHANNEL_ID,
                 "KV Music Playback Controls",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_DEFAULT
             ).apply {
                 description = "Media playback controls and artwork notification"
                 setSound(null, null)
