@@ -1,5 +1,6 @@
 package com.kvmusic.app
 
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -39,6 +40,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
+        // Request runtime notification permission on Android 13+ (API 33+) for lock screen & notification media player
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 101)
+            }
+        }
+
         // Pre-initialize ExoPlayer for background audio support
         PlayerManager.getExoPlayer(this)
 
@@ -62,11 +70,8 @@ class MainActivity : ComponentActivity() {
 
                 val progressFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
 
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                ) {
+                // Maximize whole screen view with 100% full screen edge-to-edge layout
+                Box(modifier = Modifier.fillMaxSize()) {
                     Scaffold(
                         bottomBar = {
                             Column(

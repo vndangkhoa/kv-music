@@ -1,12 +1,10 @@
 package com.kvmusic.app.player
 
+import android.app.PendingIntent
 import android.content.Intent
-import androidx.media3.common.AudioAttributes
-import androidx.media3.common.C
-import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.kvmusic.app.MainActivity
 
 class PlaybackService : MediaSessionService() {
 
@@ -14,10 +12,19 @@ class PlaybackService : MediaSessionService() {
 
     override fun onCreate() {
         super.onCreate()
-        
+
         val player = PlayerManager.getExoPlayer(this)
-        
+
+        val intent = Intent(this, MainActivity::class.java)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            0,
+            intent,
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         mediaSession = MediaSession.Builder(this, player)
+            .setSessionActivity(pendingIntent)
             .setCallback(object : MediaSession.Callback {})
             .build()
     }
