@@ -1,41 +1,16 @@
-import { Play, Pause, Home, Rss, Library, User } from 'lucide-react';
+import { Home, Rss, Library, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { usePlayerStore } from '../stores/playerStore';
-import { libraryService } from '../services/library';
 import { haptic } from '../utils/haptic';
 
 export default function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  const currentTrack = usePlayerStore(s => s.currentTrack);
-  const isPlaying = usePlayerStore(s => s.isPlaying);
-  const isBuffering = usePlayerStore(s => s.isBuffering);
-  const togglePlay = usePlayerStore(s => s.togglePlay);
-  const loadTrack = usePlayerStore(s => s.loadTrack);
-  const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
-
   const isActive = (p: string) => location.pathname === p;
 
   const handleNav = (to: string) => {
     haptic(6);
     navigate(to);
-  };
-
-  const handleCenterPlayClick = async () => {
-    haptic(8);
-    if (currentTrack) {
-      togglePlay();
-    } else {
-      try {
-        const tracks = await libraryService.getInitialTrendingTracks();
-        if (tracks.length > 0) {
-          loadTrack(tracks[0], tracks);
-        }
-      } catch {
-        navigate('/');
-      }
-    }
   };
 
   return (
@@ -61,21 +36,6 @@ export default function BottomNav() {
         >
           <Rss className="w-5 h-5" strokeWidth={isActive('/feed') ? 2.5 : 2} />
           <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Stream</span>
-        </button>
-
-        {/* Center Prominent PLAY Button */}
-        <button
-          onClick={handleCenterPlayClick}
-          className="w-10 h-10 rounded-full bg-[#ff5500] text-white flex items-center justify-center shadow-lg shadow-orange-500/30 hover:bg-[#ff7a00] active:scale-95 transition border border-white/10"
-          aria-label={isPlaying ? 'Pause' : 'Play'}
-        >
-          {isBuffering ? (
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-          ) : isPlaying ? (
-            <Pause className="w-5 h-5 fill-current" />
-          ) : (
-            <Play className="w-5 h-5 fill-current ml-0.5" />
-          )}
         </button>
 
         {/* Library */}

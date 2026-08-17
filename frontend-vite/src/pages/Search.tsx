@@ -24,14 +24,20 @@ export default function Search() {
     const [query, setQuery] = useState(routerQuery);
     const [activeTab, setActiveTab] = useState<SearchTab>('everything');
     const [results, setResults] = useState<Track[]>(() => {
-        const cached = safeStorage.getItem('last_search_results');
-        return cached ? JSON.parse(cached) : [];
+        try {
+            const cached = safeStorage.getItem('last_search_results');
+            return cached ? JSON.parse(cached) : [];
+        } catch {
+            return [];
+        }
     });
     const [albums, setAlbums] = useState<AlbumHit[]>([]);
     const [playlists, setPlaylists] = useState<PlaylistHit[]>([]);
     const [artistHits, setArtistHits] = useState<ArtistHit[]>([]);
     const [loading, setLoading] = useState(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
     const [hasMore, setHasMore] = useState(true);
+    const [inputValue, setInputValue] = useState(routerQuery);
 
     const playTrack = usePlayerStore(s => s.playTrack);
     const recentSearches = usePlayerStore(s => s.recentSearches);
@@ -50,9 +56,11 @@ export default function Search() {
             setAlbums([]);
             setPlaylists([]);
             setArtistHits([]);
+            setSearchError(null);
             return;
         }
         setLoading(true);
+        setSearchError(null);
         try {
             const data = await libraryService.universalSearch(searchQuery);
             setResults(data.songs);
@@ -60,8 +68,12 @@ export default function Search() {
             setPlaylists(data.playlists);
             setArtistHits(data.artists);
             setHasMore(data.songs.length >= 5);
+            if (data.songs.length === 0 && data.albums.length === 0 && data.playlists.length === 0 && data.artists.length === 0) {
+                setSearchError('No results — the search service may be temporarily blocked by YouTube. Try again or use a different keyword.');
+            }
         } catch (error) {
             console.error("Search error:", error);
+            setSearchError('Search failed — please check your connection and try again.');
         } finally {
             setLoading(false);
         }
@@ -88,6 +100,7 @@ export default function Search() {
     useEffect(() => {
         if (routerQuery !== query) {
             setQuery(routerQuery);
+            setInputValue(routerQuery);
         }
         if (routerQuery.trim()) {
             performSearch(routerQuery);
@@ -128,9 +141,57 @@ export default function Search() {
             <div className="max-w-[1240px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-6">
                 {/* Search Header & Filter Tabs */}
                 <div className="pb-3 border-b border-white/10 space-y-3">
+                    {/* In-page search input — works on mobile too (no need to
+                        hunt for the header magnifier) */}
+                    <form
+                        onSubmit={(e) => {
+                            e.preventDefault();
+                            const v = inputValue.trim();
+                            if (v) {
+                                addRecentSearch(v);
+                                navigate(`/search?q=${encodeURIComponent(v)}`);
+                            }
+                        }}
+                        className="relative flex items-center w-full max-w-xl bg-[#242424] rounded border border-white/10 focus-within:border-[#ff5500] transition"
+                    >
+                        <SearchIcon className="w-4 h-4 text-neutral-500 ml-3 flex-shrink-0" />
+                        <input
+                            type="text"
+                            value={inputValue}
+                            onChange={(e) => setInputValue(e.target.value)}
+                            placeholder="Search tracks, artists, albums, playlists..."
+                            className="w-full pl-2.5 pr-3 py-2.5 bg-transparent text-white placeholder-neutral-500 text-sm font-medium focus:outline-none"
+                        />
+                        {inputValue && (
+                            <button
+                                type="button"
+                                onClick={() => setInputValue('')}
+                                className="pr-3 text-neutral-500 hover:text-white transition text-lg leading-none"
+                                aria-label="Clear"
+                            >
+                                ×
+                            </button>
+                        )}
+                        <button type="submit" className="pr-3 text-neutral-400 hover:text-white transition" aria-label="Search">
+                            <SearchIcon className="w-4 h-4" />
+                        </button>
+                    </form>
+
                     <h1 className="text-2xl font-extrabold text-white">
                         {query ? `Search results for "${query}"` : 'Search SoundCloud'}
                     </h1>
+
+                    {searchError && (
+                        <div className="flex flex-wrap items-center gap-3 px-3 py-2.5 rounded-lg bg-[#2a1a0a] border border-[#ff5500]/40 text-amber-200 text-xs">
+                            <span>{searchError}</span>
+                            <button
+                                onClick={() => performSearch(query)}
+                                className="px-3 py-1 rounded-full bg-[#ff5500] text-white font-bold hover:bg-[#ff7a00] transition"
+                            >
+                                Try again
+                            </button>
+                        </div>
+                    )}
 
                     {query && (
                         <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">

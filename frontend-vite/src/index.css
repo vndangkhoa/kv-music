@@ -106,6 +106,13 @@ body {
     -moz-osx-font-smoothing: grayscale;
 }
 
+/* Kill native pull-to-refresh / overscroll bounce on mobile so the app's
+   own pull-to-refresh (static layout) is the only refresh gesture. */
+html,
+body {
+    overscroll-behavior-y: none;
+}
+
 /* Soundwave Logo Animations */
 @keyframes soundwave-1 {
 

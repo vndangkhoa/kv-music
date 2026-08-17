@@ -179,7 +179,16 @@ pub async fn suggestions_handler(
     }
     let out = state.ytm.suggestions(&query).await;
     match serde_json::from_str::<serde_json::Value>(&out) {
-        Ok(v) => (StatusCode::OK, Json(v)),
+        Ok(v) => {
+            // Bridge failures come back as {"error": "..."} — the frontend
+            // expects an array, so normalize errors to an empty list instead
+            // of leaking the error object into the suggestions dropdown.
+            if v.is_array() {
+                (StatusCode::OK, Json(v))
+            } else {
+                (StatusCode::OK, Json(serde_json::json!([])))
+            }
+        }
         Err(_) => (StatusCode::OK, Json(serde_json::json!([]))),
     }
 }
@@ -1518,6 +1527,16 @@ pub async fn universal_search_handler(
         }
     }
     songs.truncate(20);
+
+    // ── Resilience: if the Innertube search came back empty (YouTube
+    //    anti-bot gate / transient), fall back to the spotdl/yt-dlp search
+    //    so the user still gets song results. ──
+    if songs.is_empty() {
+        if let Ok(tracks) = state.spotdl.search_tracks(query).await {
+            songs = tracks;
+            songs.truncate(20);
+        }
+    }
 
     // ── Albums / Playlists / Artists ──
     let mut albums: Vec<AlbumHit> = Vec::new();

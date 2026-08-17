@@ -114,7 +114,7 @@ export default function Discovery() {
         ref={containerRef}
         {...pullProps}
         className="max-w-[1240px] mx-auto px-3 md:px-6 py-4 md:py-6 flex gap-8 overflow-y-auto no-scrollbar"
-        style={{ minHeight: '100%' }}
+        style={{ minHeight: '100%', ...(pullProps.style as React.CSSProperties) }}
       >
         {indicator}
 
