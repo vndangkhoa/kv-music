@@ -3,9 +3,13 @@ import { useCallback, useRef, useState } from 'react';
 // Pull-to-refresh for scrollable containers, with a STATIC layout: the
 // content never moves or "slips away" while pulling. A small fixed spinner
 // pill appears at the top-center of the screen; the refresh runs in place
-// (the page data reloads without any layout shift). Native browser
-// pull-to-refresh / overscroll bounce on the container is suppressed via
-// overscroll-behavior (returned as part of the props).
+// (the page data reloads without any layout shift).
+//
+// NOTE: this hook must NOT add overscroll-behavior (or touch-action) to the
+// container: the container wraps the whole page and never scrolls itself
+// (the outer <main> does), so `overscroll-behavior: contain` there swallows
+// wheel/touch gestures and makes the page impossible to scroll. Keep the
+// container gesture-transparent.
 export function usePullToRefresh(onRefresh: () => Promise<void> | void) {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const startY = useRef<number | null>(null);
@@ -78,7 +82,6 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void) {
             onTouchStart,
             onTouchMove,
             onTouchEnd,
-            style: { overscrollBehaviorY: 'contain' as const },
         },
         indicator,
         refreshing,
