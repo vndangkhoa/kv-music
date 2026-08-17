@@ -87,7 +87,7 @@ object PlayerManager {
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setAudioAttributes(audioAttributes, true)
                 .setHandleAudioBecomingNoisy(true)
-                .setWakeMode(C.WAKE_MODE_LOCAL)
+                .setWakeMode(C.WAKE_MODE_NETWORK)
                 .build().apply {
                     addListener(object : Player.Listener {
                         override fun onIsPlayingChanged(playing: Boolean) {
