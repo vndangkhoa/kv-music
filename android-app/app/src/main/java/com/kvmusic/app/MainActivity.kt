@@ -62,7 +62,11 @@ class MainActivity : ComponentActivity() {
 
                 val progressFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
 
-                Box(modifier = Modifier.fillMaxSize()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                ) {
                     Scaffold(
                         bottomBar = {
                             Column(
