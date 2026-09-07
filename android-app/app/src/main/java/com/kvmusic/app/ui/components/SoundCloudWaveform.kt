@@ -72,6 +72,9 @@ fun SoundCloudWaveform(
 ) {
     val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
+    // External scope for the hold-timer: awaitEachGesture's restricted scope
+    // forbids launching coroutines directly.
+    val gestureScope = rememberCoroutineScope()
 
     var isScrubbing by remember { mutableStateOf(false) }
     var previewFraction by remember { mutableFloatStateOf(0f) }
@@ -135,8 +138,7 @@ fun SoundCloudWaveform(
                     var preview = fractionOf(down.position.x)
                     var scrubbing = false
                     var holdFired = false
-                    val scope = this
-                    val holdJob: Job = scope.launch {
+                    val holdJob: Job = gestureScope.launch {
                         delay(HOLD_TO_SCRUB_MS)
                         holdFired = true
                         if (!scrubbing) {
