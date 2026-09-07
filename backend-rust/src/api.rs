@@ -1619,3 +1619,126 @@ pub async fn collection_handler(
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
     }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Version & update check (powers Settings → Check for updates)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Running server identity. `KV_IMAGE_TAG` is baked at docker build time
+/// (`--build-arg IMAGE_TAG=...`); local runs report "dev".
+pub async fn version_handler() -> impl IntoResponse {
+    let image_tag = std::env::var("KV_IMAGE_TAG").unwrap_or_else(|_| "dev".to_string());
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({
+            "app": "kv-music",
+            "imageTag": image_tag,
+        })),
+    )
+}
+
+/// Numeric build suffix of an image tag like "1.0.0-22".
+fn image_build_number(tag: &str) -> Option<u64> {
+    tag.rsplit('-').next()?.parse::<u64>().ok()
+}
+
+/// Server-side update check: compares our image tag against Docker Hub so the
+/// web client never needs registry/CORS access. Always 200 — failures are
+/// reported in-body so Settings can show a graceful message.
+pub async fn update_check_handler() -> impl IntoResponse {
+    let current = std::env::var("KV_IMAGE_TAG").unwrap_or_else(|_| "dev".to_string());
+    let current_build = image_build_number(&current);
+
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(8))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "current": current,
+                    "latest": serde_json::Value::Null,
+                    "updateAvailable": serde_json::Value::Null,
+                    "detailsUrl": "https://pkg.khoavo.myds.me/package/kvmusic",
+                    "error": e.to_string(),
+                })),
+            )
+        }
+    };
+
+    let tags: serde_json::Value = match client
+        .get("https://hub.docker.com/v2/repositories/vndangkhoa/kv-music/tags?page_size=50&ordering=last_updated")
+        .send()
+        .await
+    {
+        Ok(r) => match r.json().await {
+            Ok(v) => v,
+            Err(e) => {
+                return (
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "current": current,
+                        "latest": serde_json::Value::Null,
+                        "updateAvailable": serde_json::Value::Null,
+                        "detailsUrl": "https://pkg.khoavo.myds.me/package/kvmusic",
+                        "error": format!("registry parse error: {e}"),
+                    })),
+                )
+            }
+        },
+        Err(e) => {
+            return (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "current": current,
+                    "latest": serde_json::Value::Null,
+                    "updateAvailable": serde_json::Value::Null,
+                    "detailsUrl": "https://pkg.khoavo.myds.me/package/kvmusic",
+                    "error": format!("registry unreachable: {e}"),
+                })),
+            )
+        }
+    };
+
+    let mut best: Option<(u64, String)> = None;
+    if let Some(results) = tags.get("results").and_then(|r| r.as_array()) {
+        for entry in results {
+            if let Some(name) = entry.get("name").and_then(|n| n.as_str()) {
+                if name.starts_with("1.0.0-") {
+                    if let Some(n) = image_build_number(name) {
+                        if best.as_ref().map(|(b, _)| n > *b).unwrap_or(true) {
+                            best = Some((n, name.to_string()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    match best {
+        Some((n, name)) => {
+            let available = current_build.map(|c| n > c);
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "current": current,
+                    "latest": name,
+                    "updateAvailable": available,
+                    "detailsUrl": "https://pkg.khoavo.myds.me/package/kvmusic",
+                })),
+            )
+        }
+        None => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "current": current,
+                "latest": serde_json::Value::Null,
+                "updateAvailable": serde_json::Value::Null,
+                "detailsUrl": "https://pkg.khoavo.myds.me/package/kvmusic",
+                "error": "no versioned tags found on Docker Hub",
+            })),
+        ),
+    }
+}

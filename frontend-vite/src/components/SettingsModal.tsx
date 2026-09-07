@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { X, RefreshCcw, Check, Trash2, Volume2, QrCode, Copy, Cpu, Cookie } from 'lucide-react';
+import { X, RefreshCcw, Check, Trash2, Volume2, QrCode, Copy, Cpu, Cookie, Package, ExternalLink } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import Logo from './Logo';
 import { safeStorage } from '../utils/safeStorage';
+import { checkForUpdates, type UpdateCheckResult } from '../services/update';
 
 interface SettingsModalProps {
     isOpen: boolean;
@@ -25,6 +26,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const [pairInput, setPairInput] = useState('');
     const [pairMsg, setPairMsg] = useState('');
     const [copied, setCopied] = useState(false);
+    const [isCheckingApp, setIsCheckingApp] = useState(false);
+    const [appUpdate, setAppUpdate] = useState<UpdateCheckResult | null>(null);
 
     if (!isOpen) return null;
 
@@ -107,6 +110,16 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         const code = await generatePairCode();
         if (code) {
             setPairMsg('✅ New pair code generated: ' + code);
+        }
+    };
+
+    const handleCheckAppUpdate = async () => {
+        if (isCheckingApp) return;
+        setIsCheckingApp(true);
+        try {
+            setAppUpdate(await checkForUpdates());
+        } finally {
+            setIsCheckingApp(false);
         }
     };
 
@@ -279,6 +292,78 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                 <pre className="p-2.5 bg-black/60 rounded-lg text-[10px] text-[#ff7a00] font-mono overflow-x-auto max-h-24 no-scrollbar border border-white/5">
                                     {cookieLog}
                                 </pre>
+                            )}
+                        </div>
+                    </section>
+
+                    {/* SECTION 4: App Updates (server build + changelog) */}
+                    <section className="bg-[#121212] border border-white/10 rounded-xl p-4 space-y-3">
+                        <div className="flex items-center gap-2">
+                            <Package className="w-4 h-4 text-[#ff5500]" />
+                            <h3 className="text-xs font-extrabold text-white uppercase tracking-wider">App Updates</h3>
+                        </div>
+
+                        <div className="p-3 bg-[#181818] border border-white/5 rounded-xl space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                    <h4 className="text-xs font-bold text-white">
+                                        Server build {appUpdate?.current ? (
+                                            <span className="font-mono text-[#ff5500]">{appUpdate.current}</span>
+                                        ) : (
+                                            <span className="text-neutral-500">—</span>
+                                        )}
+                                        {appUpdate?.latest && appUpdate.updateAvailable ? (
+                                            <span className="text-neutral-400"> → <span className="font-mono text-green-400">{appUpdate.latest}</span></span>
+                                        ) : null}
+                                    </h4>
+                                    <p className="text-[10px] text-neutral-400">
+                                        {appUpdate == null && 'Check whether a newer server build is available'}
+                                        {appUpdate != null && appUpdate.updateAvailable === true && 'A newer build is available — update via Package Center'}
+                                        {appUpdate != null && appUpdate.updateAvailable === false && 'Your server is up to date'}
+                                        {appUpdate != null && appUpdate.updateAvailable == null && !appUpdate.legacyServer && (appUpdate.error || 'Could not determine update status')}
+                                        {appUpdate != null && appUpdate.legacyServer && 'This server predates update checks — update once to enable them'}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={handleCheckAppUpdate}
+                                    disabled={isCheckingApp}
+                                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white rounded-lg text-xs font-bold transition disabled:opacity-50"
+                                >
+                                    <RefreshCcw className={`w-3.5 h-3.5 ${isCheckingApp ? 'animate-spin' : ''}`} />
+                                    <span>{isCheckingApp ? 'Checking...' : 'Check for updates'}</span>
+                                </button>
+                            </div>
+
+                            {appUpdate != null && appUpdate.updateAvailable === true && (
+                                <a
+                                    href={appUpdate.detailsUrl}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className="flex items-center justify-center gap-1.5 w-full py-2 bg-green-500/10 text-green-400 border border-green-500/20 rounded-lg text-xs font-bold hover:bg-green-500/20 transition"
+                                >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                    <span>Open Package Center page to update</span>
+                                </a>
+                            )}
+
+                            {appUpdate != null && appUpdate.whatsNew.length > 0 && (
+                                <div className="p-2.5 bg-black/60 rounded-lg border border-white/5 space-y-2 max-h-44 overflow-y-auto no-scrollbar">
+                                    <p className="text-[10px] font-extrabold text-neutral-300 uppercase tracking-wider">
+                                        {appUpdate.updateAvailable === true ? "What's new" : 'Latest changes'}
+                                    </p>
+                                    {appUpdate.whatsNew.map(entry => (
+                                        <div key={entry.version}>
+                                            <p className="text-[11px] font-bold text-[#ff5500] font-mono">
+                                                {entry.version} <span className="text-neutral-500 font-sans font-normal">· {entry.date}</span>
+                                            </p>
+                                            <ul className="mt-0.5 space-y-0.5">
+                                                {entry.highlights.map((h, i) => (
+                                                    <li key={i} className="text-[11px] text-neutral-300 leading-snug">• {h}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    ))}
+                                </div>
                             )}
                         </div>
                     </section>

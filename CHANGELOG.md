@@ -5,7 +5,10 @@ All notable changes to KV Music will be documented in this file.
 ## [Unreleased]
 
 ### Added
-- **Song-by-song progressive lists** - New `usePagedList` hook: Feed stream and Library Likes/History render the first few cards instantly and stream the rest in on scroll (IntersectionObserver sentinel + skeletons + "Showing X of Y")
+- **Check for updates in Settings (web)** - New App Updates section: shows the running server build, checks Docker Hub for a newer image via `/api/update-check`, and lists bundled changelog highlights for newer builds
+- **Backend version endpoints** - `GET /api/version` (running image tag via `KV_IMAGE_TAG`) and `GET /api/update-check` (server-side Docker Hub comparison, no CORS needed)
+- **Check for updates in Settings (Android)** - New App Updates card: installed version chip, Check button (GitHub releases with Forgejo fallback), expandable what's-new notes from the release changelog, and one-tap APK download
+- **Docker build-arg plumbing** - `IMAGE_TAG` baked into `KV_IMAGE_TAG` at image build time (`ship.sh` passes it automatically)
 - **Feed instant paint** - Cache-first suggestions (`kv_feed_cache_v1`): cached list paints immediately, fast charts path fills in parallel, personalized suggestions upgrade in place
 - **Waveform scrub time bubble** - Web player shows `current / total` preview while scrubbing; Android full player shows a time bubble following the finger plus a "Touch & hold, then slide to seek" hint
 - **Route code-splitting** - All pages lazy-loaded (`React.lazy`); Feed/Library/Track ship as separate chunks instead of one bundle

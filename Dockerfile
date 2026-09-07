@@ -58,6 +58,12 @@ RUN mkdir -p /tmp/kv-music-cache /tmp/kv-music-downloads /app/data && chmod 777 
 RUN chmod +x /app/server
 
 ENV PORT=8080
+
+# Baked at build time via --build-arg IMAGE_TAG=... (ship.sh passes the image
+# version). Powers GET /api/version and /api/update-check (Settings -> Check
+# for updates). Local builds without the arg report "dev".
+ARG IMAGE_TAG=dev
+ENV KV_IMAGE_TAG=${IMAGE_TAG}
 ENV RUST_LOG=info
 ENV PYTHONUNBUFFERED=1
 EXPOSE 8080
