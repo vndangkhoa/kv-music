@@ -4,6 +4,8 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.2] - 2026-09-07
+
 ### Added
 - **Check for updates in Settings (web)** - New App Updates section: shows the running server build, checks Docker Hub for a newer image via `/api/update-check`, and lists bundled changelog highlights for newer builds
 - **Backend version endpoints** - `GET /api/version` (running image tag via `KV_IMAGE_TAG`) and `GET /api/update-check` (server-side Docker Hub comparison, no CORS needed)
