@@ -21,7 +21,7 @@ All notable changes to KV Music will be documented in this file.
 - **Waveform touch model (Android)** - `SoundCloudWaveform` gains `interactive` + `requireHoldToSeek`: hold (~280 ms, haptic) or slide to scrub, commit on release; list cards are display-only so wave taps never seek or start playback
 - **Track-page hero wave** - Only scrubs the playing track; tapping another track's wave no longer autoplays
 - **Desktop PlayerBar wave** - Keeps classic click-to-seek (`requireHoldToSeek={false}`)
-- **Android phone release** - `versionCode` 2, `versionName` 1.2.1 (miss-tap-safe waveform build)
+- **Android phone release** - `versionCode` 3, `versionName` 1.2.2 (Settings → Check for updates with changelog notes)
 - **CoverImage** - `decoding="async"`, non-draggable images
 
 ### Fixed
