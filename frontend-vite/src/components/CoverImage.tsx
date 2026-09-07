@@ -36,6 +36,8 @@ export default function CoverImage({ src, alt, className = "", fallbackText = "â
                 onError={() => setError(true)}
                 onLoad={() => setLoaded(true)}
                 loading="lazy"
+                decoding="async"
+                draggable={false}
             />
         </div>
     );

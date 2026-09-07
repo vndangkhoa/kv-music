@@ -5,6 +5,29 @@ All notable changes to KV Music will be documented in this file.
 ## [Unreleased]
 
 ### Added
+- **Song-by-song progressive lists** - New `usePagedList` hook: Feed stream and Library Likes/History render the first few cards instantly and stream the rest in on scroll (IntersectionObserver sentinel + skeletons + "Showing X of Y")
+- **Feed instant paint** - Cache-first suggestions (`kv_feed_cache_v1`): cached list paints immediately, fast charts path fills in parallel, personalized suggestions upgrade in place
+- **Waveform scrub time bubble** - Web player shows `current / total` preview while scrubbing; Android full player shows a time bubble following the finger plus a "Touch & hold, then slide to seek" hint
+- **Route code-splitting** - All pages lazy-loaded (`React.lazy`); Feed/Library/Track ship as separate chunks instead of one bundle
+- **Hold-to-seek accessibility** - Waveform exposes slider role with arrow-key seeking and live region value
+
+### Changed
+- **Waveform data is opt-in** - `useWaveformData` no longer downloads + decodes full audio per card; lists render zero-network seeded bars, only the player/playing row fetches real peaks
+- **Card re-render isolation** - `SoundCloudTrackCard` memoized; playback ticks re-render only the playing card (non-playing rows select stable `0`)
+- **Waveform touch model (web)** - Plain taps no longer seek; scrub starts on 220 ms hold or 8 px slide, audio seeks once on release (`onScrubEnd`); taller touch target with `touch-action: pan-y` so vertical scroll still works
+- **Waveform touch model (Android)** - `SoundCloudWaveform` gains `interactive` + `requireHoldToSeek`: hold (~280 ms, haptic) or slide to scrub, commit on release; list cards are display-only so wave taps never seek or start playback
+- **Track-page hero wave** - Only scrubs the playing track; tapping another track's wave no longer autoplays
+- **Desktop PlayerBar wave** - Keeps classic click-to-seek (`requireHoldToSeek={false}`)
+- **Android phone release** - `versionCode` 2, `versionName` 1.2.1 (miss-tap-safe waveform build)
+- **CoverImage** - `decoding="async"`, non-draggable images
+
+### Fixed
+- **Waveform miss-taps (web + Android)** - Accidental taps on the sound wave no longer jump the timestamp or trigger playback; seeking requires touch-hold-and-slide
+- **Feed/Library slow load** - Eliminated per-card full-audio downloads; first paint no longer waits on 6 fan-out searches
+- **List scroll jank** - Offscreen cards skip layout via `content-visibility: auto`
+- **Non-playing rows showed live duration** - Duration display now only binds on the current track
+
+### Previous unreleased entries
 - **Charts section** - New `/api/charts` backend endpoint and `ChartsSection` page (Top Hits, Trending Now, Top Albums, etc.)
 - **Seed playlist hydration** - Empty seed playlists auto-filled with real tracks on demand
 - **Discovery redesign** - ChartSection-based layout with curated Vietnamese artist queries

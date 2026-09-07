@@ -9,14 +9,18 @@ export default defineConfig({
     plugins: [
         react(),
         VitePWA({
-            registerType: 'autoUpdate',
+            // 'prompt' shows the in-app "update available" banner so users
+            // always reach the latest build (a cache-first SW otherwise keeps
+            // serving the old bundle and the app looks "stuck on an old
+            // version" after every release).
+            registerType: 'prompt',
             includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
             manifest: {
                 name: 'kv-music',
                 short_name: 'kv-music',
-                description: 'kv-music - Stream the world\'s music: popular tracks, mixes and charts.',
-                theme_color: '#111111',
-                background_color: '#111111',
+                description: 'kv-music - Modern High Quality Music Streaming Platform',
+                theme_color: '#0b132d',
+                background_color: '#0b132d',
                 display: 'standalone',
                 scope: '/',
                 start_url: '/',
@@ -37,23 +41,6 @@ export default defineConfig({
                         sizes: '512x512',
                         type: 'image/png',
                         purpose: 'any maskable'
-                    }
-                ],
-                shortcuts: [
-                    {
-                        name: 'Tìm kiếm',
-                        url: '/search',
-                        icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
-                    },
-                    {
-                        name: 'Thư viện',
-                        url: '/library',
-                        icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
-                    },
-                    {
-                        name: 'BXH',
-                        url: '/charts',
-                        icons: [{ src: 'pwa-192x192.png', sizes: '192x192' }]
                     }
                 ]
             }

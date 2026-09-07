@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Sparkles, Heart, Clock, Music2, Flame, Rss } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { usePagedList } from '../hooks/usePagedList';
 import { libraryService } from '../services/library';
+import { safeStorage } from '../utils/safeStorage';
 import { Track } from '../types';
 import CoverImage from '../components/CoverImage';
 import Skeleton from '../components/Skeleton';
@@ -27,32 +29,67 @@ export default function Feed() {
     const [mixes, setMixes] = useState<FeedMix[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const loadFeed = async () => {
-        setLoading(true);
-        try {
-            try {
-                const res = await fetch('/api/feed');
-                const sections = await res.json();
-                if (Array.isArray(sections) && sections.length > 0) {
-                    const mapped: FeedMix[] = sections
-                        .slice(0, 3)
-                        .flatMap((sec: any) => (sec.items || []).map((item: any) => ({
-                            id: item.playlistId || item.videoId || `mix-${item.title}`,
-                            title: item.title,
-                            artist: item.artist,
-                            thumb: item.thumb,
-                            section: sec.title,
-                        })));
-                    if (mapped.length > 0) setMixes(mapped.slice(0, 12));
-                }
-            } catch { /* bridge unavailable */ }
+    // Song-by-song progressive rendering: first paint shows a handful of
+    // cards instantly; the rest stream in as the sentinel scrolls into view.
+    const { visible: visibleSuggestions, total: totalSuggestions, hasMore, sentinelRef } =
+        usePagedList(suggestions, 5, 4);
 
+    const loadFeed = async () => {
+        // 1. Instant paint from cache so the page never sits on skeletons.
+        try {
+            const cached = safeStorage.getItem('kv_feed_cache_v1');
+            if (cached) {
+                const parsed = JSON.parse(cached) as Track[];
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setSuggestions(parsed);
+                    setLoading(false);
+                }
+            }
+        } catch { /* ignore */ }
+
+        try {
+            // 2. Mixes + fast charts path in parallel (charts paint in ~1 request).
+            const mixesPromise = (async () => {
+                try {
+                    const res = await fetch('/api/feed');
+                    const sections = await res.json();
+                    if (Array.isArray(sections) && sections.length > 0) {
+                        const mapped: FeedMix[] = sections
+                            .slice(0, 3)
+                            .flatMap((sec: any) => (sec.items || []).map((item: any) => ({
+                                id: item.playlistId || item.videoId || `mix-${item.title}`,
+                                title: item.title,
+                                artist: item.artist,
+                                thumb: item.thumb,
+                                section: sec.title,
+                            })));
+                        if (mapped.length > 0) setMixes(mapped.slice(0, 12));
+                    }
+                } catch { /* bridge unavailable */ }
+            })();
+
+            const chartsPromise = (async () => {
+                // Only paint charts if we have nothing yet (they're the fallback).
+                if (suggestions.length === 0) {
+                    try {
+                        const charts = await libraryService.getCharts('trending');
+                        if (charts && charts.length > 0) {
+                            setSuggestions(charts.slice(0, 15));
+                            setLoading(false);
+                        }
+                    } catch { /* ignore */ }
+                }
+            })();
+
+            await Promise.allSettled([mixesPromise, chartsPromise]);
+
+            // 3. Personalized upgrade (6 searches — the slow part) replaces the
+            // fast path when ready, and refreshes the cache.
             const res2 = await libraryService.getSmartSuggestions(playHistory, likedTracksData);
             if (res2 && res2.tracks.length > 0) {
-                setSuggestions(res2.tracks.slice(0, 15));
-            } else {
-                const charts = await libraryService.getCharts('trending');
-                setSuggestions((charts || []).slice(0, 15));
+                const next = res2.tracks.slice(0, 15);
+                setSuggestions(next);
+                try { safeStorage.setItem('kv_feed_cache_v1', JSON.stringify(next)); } catch { /* ignore */ }
             }
         } catch (e) {
             console.error('feed load error', e);
@@ -110,19 +147,31 @@ export default function Feed() {
                     {tab === 'stream' ? (
                         <div className="space-y-4">
                             {/* Stream Items */}
-                            {loading ? (
+                            {loading && suggestions.length === 0 ? (
                                 <div className="space-y-3">
                                     {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-32 w-full rounded-lg" />)}
                                 </div>
                             ) : (
-                                suggestions.map((track, i) => (
-                                    <SoundCloudTrackCard
-                                        key={`${track.id}-${i}`}
-                                        track={track}
-                                        queue={suggestions}
-                                        repostedBy={i % 3 === 0 ? track.artist : undefined}
-                                    />
-                                ))
+                                <>
+                                    {visibleSuggestions.map((track, i) => (
+                                        <SoundCloudTrackCard
+                                            key={`${track.id}-${i}`}
+                                            track={track}
+                                            queue={suggestions}
+                                            repostedBy={i % 3 === 0 ? track.artist : undefined}
+                                        />
+                                    ))}
+                                    {hasMore && (
+                                        <>
+                                            <div ref={sentinelRef} className="space-y-3" aria-hidden>
+                                                <Skeleton className="h-32 w-full rounded-lg" />
+                                            </div>
+                                            <p className="text-center text-[11px] text-neutral-500 font-medium">
+                                                Showing {visibleSuggestions.length} of {totalSuggestions} — keep scrolling for more
+                                            </p>
+                                        </>
+                                    )}
+                                </>
                             )}
 
                             {/* Recent Activity */}

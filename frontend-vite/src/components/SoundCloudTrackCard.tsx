@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { Link } from 'react-router-dom';
 import { Play, Pause, Heart, Repeat, Share2, MoreHorizontal, MessageCircle, Eye, ListPlus } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
@@ -19,17 +19,19 @@ interface SoundCloudTrackCardProps {
   className?: string;
 }
 
-export default function SoundCloudTrackCard({
+export default memo(function SoundCloudTrackCard({
   track,
   queue,
   onPlay,
   repostedBy,
   className = '',
 }: SoundCloudTrackCardProps) {
-  const currentTrack = usePlayerStore(s => s.currentTrack);
-  const isPlaying = usePlayerStore(s => s.isPlaying);
-  const progress = usePlayerStore(s => s.progress);
-  const duration = usePlayerStore(s => s.duration);
+  // NOTE: selectors return a stable 0 for non-current rows so the whole list
+  // does NOT re-render on every playback tick — only the playing card does.
+  const isCurrent = usePlayerStore(s => s.currentTrack?.id === track.id);
+  const isPlaying = usePlayerStore(s => s.currentTrack?.id === track.id ? s.isPlaying : false);
+  const progress = usePlayerStore(s => s.currentTrack?.id === track.id ? s.progress : 0);
+  const duration = usePlayerStore(s => s.currentTrack?.id === track.id ? s.duration : 0);
   const playTrack = usePlayerStore(s => s.playTrack);
   const togglePlay = usePlayerStore(s => s.togglePlay);
   const toggleLike = usePlayerStore(s => s.toggleLike);
@@ -40,7 +42,6 @@ export default function SoundCloudTrackCard({
   const [openAddToPlaylist, setOpenAddToPlaylist] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
-  const isCurrent = currentTrack?.id === track.id;
   const isLiked = likedTracks.has(track.id);
   const playedFraction = isCurrent && duration > 0 ? Math.min(1, progress / duration) : 0;
 
@@ -85,18 +86,17 @@ export default function SoundCloudTrackCard({
     }
   }, [track]);
 
+  // Waveform scrub commits only — and only for the currently-playing track.
+  // Tapping a non-playing row's waveform never autoplays (miss-tap fix);
+  // use the play button / card title to start a new track.
   const handleSeek = useCallback((ratio: number) => {
     if (isCurrent && duration > 0) {
       seekTo(ratio * duration);
-    } else {
-      const q = queue && queue.length > 0 ? queue : [track];
-      if (onPlay) onPlay(track, q);
-      else playTrack(track, q);
     }
-  }, [isCurrent, duration, seekTo, queue, track, onPlay, playTrack]);
+  }, [isCurrent, duration, seekTo]);
 
   return (
-    <article className={`bg-[#181818] border border-white/5 rounded-lg p-3 md:p-4 hover:border-white/10 transition-colors ${className}`}>
+    <article className={`bg-[#181818] border border-white/5 rounded-lg p-3 md:p-4 hover:border-white/10 transition-colors [content-visibility:auto] [contain-intrinsic-size:auto_190px] ${className}`}>
       {/* Repost Header if applicable */}
       {repostedBy && (
         <div className="flex items-center gap-1.5 text-xs text-neutral-400 mb-2 font-medium">
@@ -154,18 +154,20 @@ export default function SoundCloudTrackCard({
               </span>
             </div>
 
-            {/* SoundCloud Waveform — interactive seek bar ONLY for the current
-                track. Other cards render a passive display: interactive
-                waveforms carry `touch-action: none` which blocks page
-                scrolling when a swipe starts on them — with a waveform on
-                every card, the middle of the page became unscrollable. */}
+            {/* SoundCloud Waveform — hold-&-slide to seek on the CURRENT track
+                only. Other cards render a cheap passive display (seeded bars,
+                no audio download) so a long tap there never seeks/plays.
+                touchAction pan-y keeps vertical page scroll working. */}
             <div className="mt-1 sm:mt-2 relative w-full max-w-full overflow-hidden">
               <Waveform
                 trackId={track.id}
                 played={playedFraction}
                 interactive={isCurrent}
-                onSeek={isCurrent ? handleSeek : undefined}
+                onScrubEnd={isCurrent ? handleSeek : undefined}
+                duration={duration}
                 height={40}
+                loadRealAudio={isCurrent}
+                showHint={false}
                 className="w-full"
               />
               <div className="flex justify-between items-center text-[10px] text-neutral-400 font-mono mt-0.5">
@@ -284,4 +286,4 @@ export default function SoundCloudTrackCard({
       )}
     </article>
   );
-}
+})

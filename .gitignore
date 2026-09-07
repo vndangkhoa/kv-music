@@ -47,5 +47,5 @@ users/
 cookies.txt
 .opencode/
 # Android machine-local config & build cache
-android/local.properties
+android-app/local.properties
 .gradle/

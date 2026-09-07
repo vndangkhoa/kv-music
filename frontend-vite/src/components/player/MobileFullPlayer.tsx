@@ -182,8 +182,10 @@ export default function MobileFullPlayer() {
                             trackId={currentTrack.id}
                             played={playedFraction}
                             interactive
-                            onSeek={(ratio) => seekTo(ratio * duration)}
+                            onScrubEnd={(ratio) => seekTo(ratio * duration)}
+                            duration={duration}
                             height={48}
+                            loadRealAudio
                             className="w-full"
                         />
                         <div className="flex justify-between text-[10px] text-neutral-400 font-mono mt-1">

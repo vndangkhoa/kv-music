@@ -196,18 +196,15 @@ fun SoundCloudTrackCard(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    // SoundCloud Amplitude Waveform Visualizer
+                    // SoundCloud Amplitude Waveform — DISPLAY ONLY in lists.
+                    // Miss-tap fix: touching the wave here never seeks or starts
+                    // playback (use the play button instead). Scrubbing lives
+                    // only in the full player behind touch-hold-and-slide.
                     SoundCloudWaveform(
                         amplitudes = cardWaveformBars,
                         progressFraction = progressFraction,
-                        onSeekFraction = { fraction ->
-                            if (isCurrent && durationMs > 0) {
-                                val seekMs = (fraction * durationMs).toLong()
-                                PlayerManager.seekTo(seekMs)
-                            } else {
-                                PlayerManager.playTrack(track, queue)
-                            }
-                        },
+                        onSeekFraction = { },
+                        interactive = false,
                         height = 42.dp
                     )
                 }

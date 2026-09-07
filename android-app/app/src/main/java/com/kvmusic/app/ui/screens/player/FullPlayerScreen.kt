@@ -249,7 +249,9 @@ fun FullPlayerScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // 4. SoundCloud Interactive Amplitude Waveform Scrubber
+            // 4. SoundCloud Interactive Amplitude Waveform Scrubber.
+            // Touch-hold-and-slide to seek (plain taps are ignored so a
+            // miss-tap never jumps the timestamp); padded 56dp+ touch target.
             SoundCloudWaveform(
                 amplitudes = waveformBars,
                 progressFraction = progressFraction,
@@ -257,6 +259,10 @@ fun FullPlayerScreen(
                     val seekMs = (fraction * durationMs).toLong()
                     PlayerManager.seekTo(seekMs)
                 },
+                interactive = true,
+                requireHoldToSeek = true,
+                durationMs = durationMs,
+                showHint = true,
                 height = 64.dp
             )
 

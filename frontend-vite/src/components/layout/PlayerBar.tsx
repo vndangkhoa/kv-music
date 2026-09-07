@@ -129,8 +129,12 @@ export default function PlayerBar() {
                                 trackId={currentTrack.id}
                                 played={playedFraction}
                                 interactive
-                                onSeek={handleSeek}
+                                onScrubEnd={handleSeek}
+                                duration={duration}
                                 height={32}
+                                loadRealAudio
+                                requireHoldToSeek={false}
+                                showHint={false}
                                 className="w-full"
                             />
                         </div>

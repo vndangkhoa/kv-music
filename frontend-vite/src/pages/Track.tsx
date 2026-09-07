@@ -119,13 +119,13 @@ export default function Track() {
     toast('Comment posted');
   };
 
+  // Track-page hero scrub commits only for the playing track; tapping the
+  // hero wave of another track never autoplays (miss-tap fix).
   const handleSeek = useCallback((ratio: number) => {
     if (isCurrent && duration > 0) {
       seekTo(ratio * duration);
-    } else if (activeTrack) {
-      playTrack(activeTrack);
     }
-  }, [isCurrent, duration, seekTo, activeTrack, playTrack]);
+  }, [isCurrent, duration, seekTo]);
 
   if (loading) {
     return (
@@ -194,9 +194,11 @@ export default function Track() {
             <Waveform
               trackId={activeTrack.id}
               played={playedFraction}
-              interactive
-              onSeek={handleSeek}
+              interactive={isCurrent}
+              onScrubEnd={isCurrent ? handleSeek : undefined}
+              duration={duration}
               height={60}
+              loadRealAudio={isCurrent}
               className="w-full"
             />
             <div className="flex justify-between items-center text-xs text-neutral-400 font-mono mt-1">

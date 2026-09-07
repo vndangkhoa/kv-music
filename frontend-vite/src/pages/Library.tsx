@@ -7,6 +7,8 @@ import CoverImage from '../components/CoverImage';
 import ArtistAvatar from '../components/ArtistAvatar';
 import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
 import SoundCloudSidebar from '../components/SoundCloudSidebar';
+import Skeleton from '../components/Skeleton';
+import { usePagedList } from '../hooks/usePagedList';
 import { dbService } from '../services/db';
 import { getArtistCoverUrl } from '../services/library';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
@@ -72,6 +74,15 @@ export default function Library() {
 
     const recent = playHistory.slice(0, 10);
 
+    // Song-by-song progressive rendering for the heavy waveform lists —
+    // first paint shows a few cards instantly, the rest stream in on scroll.
+    const {
+        visible: visibleLikes, total: totalLikes, hasMore: hasMoreLikes, sentinelRef: likesSentinelRef,
+    } = usePagedList(likedTracksData, 6, 5);
+    const {
+        visible: visibleRecent, total: totalRecent, hasMore: hasMoreRecent, sentinelRef: recentSentinelRef,
+    } = usePagedList(recent, 5, 5);
+
     return (
         <div className="min-h-full text-white bg-[#121212]">
             <div
@@ -132,9 +143,19 @@ export default function Library() {
                             </div>
                             {likedTracksData.length > 0 ? (
                                 <div className="space-y-3">
-                                    {likedTracksData.map((track, i) => (
+                                    {visibleLikes.map((track, i) => (
                                         <SoundCloudTrackCard key={`${track.id}-${i}`} track={track} queue={likedTracksData} />
                                     ))}
+                                    {hasMoreLikes && (
+                                        <>
+                                            <div ref={likesSentinelRef} aria-hidden>
+                                                <Skeleton className="h-32 w-full rounded-lg" />
+                                            </div>
+                                            <p className="text-center text-[11px] text-neutral-500 font-medium">
+                                                Showing {visibleLikes.length} of {totalLikes} liked tracks
+                                            </p>
+                                        </>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-2">
@@ -278,9 +299,19 @@ export default function Library() {
                             </div>
                             {recent.length > 0 ? (
                                 <div className="space-y-3">
-                                    {recent.map((track, i) => (
+                                    {visibleRecent.map((track, i) => (
                                         <SoundCloudTrackCard key={`recent-${track.id}-${i}`} track={track} queue={playHistory} />
                                     ))}
+                                    {hasMoreRecent && (
+                                        <>
+                                            <div ref={recentSentinelRef} aria-hidden>
+                                                <Skeleton className="h-32 w-full rounded-lg" />
+                                            </div>
+                                            <p className="text-center text-[11px] text-neutral-500 font-medium">
+                                                Showing {visibleRecent.length} of {totalRecent} recent tracks
+                                            </p>
+                                        </>
+                                    )}
                                 </div>
                             ) : (
                                 <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-2">

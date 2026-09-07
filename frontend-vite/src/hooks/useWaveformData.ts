@@ -53,7 +53,13 @@ async function computePeaks(trackId: string): Promise<number[]> {
 
 // Real audio peaks for a track, cached per session. Falls back to a seeded
 // pseudo-waveform so rows/player never show an empty bar.
-export function useWaveformData(trackId: string | undefined, bars = 160) {
+//
+// PERF: decoding requires downloading the FULL audio file + AudioContext
+// decode — extremely expensive in a list (20 cards = 20 full downloads).
+// Therefore real-peak fetching is OPT-IN via `enabled`. Lists should leave
+// it false and render the cheap deterministic pseudo-waveform; only the
+// full-screen player (or the currently-playing row) passes enabled=true.
+export function useWaveformData(trackId: string | undefined, bars = 160, enabled = false) {
     const [peaks, setPeaks] = useState<number[] | null>(null);
     const [status, setStatus] = useState<WaveformStatus>('loading');
 
@@ -67,12 +73,17 @@ export function useWaveformData(trackId: string | undefined, bars = 160) {
         if (cached) {
             setPeaks(cached.peaks.slice(0, bars));
             setStatus(cached.real ? 'ready' : 'fallback');
-            return;
+            if (cached.real) return;
+            // Cached pseudo only + caller didn't opt into real fetch → done.
+            if (!enabled) return;
+        } else {
+            // Show the pseudo waveform immediately, then optionally upgrade.
+            const pseudo = seededWaveform(trackId, bars);
+            setPeaks(pseudo);
+            setStatus('fallback');
+            cache.set(trackId, { peaks: pseudo, real: false });
+            if (!enabled) return;
         }
-        // Show the pseudo waveform immediately, then upgrade to real peaks.
-        const pseudo = seededWaveform(trackId, bars);
-        setPeaks(pseudo);
-        setStatus('fallback');
 
         let cancelled = false;
         if (!inflight.has(trackId)) {
@@ -89,7 +100,7 @@ export function useWaveformData(trackId: string | undefined, bars = 160) {
             setStatus('ready');
         });
         return () => { cancelled = true; };
-    }, [trackId, bars]);
+    }, [trackId, bars, enabled]);
 
     return { peaks, status };
 }
