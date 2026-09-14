@@ -1,39 +1,48 @@
-<p align="center">
-  <img src="frontend-vite/public/icon-192.png" alt="KV Music Logo" width="100"/>
-</p>
+# 🎧 KV-Music — Modern Self-Hosted YouTube Music Streaming & Sync Hub
 
-<h1 align="center">KV Music</h1>
+<div align="center">
 
 <p align="center">
-  <strong>A modern, self-hosted music streaming app powered by YouTube Music</strong>
+  <img src="frontend-vite/public/icon-192.png" alt="KV Music Logo" width="110" style="border-radius: 24px; box-shadow: 0 8px 32px rgba(0,0,0,0.3);"/>
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/React-18-61DAFB?style=flat&logo=react" alt="React"/>
-  <img src="https://img.shields.io/badge/Rust-1.88-000000?style=flat&logo=rust" alt="Rust"/>
-  <img src="https://img.shields.io/badge/Kotlin-2.0-7F52FF?style=flat&logo=kotlin" alt="Kotlin"/>
-  <img src="https://img.shields.io/badge/Android-Native-3DDC84?style=flat&logo=android" alt="Android"/>
-  <img src="https://img.shields.io/badge/Vite-5.4-646CFF?style=flat&logo=vite" alt="Vite"/>
-  <img src="https://img.shields.io/badge/TailwindCSS-3.4-06B6D4?style=flat&logo=tailwindcss" alt="TailwindCSS"/>
-  <img src="https://img.shields.io/badge/Axum-0.8-000000?style=flat" alt="Axum"/>
-  <img src="https://img.shields.io/badge/License-MIT-green" alt="License"/>
-</p>
+**A sleek, high-performance music streaming app powered by YouTube Music, Rust Axum, React 19, time-synced lyrics, and multi-device account pairing.**
 
-<p align="center">
-  <a href="#-features">Features</a> &bull;
-  <a href="#-quick-start">Quick Start</a> &bull;
-  <a href="#-docker-deployment">Docker</a> &bull;
-  <a href="#-youtube-cookies">YouTube Cookies</a> &bull;
-  <a href="#-local-development">Development</a> &bull;
-  <a href="#-architecture">Architecture</a> &bull;
-  <a href="#-license">License</a>
-</p>
+[![GitHub Stars](https://img.shields.io/github/stars/vndangkhoa/kv-music?style=flat-square&logo=github&color=gold)](https://github.com/vndangkhoa/kv-music/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/vndangkhoa/kv-music?style=flat-square&logo=github&color=blue)](https://github.com/vndangkhoa/kv-music/network/members)
+[![React](https://img.shields.io/badge/React-18%2F19-61DAFB?style=flat-square&logo=react)](https://react.dev/)
+[![Rust](https://img.shields.io/badge/Rust-1.88_Axum-DEA584?style=flat-square&logo=rust)](https://www.rust-lang.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.4-646CFF?style=flat-square&logo=vite)](https://vitejs.dev/)
+[![Docker Image](https://img.shields.io/badge/Docker-vndangkhoa%2Fkv--music-2496ED?style=flat-square&logo=docker)](https://hub.docker.com/r/vndangkhoa/kv-music)
+[![Android Native](https://img.shields.io/badge/Android-Native_Kotlin-3DDC84?style=flat-square&logo=android)](android/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+
+[Features](#-features) • [Comparison](#-why-kv-music) • [Architecture](#-architecture) • [Quick Start](#-quick-start) • [Docker](#-docker-deployment) • [API](#-api-endpoints) • [License](#-license)
+
+</div>
 
 ---
 
-## Overview
+## ⚡ Why KV-Music?
 
-KV Music is a self-hosted music streaming web application that pulls content from YouTube Music. It features a sleek dark UI with glassmorphism design, real-time synced lyrics, real YouTube Music charts (BXH), a universal search (songs / albums / playlists / artists), real user accounts with cross-device pairing, and a responsive layout that works beautifully on both desktop and mobile.
+Commercial music streaming services charge heavy subscription fees, inject intrusive ads, restrict background mobile playback, and silo your data. Self-hosted servers like Navidrome require maintaining your own audio files on disk.
+
+**KV-Music** combines the boundless catalog of **YouTube Music** with the freedom of self-hosting. Stream millions of tracks and official music videos with zero ads, real-time synchronized scrolling lyrics, full account persistence, and cross-device 6-digit pair codes.
+
+### 📊 Competitive Matrix
+
+| Feature | 🎧 KV-Music | 🔴 YouTube Music (Free) | 🟢 Spotify (Free) | 📻 Navidrome |
+| :--- | :---: | :---: | :---: | :---: |
+| **Catalog Access** | **Full YouTube Music + Video** | YouTube Music | Spotify Catalog | Local Files Only |
+| **Zero Ad Interruptions** | ✅ **100% Ad-Free** | ❌ Frequent Ads | ❌ Audio Ads | ✅ Ad-Free |
+| **Background & Lockscreen**| ✅ **Native PWA + MediaSession** | ❌ Premium Paywall | ⚠️ Limited | ✅ Yes |
+| **Real-Time Synced Lyrics**| ✅ **LRCLIB, SimpMusic, ZingMP3**| ⚠️ Static / Delayed | ⚠️ Spotify Lyrics | ⚠️ Local `.lrc` only |
+| **Cross-Device Pairing** | ✅ **Instant 6-Digit Pair Code**| ❌ Google Login only | ❌ Spotify Connect only | ❌ Credentials only |
+| **1-Tap Audio/Video Toggle**| ✅ **Instant Switch** | ❌ Premium Paywall | ❌ Canvas Only | ❌ Audio Only |
+| **Resource Efficiency** | ⚡ **Compiled Rust Axum (<30MB)** | 🌐 Google Cloud | 🌐 Cloud | 🟡 Go Backend |
+| **Self-Hosted Privacy** | ✅ **100% Local Storage / NAS** | ❌ Full Google Tracking | ❌ Full Tracking | ✅ 100% Local |
+
+---
 
 ## Features
 
@@ -461,6 +470,14 @@ If you find this project helpful, consider buying me a coffee! Your support help
 </p>
 
 ---
+
+
+---
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=vndangkhoa/kv-music&type=Date)](https://star-history.com/#vndangkhoa/kv-music&Date)
+
 
 ## License
 
