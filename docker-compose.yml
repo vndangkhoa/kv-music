@@ -7,6 +7,8 @@ services:
     image: vndangkhoa/kv-music:latest
     container_name: kv-music
     restart: unless-stopped
+    mem_limit: 500m
+    cpus: 1.5
     ports:
       - "3110:8080"
     environment:
