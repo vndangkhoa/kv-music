@@ -25,7 +25,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
 FROM debian:bookworm-slim
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && apt-get install --no-install-recommends -y \
     python3 \
     python3-pip \
     python3-venv \
@@ -36,8 +36,8 @@ RUN apt-get update && apt-get install -y \
     libssl3 \
     zlib1g \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
-    && apt-get install -y nodejs \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get install --no-install-recommends -y nodejs \
+    && rm -rf /usr/lib/node_modules/npm /usr/local/lib/node_modules/npm /root/.npm /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 # Fix for PEP 668 (externally managed environment)
 RUN python3 -m venv /opt/venv

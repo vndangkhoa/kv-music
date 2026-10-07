@@ -14,3 +14,8 @@ backend-rust/target/
 *.deb
 *.md
 package-lock.json
+android-app/
+ios-app/
+*.apk
+*.spk
+*.zip
