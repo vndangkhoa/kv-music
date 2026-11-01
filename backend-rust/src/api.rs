@@ -103,27 +103,68 @@ pub async fn pair_link_handler(
 }
 
 pub async fn update_ytdlp_handler() -> impl IntoResponse {
-    // Run yt-dlp self-update (writes /tmp/yt-dlp which SpotdlService prefers)
-    let output = std::process::Command::new("yt-dlp")
-        .arg("-U")
-        .output();
-
-    match output {
-        Ok(o) => {
+    let res = tokio::task::spawn_blocking(|| -> Result<String, String> {
+        let current_bin = crate::spotdl::SpotdlService::yt_dlp_path_static();
+        if let Ok(o) = std::process::Command::new(&current_bin)
+            .args(["--update-to", "nightly"])
+            .output()
+        {
             let stdout = String::from_utf8_lossy(&o.stdout);
             let stderr = String::from_utf8_lossy(&o.stderr);
             let combined = format!("{}{}", stdout, stderr);
             if o.status.success() {
-                (StatusCode::OK, Json(serde_json::json!({"output": combined})))
-            } else {
-                println!("[yt-dlp] update failed: {}", combined);
-                (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": combined})))
+                return Ok(combined.trim().to_string());
             }
+            println!("[yt-dlp] self-update returned non-zero, falling back to direct nightly binary download: {}", combined.trim());
         }
-        Err(e) => {
-            println!("[yt-dlp] update spawn error: {}", e);
-            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": format!("Failed to run yt-dlp: {}", e)})))
+
+        // Fallback for pip-installed or read-only binaries: download standalone nightly binary to /tmp/yt-dlp
+        let download_url = "https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp";
+        let curl_out = std::process::Command::new("curl")
+            .args(["-fsSL", download_url, "-o", "/tmp/yt-dlp"])
+            .output()
+            .map_err(|e| format!("Failed to spawn curl: {}", e))?;
+
+        if !curl_out.status.success() {
+            let err = String::from_utf8_lossy(&curl_out.stderr);
+            return Err(format!("curl download failed: {}", err.trim()));
         }
+
+        let chmod_out = std::process::Command::new("chmod")
+            .args(["+x", "/tmp/yt-dlp"])
+            .output()
+            .map_err(|e| format!("Failed to chmod /tmp/yt-dlp: {}", e))?;
+
+        if !chmod_out.status.success() {
+            let err = String::from_utf8_lossy(&chmod_out.stderr);
+            return Err(format!("chmod +x /tmp/yt-dlp failed: {}", err.trim()));
+        }
+
+        let ver_out = std::process::Command::new("/tmp/yt-dlp")
+            .arg("--version")
+            .output()
+            .map_err(|e| format!("Failed to verify /tmp/yt-dlp: {}", e))?;
+
+        if ver_out.status.success() {
+            let ver = String::from_utf8_lossy(&ver_out.stdout).trim().to_string();
+            Ok(format!("Updated yt-dlp nightly -> /tmp/yt-dlp (version {})", ver))
+        } else {
+            let err = String::from_utf8_lossy(&ver_out.stderr);
+            Err(format!("Downloaded /tmp/yt-dlp failed verification: {}", err.trim()))
+        }
+    })
+    .await;
+
+    match res {
+        Ok(Ok(output)) => (StatusCode::OK, Json(serde_json::json!({"output": output, "success": true}))),
+        Ok(Err(err)) => {
+            println!("[yt-dlp] update failed: {}", err);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": err})))
+        }
+        Err(join_err) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({"error": format!("Update task failed: {}", join_err)})),
+        ),
     }
 }
 
@@ -134,13 +175,67 @@ pub async fn fetch_cookies_handler(
         Ok(message) => {
             // Fresh cookies - drop caches so every fetch re-queries YouTube with them
             state.spotdl.clear_caches().await;
-            (StatusCode::OK, Json(serde_json::json!({"output": message, "success": true})))
+            let status = state.spotdl.get_cookie_status();
+            (StatusCode::OK, Json(serde_json::json!({"output": message, "success": true, "status": status})))
         }
         Err(e) => {
             println!("[Cookies] refresh failed: {}", e);
             (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e})))
         }
     }
+}
+
+#[derive(Deserialize)]
+pub struct SaveCookiesPayload {
+    #[serde(alias = "cookies")]
+    pub content: String,
+}
+
+pub async fn get_cookies_status_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    (StatusCode::OK, Json(state.spotdl.get_cookie_status()))
+}
+
+pub async fn save_cookies_handler(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<SaveCookiesPayload>,
+) -> impl IntoResponse {
+    match state.spotdl.save_user_cookies(&payload.content).await {
+        Ok(status) => {
+            let is_auth = status.get("is_authenticated").and_then(|v| v.as_bool()).unwrap_or(false);
+            let count = status.get("cookie_count").and_then(|v| v.as_u64()).unwrap_or(0);
+            let msg = if is_auth {
+                format!("Đã lưu {} cookies xác thực YouTube thành công!", count)
+            } else {
+                format!("Đã lưu {} cookies (chưa thấy cookie đăng nhập SID/SAPISID — nên xuất cookie khi đang đăng nhập YouTube).", count)
+            };
+            let mut body = status.clone();
+            if let Some(obj) = body.as_object_mut() {
+                obj.insert("success".to_string(), serde_json::Value::Bool(true));
+                obj.insert("output".to_string(), serde_json::Value::String(msg));
+                obj.insert("status".to_string(), status);
+            }
+            (StatusCode::OK, Json(body))
+        }
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))),
+    }
+}
+
+pub async fn delete_cookies_handler(
+    State(state): State<Arc<AppState>>,
+) -> impl IntoResponse {
+    let status = state.spotdl.clear_user_cookies().await;
+    let mut body = status.clone();
+    if let Some(obj) = body.as_object_mut() {
+        obj.insert("success".to_string(), serde_json::Value::Bool(true));
+        obj.insert(
+            "output".to_string(),
+            serde_json::Value::String("Đã xóa cookies.".to_string()),
+        );
+        obj.insert("status".to_string(), status);
+    }
+    (StatusCode::OK, Json(body))
 }
 
 #[derive(Deserialize)]
@@ -446,8 +541,14 @@ pub async fn stream_handler(
     // codec-restricted clients like VS Code's webview (no AAC/MP3 decoder).
     // fmt=m4a: AAC - needed for Safari, which cannot play WebM/Opus.
     let prefer_m4a = params.fmt.as_deref() == Some("m4a");
-    // This blocks the async executor slightly, ideally spawn_blocking but it's okay for now
-    match state.spotdl.get_stream_url(&id, prefer_m4a) {
+    let spotdl = state.spotdl.clone();
+    let id_clone = id.clone();
+    let result = tokio::task::spawn_blocking(move || spotdl.get_stream_url(&id_clone, prefer_m4a))
+        .await
+        .map_err(|e| format!("Stream task join error: {}", e))
+        .and_then(|r| r);
+
+    match result {
         Ok(file_path) => {
             let service = tower_http::services::ServeFile::new(&file_path);
             match tower::ServiceExt::oneshot(service, req).await {
@@ -475,12 +576,19 @@ pub async fn download_handler(
     // fmt=video: best video+audio merged into a single .mp4 via ffmpeg.
     // fmt=m4a: AAC/MP4 audio (Safari). Anything else: default WebM/Opus audio.
     let is_video = params.fmt.as_deref() == Some("video");
-    let result = if is_video {
-        state.spotdl.get_video_url(&id)
-    } else {
-        let prefer_m4a = params.fmt.as_deref() == Some("m4a");
-        state.spotdl.get_stream_url(&id, prefer_m4a)
-    };
+    let prefer_m4a = params.fmt.as_deref() == Some("m4a");
+    let spotdl = state.spotdl.clone();
+    let id_clone = id.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        if is_video {
+            spotdl.get_video_url(&id_clone)
+        } else {
+            spotdl.get_stream_url(&id_clone, prefer_m4a)
+        }
+    })
+    .await
+    .map_err(|e| format!("Download task join error: {}", e))
+    .and_then(|r| r);
 
     match result {
         Ok(file_path) => {

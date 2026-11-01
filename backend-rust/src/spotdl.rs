@@ -53,6 +53,13 @@ impl SharedCookieStore {
             Vec::new()
         }
     }
+
+    /// Clear all cookies in the jar
+    pub fn clear(&self) {
+        if let Ok(mut inner) = self.inner.lock() {
+            *inner = cookie_store::CookieStore::new();
+        }
+    }
 }
 
 impl reqwest::cookie::CookieStore for SharedCookieStore {
@@ -86,6 +93,7 @@ pub struct SpotdlService {
     yt_client: reqwest::Client,
     oembed_client: reqwest::Client,
     cookie_jar: Arc<SharedCookieStore>,
+    download_locks: Arc<std::sync::Mutex<HashMap<String, Arc<std::sync::Mutex<()>>>>>,
     pub search_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
     pub browse_cache: Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>,
     /// Full yt-dlp metadata for single tracks (see get_track_info).
@@ -126,6 +134,7 @@ impl SpotdlService {
             yt_client,
             oembed_client,
             cookie_jar,
+            download_locks: Arc::new(std::sync::Mutex::new(HashMap::new())),
             search_cache: Arc::new(RwLock::new(HashMap::new())),
             browse_cache: Arc::new(RwLock::new(HashMap::new())),
             track_info_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -155,11 +164,14 @@ impl SpotdlService {
         Self::yt_dlp_path()
     }
 
-    /// True if any cookie file (managed, COOKIE_FILE, docker, local) exists.
+    /// True if any cookie file (uploaded, managed, COOKIE_FILE, docker, local) exists.
     /// Uses `is_file()` so a directory mounted in place of a missing file
     /// (Docker creates one for `./cookies.txt:/app/cookies.txt:ro` when the
     /// host file does not exist) is never mistaken for a real cookie file.
     pub fn has_cookies_file() -> bool {
+        if Self::uploaded_cookie_path().is_file() {
+            return true;
+        }
         let managed = Self::managed_cookie_path();
         if managed.is_file() {
             return true;
@@ -527,7 +539,10 @@ impl SpotdlService {
             let stderr = String::from_utf8_lossy(&output.stderr);
             last_err = stderr.to_string();
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if is_rate_limit && attempt < 2 {
+            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+                Self::reject_user_cookies();
+                println!("[Search] Cookies rejected by YouTube, retrying without rejected cookies...");
+            } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 3;
                 println!("[Search] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
                 tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
@@ -630,7 +645,10 @@ impl SpotdlService {
             let stderr = String::from_utf8_lossy(&output.stderr);
             last_err = stderr.to_string();
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if is_rate_limit && attempt < 2 {
+            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+                Self::reject_user_cookies();
+                println!("[TrackInfo] Cookies rejected by YouTube, retrying without rejected cookies...");
+            } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 3;
                 println!("[TrackInfo] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
                 tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
@@ -807,7 +825,10 @@ impl SpotdlService {
             let stderr = String::from_utf8_lossy(&output.stderr);
             last_err = stderr.to_string();
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if is_rate_limit && attempt < 2 {
+            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+                Self::reject_user_cookies();
+                println!("[Chart] Cookies rejected by YouTube, retrying without rejected cookies...");
+            } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 3;
                 println!("[Chart] Rate limited on attempt {}, retrying in {}s...", attempt + 1, delay_secs);
                 tokio::time::sleep(Duration::from_secs(delay_secs as u64)).await;
@@ -846,6 +867,16 @@ impl SpotdlService {
         self.fetch_chart_tracks(&url, limit).await
     }
 
+    /// Writable location for user-uploaded cookies saved via Settings UI (`POST /api/settings/cookies`).
+    /// Docker -> /app/data/user_cookies.txt, local -> data/user_cookies.txt.
+    fn uploaded_cookie_path() -> PathBuf {
+        if Path::new("/app/data").exists() {
+            PathBuf::from("/app/data/user_cookies.txt")
+        } else {
+            PathBuf::from("data/user_cookies.txt")
+        }
+    }
+
     /// Writable location for auto-refreshed cookies (persists next to users.json).
     /// Docker -> /app/data/cookies.txt (writable NAS volume), local -> data/cookies.txt.
     fn managed_cookie_path() -> PathBuf {
@@ -858,60 +889,29 @@ impl SpotdlService {
 
     fn cookies_file_path() -> PathBuf {
         // Priority:
-        // 1. Explicit COOKIE_FILE env (usually a mounted logged-in cookies.txt)
-        // 2. /app/cookies.txt (docker-compose read-only mount, logged-in)
-        // 3. Managed auto-refreshed file (anonymous fallback - never shadows
-        //    a user-provided logged-in session)
-        // 4. Local cookies.txt
-        //
-        // Once YouTube has rejected the provided cookies (expired/rotated),
-        // skip the user-provided files entirely and fall back to the
-        // auto-refreshed anonymous session instead.
-        if USER_COOKIES_REJECTED.load(Ordering::Relaxed) {
-            let managed = Self::managed_cookie_path();
-            if managed.is_file() {
-                return managed;
+        // 1. User-uploaded cookies via Settings UI (/app/data/user_cookies.txt), if not rejected
+        // 2. Explicit COOKIE_FILE env or /app/cookies.txt or cookies.txt (via writable_cookie_copy), if not rejected
+        // 3. Managed auto-refreshed file (/app/data/cookies.txt)
+        let rejected = USER_COOKIES_REJECTED.load(Ordering::Relaxed);
+        if !rejected {
+            let uploaded = Self::uploaded_cookie_path();
+            if uploaded.is_file() {
+                return uploaded;
             }
-            return PathBuf::from("cookies.txt");
-        }
-        let chosen = if let Ok(env_path) = env::var("COOKIE_FILE") {
-            let p = PathBuf::from(&env_path);
-            if p.is_file() {
-                p
-            } else {
-                Self::cookies_file_path_fallback()
+            if let Ok(env_path) = env::var("COOKIE_FILE") {
+                let p = PathBuf::from(&env_path);
+                if p.is_file() {
+                    return Self::writable_cookie_copy(p);
+                }
             }
-        } else {
-            Self::cookies_file_path_fallback()
-        };
-        Self::writable_cookie_copy(chosen)
-    }
-
-    /// True when yt-dlp reports that the supplied cookies are stale/expired
-    /// or that a logged-in session is required (bot detection).
-    fn is_rejected_cookie_error(stderr: &str) -> bool {
-        let lower = stderr.to_lowercase();
-        lower.contains("cookies are no longer valid")
-            || lower.contains("sign in to confirm you're not a bot")
-            || (lower.contains("cookies") && lower.contains("not valid"))
-            || (lower.contains("cookies") && lower.contains("expired"))
-    }
-
-    /// Mark user-provided cookies as rejected and remove their writable copy,
-    /// so the next yt-dlp run uses fresh auto-refreshed cookies.
-    fn reject_user_cookies() {
-        USER_COOKIES_REJECTED.store(true, Ordering::Relaxed);
-        let managed = Self::managed_cookie_path();
-        if managed.is_file() {
-            let _ = fs::remove_file(&managed);
-            println!("[Cookies] User cookies rejected by YouTube - removed {}, will auto-refresh", managed.display());
-        }
-    }
-
-    fn cookies_file_path_fallback() -> PathBuf {
-        let docker_path = PathBuf::from("/app/cookies.txt");
-        if docker_path.is_file() {
-            return docker_path;
+            let docker_path = PathBuf::from("/app/cookies.txt");
+            if docker_path.is_file() {
+                return Self::writable_cookie_copy(docker_path);
+            }
+            let local_path = PathBuf::from("cookies.txt");
+            if local_path.is_file() {
+                return Self::writable_cookie_copy(local_path);
+            }
         }
         let managed = Self::managed_cookie_path();
         if managed.is_file() {
@@ -920,9 +920,38 @@ impl SpotdlService {
         PathBuf::from("cookies.txt")
     }
 
+    /// True when yt-dlp reports that the supplied cookies are stale/expired
+    /// or that a logged-in session is required (bot detection).
+    fn is_rejected_cookie_error(stderr: &str) -> bool {
+        let lower = stderr
+            .to_lowercase()
+            .replace('\u{2019}', "'")
+            .replace('\u{2018}', "'");
+        lower.contains("cookies are no longer valid")
+            || lower.contains("sign in to confirm")
+            || lower.contains("not a bot")
+            || lower.contains("this helps protect our community")
+            || (lower.contains("cookies") && (lower.contains("not valid") || lower.contains("expired")))
+    }
+
+    /// Mark user-provided cookies as rejected and remove their writable copy,
+    /// so the next yt-dlp run uses fresh auto-refreshed cookies or unauthenticated clients.
+    fn reject_user_cookies() {
+        USER_COOKIES_REJECTED.store(true, Ordering::Relaxed);
+        let ro_copy = PathBuf::from("/tmp/kv-music-ro-cookies.txt");
+        if ro_copy.is_file() {
+            let _ = fs::remove_file(&ro_copy);
+        }
+        let managed = Self::managed_cookie_path();
+        if managed.is_file() {
+            let _ = fs::remove_file(&managed);
+            println!("[Cookies] User cookies rejected by YouTube - removed {}, will auto-refresh", managed.display());
+        }
+    }
+
     /// yt-dlp opens the cookies file for writing (it updates session cookies).
     /// A read-only mount (docker-compose `:ro`) crashes it, so copy the file to
-    /// a writable location when needed.
+    /// `/tmp/kv-music-ro-cookies.txt` (never clobbering `/app/data/cookies.txt`).
     fn writable_cookie_copy(path: PathBuf) -> PathBuf {
         if !path.is_file() {
             return path;
@@ -931,17 +960,175 @@ impl SpotdlService {
         if writable {
             return path;
         }
-        let target = Self::managed_cookie_path();
-        if let Some(parent) = target.parent() {
-            let _ = fs::create_dir_all(parent);
-        }
-        if let Ok(content) = fs::read(&path) {
-            if fs::write(&target, &content).is_ok() {
-                println!("[Cookies] Copied read-only {} -> {} for yt-dlp", path.display(), target.display());
-                return target;
+        let target = PathBuf::from("/tmp/kv-music-ro-cookies.txt");
+        let src_len = fs::metadata(&path).map(|m| m.len()).ok();
+        let dst_len = fs::metadata(&target).map(|m| m.len()).ok();
+        let needs_copy = match (src_len, dst_len) {
+            (Some(s), Some(d)) => s != d,
+            _ => !target.is_file(),
+        };
+        if needs_copy {
+            if let Ok(content) = fs::read(&path) {
+                if fs::write(&target, &content).is_ok() {
+                    println!("[Cookies] Copied read-only {} -> {} for yt-dlp", path.display(), target.display());
+                    return target;
+                }
             }
+        } else if target.is_file() {
+            return target;
         }
         path
+    }
+
+    /// Check if Netscape cookie content contains real YouTube authentication cookies.
+    pub fn is_authenticated_cookie_content(content: &str) -> bool {
+        const AUTH_COOKIE_NAMES: &[&str] = &[
+            "SID",
+            "HSID",
+            "SSID",
+            "APISID",
+            "SAPISID",
+            "__Secure-1PSID",
+            "__Secure-3PSID",
+            "__Secure-1PAPISID",
+            "__Secure-3PAPISID",
+            "LOGIN_INFO",
+        ];
+        for raw_line in content.lines() {
+            let line = raw_line.trim();
+            let line = line.strip_prefix("#HttpOnly_").unwrap_or(line);
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let fields: Vec<&str> = line.split('\t').collect();
+            if fields.len() >= 7 {
+                let name = fields[5].trim();
+                let value = fields[6].trim();
+                if !value.is_empty() && AUTH_COOKIE_NAMES.contains(&name) {
+                    return true;
+                }
+            } else {
+                let ws_fields: Vec<&str> = line.split_whitespace().collect();
+                if ws_fields.len() >= 7 {
+                    let name = ws_fields[5].trim();
+                    let value = ws_fields[6].trim();
+                    if !value.is_empty() && AUTH_COOKIE_NAMES.contains(&name) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+
+    fn count_cookie_lines(content: &str) -> usize {
+        let mut count = 0;
+        for raw_line in content.lines() {
+            let line = raw_line.trim();
+            let line = line.strip_prefix("#HttpOnly_").unwrap_or(line);
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.split('\t').count() >= 7 || line.split_whitespace().count() >= 7 {
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// Return structured status of the active cookies file and IPv6 routing.
+    pub fn get_cookie_status(&self) -> serde_json::Value {
+        let path = Self::cookies_file_path();
+        let exists = path.is_file();
+        let content = if exists {
+            fs::read_to_string(&path).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let cookie_count = Self::count_cookie_lines(&content);
+        let has_cookies = exists && cookie_count > 0;
+        let is_authenticated = has_cookies && Self::is_authenticated_cookie_content(&content);
+        let active_path = if has_cookies {
+            Some(path.to_string_lossy().into_owned())
+        } else {
+            None
+        };
+        serde_json::json!({
+            "has_cookies": has_cookies,
+            "is_authenticated": is_authenticated,
+            "cookie_count": cookie_count,
+            "active_path": active_path,
+            "user_cookies_rejected": USER_COOKIES_REJECTED.load(Ordering::Relaxed),
+            "ipv6_routable": Self::ipv6_connectivity(),
+        })
+    }
+
+    /// Validate and persist Netscape cookies uploaded from the Settings UI.
+    pub async fn save_user_cookies(&self, content: &str) -> Result<serde_json::Value, String> {
+        let trimmed = content.trim();
+        if trimmed.is_empty() {
+            return Err("Nội dung cookies trống.".to_string());
+        }
+
+        let cookie_count = Self::count_cookie_lines(trimmed);
+        if cookie_count == 0 {
+            return Err("Không tìm thấy dòng cookie hợp lệ (định dạng Netscape HTTP Cookie File cần 7 cột cách nhau bởi dấu tab).".to_string());
+        }
+
+        let mut normalized = String::new();
+        if !trimmed.starts_with("# Netscape HTTP Cookie File") && !trimmed.starts_with("# HTTP Cookie File") {
+            normalized.push_str("# Netscape HTTP Cookie File\n");
+        }
+        normalized.push_str(trimmed);
+        normalized.push('\n');
+
+        let uploaded = Self::uploaded_cookie_path();
+        if let Some(parent) = uploaded.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        fs::write(&uploaded, &normalized)
+            .map_err(|e| format!("Không thể ghi file {}: {}", uploaded.display(), e))?;
+
+        let managed = Self::managed_cookie_path();
+        if let Some(parent) = managed.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        let _ = fs::write(&managed, &normalized);
+
+        let ro_copy = PathBuf::from("/tmp/kv-music-ro-cookies.txt");
+        if ro_copy.is_file() {
+            let _ = fs::remove_file(&ro_copy);
+        }
+
+        USER_COOKIES_REJECTED.store(false, Ordering::Relaxed);
+        self.clear_caches().await;
+
+        println!(
+            "[Cookies] Saved {} user cookies to {} (authenticated={})",
+            cookie_count,
+            uploaded.display(),
+            Self::is_authenticated_cookie_content(&normalized)
+        );
+        Ok(self.get_cookie_status())
+    }
+
+    /// Remove all stored cookie files and mark user cookies rejected so stale
+    /// read-only mounts are also bypassed.
+    pub async fn clear_user_cookies(&self) -> serde_json::Value {
+        for p in [
+            Self::uploaded_cookie_path(),
+            Self::managed_cookie_path(),
+            PathBuf::from("/tmp/kv-music-ro-cookies.txt"),
+        ] {
+            if p.is_file() {
+                let _ = fs::remove_file(&p);
+            }
+        }
+        USER_COOKIES_REJECTED.store(true, Ordering::Relaxed);
+        self.cookie_jar.clear();
+        self.clear_caches().await;
+        println!("[Cookies] Cleared user and managed cookie files.");
+        self.get_cookie_status()
     }
 
     /// True when IPv6 is actually routable (not just an address assigned).
@@ -989,6 +1176,15 @@ impl SpotdlService {
 
     /// Build yt-dlp args with the IPv6 flag toggleable per attempt (for fallback).
     fn yt_dlp_args_with_flags_vec(use_ipv6: bool, extra_args: &[&str]) -> Vec<String> {
+        Self::yt_dlp_args_with_options_vec(use_ipv6, false, false, extra_args)
+    }
+
+    fn yt_dlp_args_with_options_vec(
+        use_ipv6: bool,
+        skip_cookies: bool,
+        use_alt_clients: bool,
+        extra_args: &[&str],
+    ) -> Vec<String> {
         let mut args = vec![];
 
         args.push("--js-runtimes".to_string());
@@ -1000,14 +1196,21 @@ impl SpotdlService {
             args.push("--force-ipv6".to_string());
         }
 
-        let cookie_path = Self::cookies_file_path();
-        if cookie_path.is_file() {
-            args.push("--cookies".to_string());
-            // yt-dlp runs with current_dir set to the download dir, so a
-            // relative path (e.g. local "data/cookies.txt") would resolve to
-            // the wrong location. Always pass an absolute path.
-            let absolute = fs::canonicalize(&cookie_path).unwrap_or(cookie_path);
-            args.push(absolute.to_string_lossy().into_owned());
+        if use_alt_clients {
+            args.push("--extractor-args".to_string());
+            args.push("youtube:player_client=visionos,tv_samsung,android_vr,mweb".to_string());
+        }
+
+        if !skip_cookies {
+            let cookie_path = Self::cookies_file_path();
+            if cookie_path.is_file() {
+                args.push("--cookies".to_string());
+                // yt-dlp runs with current_dir set to the download dir, so a
+                // relative path (e.g. local "data/cookies.txt") would resolve to
+                // the wrong location. Always pass an absolute path.
+                let absolute = fs::canonicalize(&cookie_path).unwrap_or(cookie_path);
+                args.push(absolute.to_string_lossy().into_owned());
+            }
         }
 
         for arg in extra_args {
@@ -1025,6 +1228,8 @@ impl SpotdlService {
     /// fresh session cookies (VISITOR_INFO1_LIVE, YSC, PREF, SOCS, ...) issued by
     /// YouTube, and persist them in Netscape format for yt-dlp.
     pub async fn refresh_cookies(&self) -> Result<String, String> {
+        self.cookie_jar.clear();
+
         let urls = [
             "https://www.youtube.com/",
             "https://music.youtube.com/",
@@ -1097,6 +1302,10 @@ impl SpotdlService {
         }
         fs::write(&path, lines.join("\n")).map_err(|e| format!("Failed to write cookie file: {}", e))?;
 
+        // Ignore any stale read-only /app/cookies.txt mount so the freshly fetched
+        // managed cookies are used.
+        USER_COOKIES_REJECTED.store(true, Ordering::Relaxed);
+
         println!("[Cookies] Fetched {} fresh cookies -> {}", names.len(), path.display());
         Ok(format!("Đã lấy {} cookie mới từ YouTube và lưu vào {}", names.len(), path.display()))
     }
@@ -1105,7 +1314,224 @@ impl SpotdlService {
     pub async fn clear_caches(&self) {
         self.search_cache.write().await.clear();
         self.browse_cache.write().await.clear();
+        self.track_info_cache.write().await.clear();
+        self.share_preview_cache.write().await.clear();
         println!("[Cookies] All caches cleared - next fetches will use fresh cookies.");
+    }
+
+    fn find_downloaded_audio(&self, video_id: &str, preferred_ext: &str, allow_any_audio: bool) -> Option<String> {
+        let prefix = format!("{}.", video_id);
+        let entries: Vec<_> = fs::read_dir(&self.download_dir)
+            .ok()?
+            .flatten()
+            .collect();
+
+        // 1. Check preferred extension first
+        for entry in &entries {
+            if let Some(file_name) = entry.file_name().to_str() {
+                if file_name == format!("{}.{}", video_id, preferred_ext) {
+                    return Some(entry.path().to_string_lossy().into_owned());
+                }
+            }
+        }
+
+        if !allow_any_audio {
+            return None;
+        }
+
+        // 2. Fallback to any valid audio extension (excluding .part / .ytdl / .temp)
+        for ext in ["webm", "m4a", "opus", "mp4", "mp3", "ogg", "aac"] {
+            for entry in &entries {
+                if let Some(file_name) = entry.file_name().to_str() {
+                    if file_name.starts_with(&prefix)
+                        && !file_name.ends_with(".part")
+                        && !file_name.ends_with(".ytdl")
+                        && !file_name.ends_with(".temp")
+                        && file_name == format!("{}.{}", video_id, ext)
+                    {
+                        return Some(entry.path().to_string_lossy().into_owned());
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Fallback downloader via Invidious Companion (`COMPANION_URL`, local `:8282`, or Tailscale
+    /// peer `100.94.92.63:8282`). Fetches in 2 MiB HTTP Range chunks so YouTube does not
+    /// throttle the stream after the initial 512 KiB buffer.
+    fn try_companion_download(&self, video_id: &str, prefer_m4a: bool) -> Option<String> {
+        let handle = tokio::runtime::Handle::try_current().ok()?;
+        let download_dir = self.download_dir.clone();
+        let vid = video_id.to_string();
+
+        handle.block_on(async move {
+            let mut bases: Vec<String> = Vec::new();
+            if let Ok(custom) = env::var("COMPANION_URL") {
+                for u in custom.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                    bases.push(u.trim_end_matches('/').to_string());
+                }
+            }
+            for default_base in [
+                "http://100.94.92.63:8282/companion",
+                "http://127.0.0.1:8282/companion",
+                "http://host.docker.internal:8282/companion",
+            ] {
+                if !bases.iter().any(|b| b == default_base) {
+                    bases.push(default_base.to_string());
+                }
+            }
+
+            let itags: &[(&str, &str)] = if prefer_m4a {
+                &[("140", "m4a"), ("251", "webm")]
+            } else {
+                &[("251", "webm"), ("250", "webm"), ("140", "m4a")]
+            };
+
+            let no_redirect_client = reqwest::Client::builder()
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(Duration::from_secs(8))
+                .build()
+                .ok()?;
+
+            let chunk_client = reqwest::Client::builder()
+                .timeout(Duration::from_secs(15))
+                .build()
+                .ok()?;
+
+            for base in &bases {
+                let origin = if let Some(idx) = base.find("/companion") {
+                    &base[..idx]
+                } else {
+                    base.as_str()
+                };
+
+                for &(itag, ext) in itags {
+                    let resolve_url = format!(
+                        "{}/latest_version?id={}&itag={}&local=true",
+                        base, vid, itag
+                    );
+                    let resp = match no_redirect_client.get(&resolve_url).send().await {
+                        Ok(r) => r,
+                        Err(_) => break, // This companion base is unreachable; try next base
+                    };
+
+                    if !resp.status().is_redirection() {
+                        continue;
+                    }
+
+                    let Some(loc) = resp
+                        .headers()
+                        .get(reqwest::header::LOCATION)
+                        .and_then(|v| v.to_str().ok())
+                    else {
+                        continue;
+                    };
+
+                    let playback_url = if loc.starts_with("http://") || loc.starts_with("https://") {
+                        loc.to_string()
+                    } else if loc.starts_with('/') {
+                        format!("{}{}", origin, loc)
+                    } else {
+                        format!("{}/{}", base, loc)
+                    };
+
+                    let chunk_size: u64 = 2 * 1024 * 1024; // 2 MiB
+                    let mut offset: u64 = 0;
+                    let mut total_size: Option<u64> = None;
+                    let mut data: Vec<u8> = Vec::new();
+                    let mut ok = true;
+
+                    loop {
+                        let end = match total_size {
+                            Some(t) if t > 0 => (offset + chunk_size - 1).min(t - 1),
+                            _ => offset + chunk_size - 1,
+                        };
+                        let range_hdr = format!("bytes={}-{}", offset, end);
+                        let chunk_resp = match chunk_client
+                            .get(&playback_url)
+                            .header(reqwest::header::RANGE, &range_hdr)
+                            .send()
+                            .await
+                        {
+                            Ok(r) => r,
+                            Err(e) => {
+                                println!("[Companion] Chunk request error for {}: {}", vid, e);
+                                ok = false;
+                                break;
+                            }
+                        };
+
+                        let status = chunk_resp.status();
+                        if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
+                            println!("[Companion] Unexpected HTTP {} for {}", status, vid);
+                            ok = false;
+                            break;
+                        }
+
+                        if total_size.is_none() {
+                            if let Some(cr) = chunk_resp
+                                .headers()
+                                .get(reqwest::header::CONTENT_RANGE)
+                                .and_then(|v| v.to_str().ok())
+                            {
+                                // Format: "bytes 0-2097151/6507225"
+                                if let Some(slash_part) = cr.rsplit('/').next() {
+                                    if let Ok(parsed_total) = slash_part.trim().parse::<u64>() {
+                                        total_size = Some(parsed_total);
+                                        data.reserve(parsed_total as usize);
+                                    }
+                                }
+                            }
+                        }
+
+                        let bytes = match chunk_resp.bytes().await {
+                            Ok(b) => b,
+                            Err(_) => {
+                                ok = false;
+                                break;
+                            }
+                        };
+
+                        if bytes.is_empty() {
+                            break;
+                        }
+
+                        offset += bytes.len() as u64;
+                        data.extend_from_slice(&bytes);
+
+                        if status == reqwest::StatusCode::OK {
+                            break;
+                        }
+                        if let Some(t) = total_size {
+                            if offset >= t {
+                                break;
+                            }
+                        } else if (bytes.len() as u64) < chunk_size {
+                            break;
+                        }
+                    }
+
+                    if ok && data.len() > 10_000 {
+                        let tmp_path = download_dir.join(format!("{}.{}.tmp", vid, ext));
+                        let final_path = download_dir.join(format!("{}.{}", vid, ext));
+                        if fs::write(&tmp_path, &data).is_ok() && fs::rename(&tmp_path, &final_path).is_ok() {
+                            println!(
+                                "[Companion] Downloaded {} ({} bytes, itag={}) via {}",
+                                final_path.display(),
+                                data.len(),
+                                itag,
+                                base
+                            );
+                            return Some(final_path.to_string_lossy().into_owned());
+                        }
+                        let _ = fs::remove_file(&tmp_path);
+                    }
+                }
+            }
+            None
+        })
     }
 
     /// Fetch (or return cached) audio for a video.
@@ -1124,15 +1550,18 @@ impl SpotdlService {
         
         let video_id = Self::extract_id(&target_url);
         let ext = if prefer_m4a { "m4a" } else { "webm" };
-        
-        if let Ok(entries) = fs::read_dir(&self.download_dir) {
-            for entry in entries.flatten() {
-                if let Some(file_name) = entry.file_name().to_str() {
-                    if file_name.starts_with(&format!("{}.", video_id)) && file_name.ends_with(ext) {
-                        return Ok(entry.path().to_string_lossy().into_owned());
-                    }
-                }
-            }
+
+        // Per-video lock so concurrent range/probe requests wait for the active download
+        let video_lock = {
+            let mut map = self.download_locks.lock().unwrap_or_else(|e| e.into_inner());
+            map.entry(video_id.clone())
+                .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
+                .clone()
+        };
+        let _guard = video_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+        if let Some(cached) = self.find_downloaded_audio(&video_id, ext, !prefer_m4a) {
+            return Ok(cached);
         }
 
         let output_pattern = format!("{}.%(ext)s", video_id);
@@ -1149,11 +1578,18 @@ impl SpotdlService {
 
         // Try IPv6 first when available; fall back to IPv4 on network errors
         let mut use_ipv6 = Self::ipv6_connectivity();
+        let mut skip_cookies = false;
+        let mut use_alt_clients = false;
 
-        // Retry up to 2 times with backoff for transient 429 errors
+        // Retry with fallbacks for transient 429 / rejected cookies / IPv6 errors
         let mut last_err = String::new();
         for attempt in 0..3 {
-            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let all_args = Self::yt_dlp_args_with_options_vec(
+                use_ipv6,
+                skip_cookies,
+                use_alt_clients,
+                &output_args,
+            );
             let output = match Command::new(Self::yt_dlp_path())
                 .current_dir(&self.download_dir)
                 .args(&all_args)
@@ -1166,14 +1602,8 @@ impl SpotdlService {
             };
             
             if output.status.success() {
-                if let Ok(entries) = fs::read_dir(&self.download_dir) {
-                    for entry in entries.flatten() {
-                        if let Some(file_name) = entry.file_name().to_str() {
-                            if file_name.starts_with(&format!("{}.", video_id)) && file_name.ends_with(ext) {
-                                return Ok(entry.path().to_string_lossy().into_owned());
-                            }
-                        }
-                    }
+                if let Some(found) = self.find_downloaded_audio(&video_id, ext, true) {
+                    return Ok(found);
                 }
                 return Err("File not found after download".to_string());
             }
@@ -1184,19 +1614,34 @@ impl SpotdlService {
             
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
             if Self::is_rejected_cookie_error(&stderr) {
-                // User cookies expired/rotated (e.g. an old export mounted on
-                // the NAS). Drop them and refresh the anonymous session so the
-                // next attempt uses fresh cookies.
+                // Fast-path fallback: if Invidious Companion is reachable (local or Tailscale),
+                // download the audio stream in 2 MiB Range chunks in <1s instead of failing on IPv4.
+                if let Some(companion_file) = self.try_companion_download(&video_id, prefer_m4a) {
+                    return Ok(companion_file);
+                }
+            }
+            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+                // User cookies expired/rotated or bot check triggered.
                 Self::reject_user_cookies();
-                let s = self.clone();
-                tokio::spawn(async move {
-                    match s.refresh_cookies().await {
-                        Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
-                        Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
-                    }
-                });
-                println!("[Stream] Cookies rejected by YouTube - refreshing session and retrying...");
-                std::thread::sleep(Duration::from_secs(6));
+                use_alt_clients = true;
+                let has_auth = Self::cookies_file_path().is_file()
+                    && fs::read_to_string(Self::cookies_file_path())
+                        .map(|c| Self::is_authenticated_cookie_content(&c))
+                        .unwrap_or(false);
+                if !has_auth {
+                    skip_cookies = true;
+                }
+                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                    let s = self.clone();
+                    handle.spawn(async move {
+                        match s.refresh_cookies().await {
+                            Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
+                            Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
+                        }
+                    });
+                }
+                println!("[Stream] Cookies rejected / bot check - retrying with alternate clients (skip_cookies={})...", skip_cookies);
+                std::thread::sleep(Duration::from_secs(1));
             } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 5;
                 println!("[Stream] Rate limited, retrying in {}s...", delay_secs);
@@ -1208,6 +1653,10 @@ impl SpotdlService {
             } else {
                 break;
             }
+        }
+
+        if let Some(companion_file) = self.try_companion_download(&video_id, prefer_m4a) {
+            return Ok(companion_file);
         }
         
         Err(format!("Download failed. stderr: {}", last_err))
@@ -1228,6 +1677,14 @@ impl SpotdlService {
 
         let video_id = Self::extract_id(&target_url);
         let ext = "mp4";
+
+        let video_lock = {
+            let mut map = self.download_locks.lock().unwrap_or_else(|e| e.into_inner());
+            map.entry(format!("video:{}", video_id))
+                .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
+                .clone()
+        };
+        let _guard = video_lock.lock().unwrap_or_else(|e| e.into_inner());
 
         if let Ok(entries) = fs::read_dir(&self.download_dir) {
             for entry in entries.flatten() {
@@ -1250,11 +1707,18 @@ impl SpotdlService {
 
         // Try IPv6 first when available; fall back to IPv4 on network errors
         let mut use_ipv6 = Self::ipv6_connectivity();
+        let mut skip_cookies = false;
+        let mut use_alt_clients = false;
 
         // Retry up to 2 times with backoff for transient 429 errors
         let mut last_err = String::new();
         for attempt in 0..3 {
-            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let all_args = Self::yt_dlp_args_with_options_vec(
+                use_ipv6,
+                skip_cookies,
+                use_alt_clients,
+                &output_args,
+            );
             let output = match Command::new(Self::yt_dlp_path())
                 .current_dir(&self.download_dir)
                 .args(&all_args)
@@ -1284,19 +1748,27 @@ impl SpotdlService {
             println!("[Download] yt-dlp download failed (attempt {}): {}", attempt + 1, stderr);
 
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if Self::is_rejected_cookie_error(&stderr) {
-                // User cookies expired/rotated - drop them and refresh the
-                // anonymous session so the next attempt uses fresh cookies.
+            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
                 Self::reject_user_cookies();
-                let s = self.clone();
-                tokio::spawn(async move {
-                    match s.refresh_cookies().await {
-                        Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
-                        Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
-                    }
-                });
-                println!("[Download] Cookies rejected by YouTube - refreshing session and retrying...");
-                std::thread::sleep(Duration::from_secs(6));
+                use_alt_clients = true;
+                let has_auth = Self::cookies_file_path().is_file()
+                    && fs::read_to_string(Self::cookies_file_path())
+                        .map(|c| Self::is_authenticated_cookie_content(&c))
+                        .unwrap_or(false);
+                if !has_auth {
+                    skip_cookies = true;
+                }
+                if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                    let s = self.clone();
+                    handle.spawn(async move {
+                        match s.refresh_cookies().await {
+                            Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
+                            Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
+                        }
+                    });
+                }
+                println!("[Download] Cookies rejected / bot check - retrying with alternate clients (skip_cookies={})...", skip_cookies);
+                std::thread::sleep(Duration::from_secs(1));
             } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 5;
                 println!("[Download] Rate limited, retrying in {}s...", delay_secs);

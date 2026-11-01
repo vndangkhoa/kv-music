@@ -1,0 +1,459 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8C45876579C190D103DD81D1 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 3DC9B0AD589C99F1A646F9D6; };
+		0348C37F05DAB52159AB0DF8 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C24D763189F965C10B479DBE; };
+		9D48C0C57412EB11784BF181 /* KVMusicApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = F30E8660DFFCE9672B7F9697; };
+		6D34E31BA2EEDBE40028F5C4 /* Track.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2CB11578B64C0469727B66D0; };
+		3DC1837016866F607FE30573 /* KVMusicApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = A48BAB4A4BF54410CAB6F020; };
+		D5F44D13D40714F4B9B25DD5 /* PlayerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6F67576B53933E97711AF35; };
+		896BBB3F08EFE29576BF5A6D /* MusicDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4F441B8E4AA7DB513929059A; };
+		92BCC418FCF165CF2E5ADBFF /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 733FAB760DF1638C6C6CC19F; };
+		00AE997B86E13B477B51DBF2 /* LyricsSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 426DFC769193C261B0BE9B1E; };
+		E98D7614F3F8303CD6AA9F1D /* MiniPlayerBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = E72BC365EBC9503FB88F81FA; };
+		FC91C38062FECE13F64F62CB /* SoundCloudTrackCard.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64BC5EB09F7C9A5400E6301C; };
+		2DEF459E4E5A0555BD7EC20B /* SoundCloudWaveformView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3C41358FDCC9A2A96D8E156; };
+		F8DF75D291B4E97B5A2C63FC /* DetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BCEBD995E215131CB0E3BBB6; };
+		5CD6C5FF71515C9D67D9246B /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A831AD0C5AEC430DD03709E; };
+		35884E406008287FC0F342D6 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A3ED3FA4F5FA9E320DFB054D; };
+		7B1E753EE2187A7E2825CF59 /* FullPlayerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A7A7DE101EB965FA9C0336D8; };
+		D0B5D4BBFAF09A253D9C2EA2 /* SearchView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4ADFA0EE919210343EDCF856; };
+		D29C835BDE8E6BADE85CDA2C /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0301486BE010F54E6587D682; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		3DC9B0AD589C99F1A646F9D6 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		7C5E8631F5E2E4D8D8CB6988 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		C24D763189F965C10B479DBE /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "ContentView.swift"; sourceTree = "<group>"; };
+		F30E8660DFFCE9672B7F9697 /* KVMusicApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KVMusicApp.swift"; sourceTree = "<group>"; };
+		2CB11578B64C0469727B66D0 /* Track.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Track.swift"; sourceTree = "<group>"; };
+		A48BAB4A4BF54410CAB6F020 /* KVMusicApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KVMusicApi.swift"; sourceTree = "<group>"; };
+		F6F67576B53933E97711AF35 /* PlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "PlayerManager.swift"; sourceTree = "<group>"; };
+		4F441B8E4AA7DB513929059A /* MusicDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MusicDatabase.swift"; sourceTree = "<group>"; };
+		733FAB760DF1638C6C6CC19F /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Theme.swift"; sourceTree = "<group>"; };
+		426DFC769193C261B0BE9B1E /* LyricsSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LyricsSheetView.swift"; sourceTree = "<group>"; };
+		E72BC365EBC9503FB88F81FA /* MiniPlayerBar.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "MiniPlayerBar.swift"; sourceTree = "<group>"; };
+		64BC5EB09F7C9A5400E6301C /* SoundCloudTrackCard.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SoundCloudTrackCard.swift"; sourceTree = "<group>"; };
+		F3C41358FDCC9A2A96D8E156 /* SoundCloudWaveformView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SoundCloudWaveformView.swift"; sourceTree = "<group>"; };
+		BCEBD995E215131CB0E3BBB6 /* DetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "DetailView.swift"; sourceTree = "<group>"; };
+		1A831AD0C5AEC430DD03709E /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "HomeView.swift"; sourceTree = "<group>"; };
+		A3ED3FA4F5FA9E320DFB054D /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "LibraryView.swift"; sourceTree = "<group>"; };
+		A7A7DE101EB965FA9C0336D8 /* FullPlayerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "FullPlayerView.swift"; sourceTree = "<group>"; };
+		4ADFA0EE919210343EDCF856 /* SearchView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SearchView.swift"; sourceTree = "<group>"; };
+		0301486BE010F54E6587D682 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "SettingsView.swift"; sourceTree = "<group>"; };
+		74E3EF9124105E1840A92DDA /* KVMusic.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "KVMusic.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		D749C19F4C90A9688797C4C7 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5C614A0C6752DFBF46403353 /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				A48BAB4A4BF54410CAB6F020 /* KVMusicApi.swift */,
+			);
+			path = "Network";
+			sourceTree = "<group>";
+		};
+		4B1611D20B633047AEE9396E /* Playback */ = {
+			isa = PBXGroup;
+			children = (
+				F6F67576B53933E97711AF35 /* PlayerManager.swift */,
+			);
+			path = "Playback";
+			sourceTree = "<group>";
+		};
+		0397B6EB1410A719FED15C7A /* Storage */ = {
+			isa = PBXGroup;
+			children = (
+				4F441B8E4AA7DB513929059A /* MusicDatabase.swift */,
+			);
+			path = "Storage";
+			sourceTree = "<group>";
+		};
+		564EAF51B7DD4639ADD9B985 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				5C614A0C6752DFBF46403353 /* Network */,
+				4B1611D20B633047AEE9396E /* Playback */,
+				0397B6EB1410A719FED15C7A /* Storage */,
+			);
+			path = "Services";
+			sourceTree = "<group>";
+		};
+		040E85B3E609CB31DCB6FC10 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				426DFC769193C261B0BE9B1E /* LyricsSheetView.swift */,
+				E72BC365EBC9503FB88F81FA /* MiniPlayerBar.swift */,
+				64BC5EB09F7C9A5400E6301C /* SoundCloudTrackCard.swift */,
+				F3C41358FDCC9A2A96D8E156 /* SoundCloudWaveformView.swift */,
+			);
+			path = "Components";
+			sourceTree = "<group>";
+		};
+		1BB65BE9FD8C32FC71E18CA0 /* Detail */ = {
+			isa = PBXGroup;
+			children = (
+				BCEBD995E215131CB0E3BBB6 /* DetailView.swift */,
+			);
+			path = "Detail";
+			sourceTree = "<group>";
+		};
+		2F66A5104DC1C94389CDA4C3 /* Home */ = {
+			isa = PBXGroup;
+			children = (
+				1A831AD0C5AEC430DD03709E /* HomeView.swift */,
+			);
+			path = "Home";
+			sourceTree = "<group>";
+		};
+		FE62B0EC1F4B83FCFFD80DFF /* Library */ = {
+			isa = PBXGroup;
+			children = (
+				A3ED3FA4F5FA9E320DFB054D /* LibraryView.swift */,
+			);
+			path = "Library";
+			sourceTree = "<group>";
+		};
+		364CC5B6B2B6A50ED4F61702 /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				A7A7DE101EB965FA9C0336D8 /* FullPlayerView.swift */,
+			);
+			path = "Player";
+			sourceTree = "<group>";
+		};
+		E43E759C4AC71D321698E3CB /* Search */ = {
+			isa = PBXGroup;
+			children = (
+				4ADFA0EE919210343EDCF856 /* SearchView.swift */,
+			);
+			path = "Search";
+			sourceTree = "<group>";
+		};
+		F0E6DDF03F2622020D7F084A /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				0301486BE010F54E6587D682 /* SettingsView.swift */,
+			);
+			path = "Settings";
+			sourceTree = "<group>";
+		};
+		C454586A1F4E28C340BDC1AD /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				040E85B3E609CB31DCB6FC10 /* Components */,
+				1BB65BE9FD8C32FC71E18CA0 /* Detail */,
+				2F66A5104DC1C94389CDA4C3 /* Home */,
+				FE62B0EC1F4B83FCFFD80DFF /* Library */,
+				364CC5B6B2B6A50ED4F61702 /* Player */,
+				E43E759C4AC71D321698E3CB /* Search */,
+				F0E6DDF03F2622020D7F084A /* Settings */,
+			);
+			path = "Views";
+			sourceTree = "<group>";
+		};
+		FE910D29D648D8F2EA669AEF /* App */ = {
+			isa = PBXGroup;
+			children = (
+				C24D763189F965C10B479DBE /* ContentView.swift */,
+				F30E8660DFFCE9672B7F9697 /* KVMusicApp.swift */,
+			);
+			path = "App";
+			sourceTree = "<group>";
+		};
+		9F325DAB2C6F4F7D22440C8B /* Config */ = {
+			isa = PBXGroup;
+			children = (
+				7C5E8631F5E2E4D8D8CB6988 /* Info.plist */,
+			);
+			path = "Config";
+			sourceTree = "<group>";
+		};
+		9CF43B31E8845D861542A38E /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				2CB11578B64C0469727B66D0 /* Track.swift */,
+			);
+			path = "Models";
+			sourceTree = "<group>";
+		};
+		7999BCA23EC4E9B2C00838D3 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				733FAB760DF1638C6C6CC19F /* Theme.swift */,
+			);
+			path = "Theme";
+			sourceTree = "<group>";
+		};
+		1EDDF489F9CA18383667000E /* KVMusic */ = {
+			isa = PBXGroup;
+			children = (
+				FE910D29D648D8F2EA669AEF /* App */,
+				3DC9B0AD589C99F1A646F9D6 /* Assets.xcassets */,
+				9F325DAB2C6F4F7D22440C8B /* Config */,
+				9CF43B31E8845D861542A38E /* Models */,
+				564EAF51B7DD4639ADD9B985 /* Services */,
+				7999BCA23EC4E9B2C00838D3 /* Theme */,
+				C454586A1F4E28C340BDC1AD /* Views */,
+			);
+			path = "KVMusic";
+			sourceTree = "<group>";
+		};
+		9A76A62D587AD0C58292763F /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				74E3EF9124105E1840A92DDA /* KVMusic.app */,
+			);
+			path = "";
+			sourceTree = "<group>";
+		};
+		F6D128BA142868EA05F45E4D /* Main Group */ = {
+			isa = PBXGroup;
+			children = (
+				1EDDF489F9CA18383667000E /* KVMusic */,
+				9A76A62D587AD0C58292763F /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		26AFC2D4547D97572A2EEBD6 /* KVMusic */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 32885C7FE4702D6377A1C1A9 /* Build configuration list for PBXNativeTarget "KVMusic" */;
+			buildPhases = (
+				7EACDFE49450151A1210E3BD /* Sources */,
+				D749C19F4C90A9688797C4C7 /* Frameworks */,
+				8435A7DF4882DDAFDC86E09A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = KVMusic;
+			productName = KVMusic;
+			productReference = 74E3EF9124105E1840A92DDA /* KVMusic.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8168ED2DFCFCE19B704B0840 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1540;
+				LastUpgradeCheck = 1540;
+				TargetAttributes = {
+					26AFC2D4547D97572A2EEBD6 = {
+						CreatedOnToolsVersion = 15.4;
+					};
+				};
+			};
+			buildConfigurationList = 561DBEB382F216D5C4698F01 /* Build configuration list for PBXProject "KVMusic" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = F6D128BA142868EA05F45E4D /* Main Group */;
+			productRefGroup = 9A76A62D587AD0C58292763F /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				26AFC2D4547D97572A2EEBD6 /* KVMusic */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		8435A7DF4882DDAFDC86E09A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8C45876579C190D103DD81D1 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		7EACDFE49450151A1210E3BD /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0348C37F05DAB52159AB0DF8 /* ContentView.swift in Sources */,
+				9D48C0C57412EB11784BF181 /* KVMusicApp.swift in Sources */,
+				6D34E31BA2EEDBE40028F5C4 /* Track.swift in Sources */,
+				3DC1837016866F607FE30573 /* KVMusicApi.swift in Sources */,
+				D5F44D13D40714F4B9B25DD5 /* PlayerManager.swift in Sources */,
+				896BBB3F08EFE29576BF5A6D /* MusicDatabase.swift in Sources */,
+				92BCC418FCF165CF2E5ADBFF /* Theme.swift in Sources */,
+				00AE997B86E13B477B51DBF2 /* LyricsSheetView.swift in Sources */,
+				E98D7614F3F8303CD6AA9F1D /* MiniPlayerBar.swift in Sources */,
+				FC91C38062FECE13F64F62CB /* SoundCloudTrackCard.swift in Sources */,
+				2DEF459E4E5A0555BD7EC20B /* SoundCloudWaveformView.swift in Sources */,
+				F8DF75D291B4E97B5A2C63FC /* DetailView.swift in Sources */,
+				5CD6C5FF71515C9D67D9246B /* HomeView.swift in Sources */,
+				35884E406008287FC0F342D6 /* LibraryView.swift in Sources */,
+				7B1E753EE2187A7E2825CF59 /* FullPlayerView.swift in Sources */,
+				D0B5D4BBFAF09A253D9C2EA2 /* SearchView.swift in Sources */,
+				D29C835BDE8E6BADE85CDA2C /* SettingsView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		FF1D8C4C1B51DDA09F96FC38 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		5FC12C801A6B7B17DB725C63 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		034D244A7753D9069D7F9D85 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KVMusic/Config/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kvmusic.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C63C1E66989FD57010C2535C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_ASSET_PATHS = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KVMusic/Config/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.kvmusic.ios;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		561DBEB382F216D5C4698F01 /* Build configuration list for PBXProject "KVMusic" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				FF1D8C4C1B51DDA09F96FC38 /* Debug */,
+				5FC12C801A6B7B17DB725C63 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		32885C7FE4702D6377A1C1A9 /* Build configuration list for PBXNativeTarget "KVMusic" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				034D244A7753D9069D7F9D85 /* Debug */,
+				C63C1E66989FD57010C2535C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+	};
+	rootObject = 8168ED2DFCFCE19B704B0840 /* Project object */;
+}

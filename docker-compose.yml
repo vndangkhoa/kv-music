@@ -9,10 +9,15 @@ services:
     restart: unless-stopped
     mem_limit: 500m
     cpus: 1.5
-    ports:
-      - "3110:8080"
+    # Host networking gives yt-dlp direct access to the host's native routed IPv6
+    # on Linux/Synology without Docker bridge NAT66 issues.
+    # If you prefer bridge networking (e.g. Docker Desktop on macOS/Windows),
+    # comment out `network_mode: host`, set `PORT=8080`, and uncomment `ports`:
+    network_mode: host
+    # ports:
+    #   - "3110:8080"
     environment:
-      - PORT=8080
+      - PORT=3110
       - RUST_LOG=info
       - PYTHONUNBUFFERED=1
       - COOKIE_FILE=/app/cookies.txt
@@ -25,18 +30,8 @@ services:
       - ./cache:/tmp/kv-music-cache
       - ./cookies.txt:/app/cookies.txt:ro
       - ./users:/app/data
-    networks:
-      - kvnet
     logging:
       driver: "json-file"
       options:
         max-size: "10m"
         max-file: "3"
-
-networks:
-  kvnet:
-    enable_ipv6: true
-    ipam:
-      config:
-        - subnet: 172.20.0.0/16
-        - subnet: fd00:1::/64

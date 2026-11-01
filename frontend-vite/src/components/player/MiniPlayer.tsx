@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../stores/playerStore';
+import { useToastStore } from '../../stores/toastStore';
 import useMediaSession from '../../hooks/useMediaSession';
 
 export default function MiniPlayer() {
@@ -12,6 +13,7 @@ export default function MiniPlayer() {
   const nextTrack = usePlayerStore(s => s.nextTrack);
   const setProgress = usePlayerStore(s => s.setProgress);
   const setDuration = usePlayerStore(s => s.setDuration);
+  const setBuffering = usePlayerStore(s => s.setBuffering);
   const seekTo = usePlayerStore(s => s.seekTo);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -88,15 +90,28 @@ export default function MiniPlayer() {
   const handleAudioError = () => {
     if (!currentTrack) return;
     streamFailCount.current += 1;
-    if (streamFailCount.current >= 3) return;
+    if (streamFailCount.current >= 3) {
+      setBuffering(false);
+      usePlayerStore.setState({ isPlaying: false, isBuffering: false });
+      useToastStore.getState().addToast(
+        'Playback failed (YouTube bot check or stream error — check Settings → Cookies).'
+      );
+      return;
+    }
     if (!audioRef.current) return;
     const url = currentTrack.url;
     if (!url) return;
-    // Auto-retry once by reloading the source (helps after backend format
-    // changes or transient failures); a reload clears the stuck error state.
+    const retryUrl =
+      streamFailCount.current === 2 && !url.includes('fmt=m4a')
+        ? `/api/stream/${currentTrack.id}?fmt=m4a`
+        : url;
+    const trackId = currentTrack.id;
+    // Auto-retry by reloading the source (and falling back to ?fmt=m4a on retry 2);
+    // a reload clears the stuck error state.
     setTimeout(() => {
-      if (audioRef.current && audioRef.current.error !== null && currentTrack.url === url) {
-        audioRef.current.src = url;
+      const latestTrack = usePlayerStore.getState().currentTrack;
+      if (audioRef.current && audioRef.current.error !== null && latestTrack?.id === trackId) {
+        audioRef.current.src = retryUrl;
         audioRef.current.load();
         if (usePlayerStore.getState().isPlaying) {
           audioRef.current.play().catch(e => {

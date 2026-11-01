@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { streamUrl } from '../services/library';
 
 export type WaveformStatus = 'loading' | 'ready' | 'fallback';
 
@@ -24,7 +25,7 @@ const cache = new Map<string, { peaks: number[]; real: boolean }>();
 const inflight = new Map<string, Promise<number[]>>();
 
 async function computePeaks(trackId: string): Promise<number[]> {
-    const res = await fetch(`/api/stream/${trackId}`);
+    const res = await fetch(streamUrl(trackId));
     if (!res.ok) throw new Error('stream fetch failed');
     const buffer = await res.arrayBuffer();
     const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
