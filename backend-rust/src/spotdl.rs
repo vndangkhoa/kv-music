@@ -95,6 +95,7 @@ pub struct SpotdlService {
     cookie_jar: Arc<SharedCookieStore>,
     download_locks: Arc<std::sync::Mutex<HashMap<String, Arc<std::sync::Mutex<()>>>>>,
     pub search_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
+    pub universal_search_cache: Arc<RwLock<HashMap<String, (Instant, serde_json::Value)>>>,
     pub browse_cache: Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>,
     /// Full yt-dlp metadata for single tracks (see get_track_info).
     pub track_info_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
@@ -136,6 +137,7 @@ impl SpotdlService {
             cookie_jar,
             download_locks: Arc::new(std::sync::Mutex::new(HashMap::new())),
             search_cache: Arc::new(RwLock::new(HashMap::new())),
+            universal_search_cache: Arc::new(RwLock::new(HashMap::new())),
             browse_cache: Arc::new(RwLock::new(HashMap::new())),
             track_info_cache: Arc::new(RwLock::new(HashMap::new())),
             share_preview_cache: Arc::new(RwLock::new(HashMap::new())),
@@ -162,6 +164,12 @@ impl SpotdlService {
 
     pub fn yt_dlp_path_static() -> String {
         Self::yt_dlp_path()
+    }
+
+    async fn run_command_output(path: String, args: Vec<String>) -> std::io::Result<std::process::Output> {
+        tokio::task::spawn_blocking(move || Command::new(&path).args(&args).output())
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
     }
 
     /// True if any cookie file (uploaded, managed, COOKIE_FILE, docker, local) exists.
@@ -356,9 +364,7 @@ impl SpotdlService {
             cmd_args.push("--no-playlist".to_string());
             cmd_args.push("--flat-playlist".to_string());
             
-            let output = Command::new(&path)
-                .args(&cmd_args)
-                .output();
+            let output = Self::run_command_output(path.clone(), cmd_args).await;
             
             if let Ok(o) = output {
                 let stdout = String::from_utf8_lossy(&o.stdout);
@@ -412,9 +418,7 @@ impl SpotdlService {
         artist_cmd_args.push("--dump-json".to_string());
         artist_cmd_args.push("--flat-playlist".to_string());
         
-        if let Ok(o) = Command::new(&path)
-            .args(&artist_cmd_args)
-            .output() {
+        if let Ok(o) = Self::run_command_output(path.clone(), artist_cmd_args).await {
             let mut items = Vec::new();
             for line in String::from_utf8_lossy(&o.stdout).lines() {
                  if let Ok(res) = serde_json::from_str::<YTResult>(line) {
@@ -470,7 +474,7 @@ impl SpotdlService {
         let mut last_err = String::new();
         for attempt in 0..3 {
             let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
-            let output = match Command::new(&path).args(&all_args).output() {
+            let output = match Self::run_command_output(path.clone(), all_args).await {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
             };
@@ -585,7 +589,7 @@ impl SpotdlService {
 
         for attempt in 0..3 {
             let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
-            let output = match Command::new(&path).args(&all_args).output() {
+            let output = match Self::run_command_output(path.clone(), all_args).await {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
             };
@@ -754,7 +758,7 @@ impl SpotdlService {
         let mut last_err = String::new();
         for attempt in 0..3 {
             let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
-            let output = match Command::new(&path).args(&all_args).output() {
+            let output = match Self::run_command_output(path.clone(), all_args).await {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
             };
@@ -1132,27 +1136,32 @@ impl SpotdlService {
     }
 
     /// True when IPv6 is actually routable (not just an address assigned).
-    /// Probes a well-known IPv6 endpoint with a short timeout. Override with
-    /// FORCE_IPV6=1 (always) or FORCE_IPV6=0 (never).
+    /// Probes a well-known IPv6 endpoint with a short timeout and caches the
+    /// result for 60s. Override with FORCE_IPV6=1 (always) or FORCE_IPV6=0 (never).
     fn ipv6_connectivity() -> bool {
         use std::net::{SocketAddr, TcpStream};
         use std::str::FromStr;
-        static IPV6_OK: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
-        *IPV6_OK.get_or_init(|| {
-            if let Ok(v) = env::var("FORCE_IPV6") {
-                return v != "0";
+        if let Ok(v) = env::var("FORCE_IPV6") {
+            return v != "0";
+        }
+        static IPV6_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(bool, Instant)>>> =
+            std::sync::OnceLock::new();
+        let mutex = IPV6_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+        if let Ok(guard) = mutex.lock() {
+            if let Some((ok, ts)) = *guard {
+                if ts.elapsed() < Duration::from_secs(60) {
+                    return ok;
+                }
             }
-            // Probe: TCP connect to Google DNS over IPv6 (3s timeout). Some
-            // networks assign IPv6 addresses without routing them (e.g. Synology
-            // Docker), which would make --force-ipv6 hang every request.
-            let Ok(addr) = SocketAddr::from_str("[2001:4860:4860::8888]:443") else {
-                return false;
-            };
-            match TcpStream::connect_timeout(&addr, Duration::from_secs(3)) {
-                Ok(_) => true,
-                Err(_) => false,
-            }
-        })
+        }
+        let Ok(addr) = SocketAddr::from_str("[2001:4860:4860::8888]:443") else {
+            return false;
+        };
+        let ok = TcpStream::connect_timeout(&addr, Duration::from_secs(2)).is_ok();
+        if let Ok(mut guard) = mutex.lock() {
+            *guard = Some((ok, Instant::now()));
+        }
+        ok
     }
 
     /// True when yt-dlp stderr indicates a network-level failure (not a 429),
@@ -1313,6 +1322,7 @@ impl SpotdlService {
     /// Drop all in-memory caches so the next fetches re-query YouTube with the new cookies.
     pub async fn clear_caches(&self) {
         self.search_cache.write().await.clear();
+        self.universal_search_cache.write().await.clear();
         self.browse_cache.write().await.clear();
         self.track_info_cache.write().await.clear();
         self.share_preview_cache.write().await.clear();
@@ -1374,6 +1384,7 @@ impl SpotdlService {
                 }
             }
             for default_base in [
+                "http://192.168.31.71:8282/companion",
                 "http://100.94.92.63:8282/companion",
                 "http://127.0.0.1:8282/companion",
                 "http://host.docker.internal:8282/companion",
@@ -1391,11 +1402,13 @@ impl SpotdlService {
 
             let no_redirect_client = reqwest::Client::builder()
                 .redirect(reqwest::redirect::Policy::none())
+                .connect_timeout(Duration::from_millis(1500))
                 .timeout(Duration::from_secs(8))
                 .build()
                 .ok()?;
 
             let chunk_client = reqwest::Client::builder()
+                .connect_timeout(Duration::from_millis(2000))
                 .timeout(Duration::from_secs(15))
                 .build()
                 .ok()?;
@@ -1804,9 +1817,7 @@ impl SpotdlService {
         ];
         let all_args = Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), &artist_search_args);
         
-        let output = Command::new(&path)
-            .args(&all_args)
-            .output();
+        let output = Self::run_command_output(path.clone(), all_args).await;
         
         if let Ok(o) = output {
             let stdout = String::from_utf8_lossy(&o.stdout);

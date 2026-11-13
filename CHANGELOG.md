@@ -4,6 +4,14 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.3] - 2026-11-13
+
+### Fixed
+- **Search stuck while typing (Android)** - Removed `focusManager.clearFocus()` on keystrokes, added 400 ms debounce with coroutine job cancellation, rethrew `CancellationException` in `MusicRepository`, and isolated `SoundCloudTrackCard` playback progress collection to the active track only
+- **Search stuck while typing (Web)** - Prevented URL query sync from overwriting active/IME input in `Header.tsx` and `Search.tsx`, kept mobile search bar open while typing on `/search`, added 200 ms debounced `/api/suggestions` with `AbortController`, added 450–500 ms debounced live search with stale-response sequence guards, and wired Clear (`×`) button
+- **Search typing race (iOS)** - Added 400 ms debounced `Task` cancellation and fixed suggestions dropdown visibility in `SearchView.swift`
+- **Backend async stalling** - Moved `yt-dlp` subprocess calls in `spotdl.rs` and `api.rs` into `tokio::task::spawn_blocking`, replaced per-keystroke Python subprocess in `/api/suggestions` with direct YouTube Music innerTube lookup + cache, and added 10-minute in-memory caching + 10s request timeouts to `/api/universal-search`
+
 ## [1.2.2] - 2026-09-07
 
 ### Added

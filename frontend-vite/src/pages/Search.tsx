@@ -45,24 +45,38 @@ export default function Search() {
 
     const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
 
+    const isInputFocusedRef = useRef(false);
+    const isComposingRef = useRef(false);
+    const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const searchSeqRef = useRef(0);
+
+    useEffect(() => {
+        return () => {
+            if (debounceRef.current) clearTimeout(debounceRef.current);
+        };
+    }, []);
+
     useEffect(() => {
         if (query) safeStorage.setItem('last_search_query', query);
         if (results.length > 0) safeStorage.setItem('last_search_results', JSON.stringify(results));
     }, [query, results]);
 
     const performSearch = useCallback(async (searchQuery: string) => {
+        const seq = ++searchSeqRef.current;
         if (!searchQuery.trim()) {
             setResults([]);
             setAlbums([]);
             setPlaylists([]);
             setArtistHits([]);
             setSearchError(null);
+            setLoading(false);
             return;
         }
         setLoading(true);
         setSearchError(null);
         try {
             const data = await libraryService.universalSearch(searchQuery);
+            if (seq !== searchSeqRef.current) return;
             setResults(data.songs);
             setAlbums(data.albums);
             setPlaylists(data.playlists);
@@ -72,10 +86,13 @@ export default function Search() {
                 setSearchError('No results — the search service may be temporarily blocked by YouTube. Try again or use a different keyword.');
             }
         } catch (error) {
+            if (seq !== searchSeqRef.current) return;
             console.error("Search error:", error);
             setSearchError('Search failed — please check your connection and try again.');
         } finally {
-            setLoading(false);
+            if (seq === searchSeqRef.current) {
+                setLoading(false);
+            }
         }
     }, []);
 
@@ -98,19 +115,63 @@ export default function Search() {
     const lastElementRef = useInfiniteScroll(loadMore, loading);
 
     useEffect(() => {
-        if (routerQuery !== query) {
-            setQuery(routerQuery);
+        setQuery(routerQuery);
+        if (!isInputFocusedRef.current && !isComposingRef.current) {
             setInputValue(routerQuery);
         }
         if (routerQuery.trim()) {
             performSearch(routerQuery);
-        } else if (!routerQuery && !query) {
+        } else {
+            searchSeqRef.current++;
             setResults([]);
             setAlbums([]);
             setPlaylists([]);
             setArtistHits([]);
+            setSearchError(null);
+            setLoading(false);
         }
     }, [routerQuery, performSearch]);
+
+    const scheduleInPageSearch = useCallback((val: string) => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        const trimmed = val.trim();
+        debounceRef.current = setTimeout(() => {
+            if (trimmed) {
+                setQuery(trimmed);
+                navigate(`/search?q=${encodeURIComponent(trimmed)}`, { replace: true });
+            } else {
+                searchSeqRef.current++;
+                setQuery('');
+                setResults([]);
+                setAlbums([]);
+                setPlaylists([]);
+                setArtistHits([]);
+                setSearchError(null);
+                setLoading(false);
+                navigate('/search', { replace: true });
+            }
+        }, 450);
+    }, [navigate]);
+
+    const handleInputChange = (val: string) => {
+        setInputValue(val);
+        if (isComposingRef.current) return;
+        scheduleInPageSearch(val);
+    };
+
+    const handleClearInput = () => {
+        if (debounceRef.current) clearTimeout(debounceRef.current);
+        searchSeqRef.current++;
+        setInputValue('');
+        setQuery('');
+        setResults([]);
+        setAlbums([]);
+        setPlaylists([]);
+        setArtistHits([]);
+        setSearchError(null);
+        setLoading(false);
+        navigate('/search', { replace: true });
+    };
 
     useEffect(() => {
         if (!routerQuery && !query) {
@@ -146,9 +207,11 @@ export default function Search() {
                     <form
                         onSubmit={(e) => {
                             e.preventDefault();
+                            if (debounceRef.current) clearTimeout(debounceRef.current);
                             const v = inputValue.trim();
                             if (v) {
                                 addRecentSearch(v);
+                                setQuery(v);
                                 navigate(`/search?q=${encodeURIComponent(v)}`);
                             }
                         }}
@@ -158,14 +221,21 @@ export default function Search() {
                         <input
                             type="text"
                             value={inputValue}
-                            onChange={(e) => setInputValue(e.target.value)}
+                            onChange={(e) => handleInputChange(e.target.value)}
+                            onCompositionStart={() => { isComposingRef.current = true; }}
+                            onCompositionEnd={(e) => {
+                                isComposingRef.current = false;
+                                scheduleInPageSearch((e.target as HTMLInputElement).value);
+                            }}
+                            onFocus={() => { isInputFocusedRef.current = true; }}
+                            onBlur={() => { isInputFocusedRef.current = false; }}
                             placeholder="Search tracks, artists, albums, playlists..."
                             className="w-full pl-2.5 pr-3 py-2.5 bg-transparent text-white placeholder-neutral-500 text-sm font-medium focus:outline-none"
                         />
                         {inputValue && (
                             <button
                                 type="button"
-                                onClick={() => setInputValue('')}
+                                onClick={handleClearInput}
                                 className="pr-3 text-neutral-500 hover:text-white transition text-lg leading-none"
                                 aria-label="Clear"
                             >

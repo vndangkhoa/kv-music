@@ -13,6 +13,15 @@ export interface AppChangelogEntry {
 
 export const APP_CHANGELOG: AppChangelogEntry[] = [
     {
+        version: '1.0.0-23',
+        date: '2026-11-13',
+        highlights: [
+            'Smooth search typing (Web, Android, iOS): fixed keyboard dismissal, input overwrite, IME composition, and mobile bar closing mid-typing',
+            'Instant live search suggestions via direct innerTube API + cached universal search',
+            'Non-blocking backend subprocess execution so searches never stall while streaming',
+        ],
+    },
+    {
         version: '1.0.0-22',
         date: '2026-09-07',
         highlights: [

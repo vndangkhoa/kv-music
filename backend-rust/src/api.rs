@@ -1008,12 +1008,17 @@ pub async fn video_stats_handler(
     args.push("--flat-playlist".to_string());
     args.push(url);
 
-    let output = std::process::Command::new(&path)
-        .args(&args)
-        .output();
+    let output = tokio::task::spawn_blocking(move || {
+        std::process::Command::new(&path)
+            .args(&args)
+            .output()
+    })
+    .await
+    .ok()
+    .and_then(|r| r.ok());
 
     match output {
-        Ok(o) if o.status.success() => {
+        Some(o) if o.status.success() => {
             let stdout = String::from_utf8_lossy(&o.stdout);
             if let Ok(res) = serde_json::from_str::<crate::models::YTResult>(&stdout) {
                 return (StatusCode::OK, Json(serde_json::json!({
@@ -1428,6 +1433,7 @@ async fn ytm_search(client: &reqwest::Client, query: &str, filter: &str) -> Opti
 
     let res = client
         .post("https://music.youtube.com/youtubei/v1/search")
+        .timeout(std::time::Duration::from_secs(10))
         .header("Content-Type", "application/json")
         .header("Origin", "https://music.youtube.com")
         .json(&body)
@@ -1611,6 +1617,16 @@ pub async fn universal_search_handler(
         return (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": "Query required"})));
     }
 
+    let cache_key = query.to_lowercase();
+    {
+        let cache = state.spotdl.universal_search_cache.read().await;
+        if let Some((ts, cached)) = cache.get(&cache_key) {
+            if ts.elapsed() < std::time::Duration::from_secs(600) {
+                return (StatusCode::OK, Json(cached.clone()));
+            }
+        }
+    }
+
     let client = state.spotdl.yt_client();
 
     // Run all 4 category searches in parallel
@@ -1688,12 +1704,22 @@ pub async fn universal_search_handler(
     }
     artists.truncate(10);
 
-    (StatusCode::OK, Json(serde_json::json!({
+    let payload = serde_json::json!({
         "songs": songs,
         "albums": albums,
         "playlists": playlists,
         "artists": artists,
-    })))
+    });
+
+    if !songs.is_empty() || !albums.is_empty() || !playlists.is_empty() || !artists.is_empty() {
+        let mut cache = state.spotdl.universal_search_cache.write().await;
+        if cache.len() > 500 {
+            cache.clear();
+        }
+        cache.insert(cache_key, (std::time::Instant::now(), payload.clone()));
+    }
+
+    (StatusCode::OK, Json(payload))
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -9,6 +9,7 @@ public struct SearchView: View {
     @State private var selectedTab: SearchTab = .all
     @State private var isSearching: Bool = false
     @State private var suggestions: [String] = []
+    @State private var searchTask: Task<Void, Never>? = nil
     @State private var tracks: [Track] = []
     @State private var albums: [AlbumHit] = []
     @State private var artists: [ArtistHit] = []
@@ -50,7 +51,7 @@ public struct SearchView: View {
                     // Results or Recent/Suggestions
                     if query.isEmpty {
                         recentAndPopularView
-                    } else if !suggestions.isEmpty && tracks.isEmpty && isSearching {
+                    } else if !suggestions.isEmpty && tracks.isEmpty && !isSearching {
                         // Suggestions Dropdown
                         suggestionsListView
                     } else {
@@ -78,7 +79,7 @@ public struct SearchView: View {
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                     .onChange(of: query) { newQuery in
-                        Task { await handleQueryChanged(newQuery) }
+                        handleQueryChanged(newQuery)
                     }
                     .onSubmit {
                         executeSearch()
@@ -86,12 +87,14 @@ public struct SearchView: View {
 
                 if !query.isEmpty {
                     Button {
+                        searchTask?.cancel()
                         query = ""
                         suggestions = []
                         tracks = []
                         albums = []
                         artists = []
                         playlists = []
+                        isSearching = false
                     } label: {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundColor(Theme.textSecondary)
@@ -456,18 +459,49 @@ public struct SearchView: View {
         .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
-    private func handleQueryChanged(_ q: String) async {
-        guard !q.isEmpty else {
+    private func handleQueryChanged(_ q: String) {
+        searchTask?.cancel()
+        let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
             suggestions = []
+            tracks = []
+            albums = []
+            artists = []
+            playlists = []
+            isSearching = false
             return
         }
-        let sugs = await KVMusicApi.shared.fetchSuggestions(query: q)
-        await MainActor.run {
-            self.suggestions = sugs
+        searchTask = Task {
+            try? await Task.sleep(nanoseconds: 400_000_000)
+            guard !Task.isCancelled else { return }
+
+            let sugs = await KVMusicApi.shared.fetchSuggestions(query: trimmed)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                self.suggestions = sugs
+            }
+
+            if trimmed.count >= 2 {
+                await MainActor.run {
+                    if self.tracks.isEmpty && self.albums.isEmpty && self.artists.isEmpty {
+                        self.isSearching = true
+                    }
+                }
+                let res = await KVMusicApi.shared.universalSearch(query: trimmed, region: selectedRegion)
+                guard !Task.isCancelled else { return }
+                await MainActor.run {
+                    self.tracks = res.tracks
+                    self.albums = res.albums
+                    self.artists = res.artists
+                    self.playlists = res.playlists
+                    self.isSearching = false
+                }
+            }
         }
     }
 
     private func executeSearch() {
+        searchTask?.cancel()
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !recentSearches.contains(trimmed) {
@@ -477,8 +511,9 @@ public struct SearchView: View {
         isSearching = true
         suggestions = []
 
-        Task {
+        searchTask = Task {
             let res = await KVMusicApi.shared.universalSearch(query: trimmed, region: selectedRegion)
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 self.tracks = res.tracks
                 self.albums = res.albums

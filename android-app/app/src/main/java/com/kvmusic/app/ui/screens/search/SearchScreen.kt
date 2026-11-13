@@ -32,6 +32,8 @@ import com.kvmusic.app.data.repository.MusicRepository
 import com.kvmusic.app.player.PlayerManager
 import com.kvmusic.app.ui.components.SoundCloudTrackCard
 import com.kvmusic.app.ui.theme.*
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 typealias SearchTabType = String // "everything", "tracks", "people", "albums", "playlists"
@@ -93,6 +95,7 @@ fun SearchScreen(
 
     val focusManager = LocalFocusManager.current
     val coroutineScope = rememberCoroutineScope()
+    var searchJob by remember { mutableStateOf<Job?>(null) }
 
     fun loadExploreContentForRegion(region: RegionOption) {
         coroutineScope.launch {
@@ -122,30 +125,46 @@ fun SearchScreen(
         loadExploreContentForRegion(selectedRegion)
     }
 
-    fun performSearch(q: String) {
-        if (q.isBlank()) return
-        focusManager.clearFocus()
-        coroutineScope.launch {
-            isLoading = true
-            val res = musicRepo.universalSearch(q)
-            if (res.isSuccess) {
-                val data = res.getOrNull()
-                if (data != null) {
-                    songs = data.songs
-                    albums = data.albums
-                    playlists = data.playlists
-                    artists = data.artists
-                }
-            } else {
-                val trackRes = musicRepo.search(q)
-                if (trackRes.isSuccess) {
-                    songs = trackRes.getOrDefault(emptyList())
-                }
-            }
-            if (!recentSearches.contains(q)) {
-                recentSearches = (listOf(q) + recentSearches).take(8)
-            }
+    fun performSearch(q: String, dismissKeyboard: Boolean = true, saveRecent: Boolean = true, debounceMs: Long = 0L) {
+        val trimmed = q.trim()
+        if (trimmed.isEmpty()) {
+            searchJob?.cancel()
             isLoading = false
+            return
+        }
+        if (dismissKeyboard) {
+            focusManager.clearFocus()
+        }
+        searchJob?.cancel()
+        searchJob = coroutineScope.launch {
+            if (debounceMs > 0L) {
+                delay(debounceMs)
+            }
+            if (dismissKeyboard || (songs.isEmpty() && albums.isEmpty() && playlists.isEmpty() && artists.isEmpty())) {
+                isLoading = true
+            }
+            try {
+                val res = musicRepo.universalSearch(trimmed)
+                if (res.isSuccess) {
+                    val data = res.getOrNull()
+                    if (data != null) {
+                        songs = data.songs
+                        albums = data.albums
+                        playlists = data.playlists
+                        artists = data.artists
+                    }
+                } else {
+                    val trackRes = musicRepo.search(trimmed)
+                    if (trackRes.isSuccess) {
+                        songs = trackRes.getOrDefault(emptyList())
+                    }
+                }
+                if (saveRecent && !recentSearches.contains(trimmed)) {
+                    recentSearches = (listOf(trimmed) + recentSearches).take(8)
+                }
+            } finally {
+                isLoading = false
+            }
         }
     }
 
@@ -208,13 +227,18 @@ fun SearchScreen(
                         value = query,
                         onValueChange = {
                             query = it
-                            if (it.length >= 2) {
-                                performSearch(it)
-                            } else if (it.isEmpty()) {
-                                songs = emptyList()
-                                albums = emptyList()
-                                playlists = emptyList()
-                                artists = emptyList()
+                            val trimmed = it.trim()
+                            if (trimmed.length >= 2) {
+                                performSearch(it, dismissKeyboard = false, saveRecent = false, debounceMs = 400L)
+                            } else {
+                                searchJob?.cancel()
+                                isLoading = false
+                                if (trimmed.isEmpty()) {
+                                    songs = emptyList()
+                                    albums = emptyList()
+                                    playlists = emptyList()
+                                    artists = emptyList()
+                                }
                             }
                         },
                         placeholder = {
@@ -230,6 +254,8 @@ fun SearchScreen(
                         trailingIcon = {
                             if (query.isNotEmpty()) {
                                 IconButton(onClick = {
+                                    searchJob?.cancel()
+                                    isLoading = false
                                     query = ""
                                     songs = emptyList()
                                     albums = emptyList()
@@ -246,7 +272,7 @@ fun SearchScreen(
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { performSearch(query) }),
+                        keyboardActions = KeyboardActions(onSearch = { performSearch(query, dismissKeyboard = true, saveRecent = true) }),
                         shape = RoundedCornerShape(24.dp),
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = SoundCloudNeonOrange,
@@ -735,7 +761,7 @@ fun SearchScreen(
                                         Surface(
                                             onClick = {
                                                 query = q
-                                                performSearch(q)
+                                                performSearch(q, dismissKeyboard = true, saveRecent = true)
                                             },
                                             shape = RoundedCornerShape(16.dp),
                                             color = Color(0xFF1B1B1B),
@@ -803,7 +829,7 @@ fun SearchScreen(
                                         .border(1.dp, GlassCardBorder, RoundedCornerShape(8.dp))
                                         .clickable {
                                             query = tile.query
-                                            performSearch(tile.query)
+                                            performSearch(tile.query, dismissKeyboard = true, saveRecent = true)
                                         },
                                     shape = RoundedCornerShape(8.dp),
                                     colors = CardDefaults.cardColors(containerColor = GlassCardDark)

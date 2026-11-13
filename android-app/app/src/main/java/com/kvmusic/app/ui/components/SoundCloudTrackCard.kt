@@ -36,14 +36,15 @@ fun SoundCloudTrackCard(
 ) {
     val context = LocalContext.current
     val currentTrack by PlayerManager.currentTrack.collectAsState()
-    val isPlaying by PlayerManager.isPlaying.collectAsState()
-    val positionMs by PlayerManager.currentPosition.collectAsState()
-    val durationMs by PlayerManager.duration.collectAsState()
-    val isLiked = PlayerManager.isTrackLiked(track.id)
+    val isCurrent = currentTrack?.id == track.id
+    val isPlaying = if (isCurrent) PlayerManager.isPlaying.collectAsState().value else false
+    val positionMs = if (isCurrent) PlayerManager.currentPosition.collectAsState().value else 0L
+    val durationMs = if (isCurrent) PlayerManager.duration.collectAsState().value else 0L
+    val likedTrackIds by PlayerManager.likedTrackIds.collectAsState()
+    val isLiked = likedTrackIds.contains(track.id)
 
     var isReposted by remember { mutableStateOf(false) }
 
-    val isCurrent = currentTrack?.id == track.id
     val progressFraction = if (isCurrent && durationMs > 0) positionMs.toFloat() / durationMs else 0f
 
     val cardWaveformBars = remember(track.id) {

@@ -38,12 +38,30 @@ export default function Header() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => { setQuery(urlQuery); }, [urlQuery]);
+  const suggestTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestAbortRef = useRef<AbortController | null>(null);
+  const isFocusedRef = useRef(false);
+  const isComposingRef = useRef(false);
 
   useEffect(() => {
-    setIsMobileSearchOpen(false);
+    if (!isFocusedRef.current && !isComposingRef.current) {
+      setQuery(urlQuery);
+    }
+  }, [urlQuery]);
+
+  useEffect(() => {
+    if (location.pathname !== '/search') {
+      setIsMobileSearchOpen(false);
+    }
   }, [location.pathname]);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+      suggestAbortRef.current?.abort();
+    };
+  }, []);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -55,29 +73,66 @@ export default function Header() {
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  const scheduleSearchAndSuggestions = (val: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    suggestAbortRef.current?.abort();
+
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setSuggestions([]);
+      return;
+    }
+
+    suggestTimerRef.current = setTimeout(() => {
+      const controller = new AbortController();
+      suggestAbortRef.current = controller;
+      fetch(`/api/suggestions?q=${encodeURIComponent(trimmed)}`, { signal: controller.signal })
+        .then(r => r.json().catch(() => []))
+        .then((list: string[]) => {
+          if (!controller.signal.aborted) {
+            setSuggestions(Array.isArray(list) ? list.slice(0, 6) : []);
+          }
+        })
+        .catch(() => {
+          if (!controller.signal.aborted) {
+            setSuggestions([]);
+          }
+        });
+    }, 200);
+
+    debounceRef.current = setTimeout(() => {
+      navigate(`/search?q=${encodeURIComponent(trimmed)}`, {
+        replace: location.pathname === '/search',
+      });
+    }, 500);
+  };
+
   const handleSearch = (val: string) => {
     setQuery(val);
+    if (isComposingRef.current) return;
+    scheduleSearchAndSuggestions(val);
+  };
+
+  const handleClearSearch = () => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (val.trim()) {
-      fetch(`/api/suggestions?q=${encodeURIComponent(val.trim())}`)
-        .then(r => r.json().catch(() => []))
-        .then((list: string[]) => setSuggestions(Array.isArray(list) ? list.slice(0, 6) : []))
-        .catch(() => setSuggestions([]));
-      debounceRef.current = setTimeout(() => {
-        addRecentSearch(val);
-        navigate(`/search?q=${encodeURIComponent(val)}`);
-      }, 700);
-    } else {
-      setSuggestions([]);
-    }
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    suggestAbortRef.current?.abort();
+    setQuery('');
+    setSuggestions([]);
+    setShowSuggestions(false);
   };
 
   const handleFormSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (query.trim()) {
-      addRecentSearch(query);
-      navigate(`/search?q=${encodeURIComponent(query)}`);
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    suggestAbortRef.current?.abort();
+    const trimmed = query.trim();
+    if (trimmed) {
+      setShowSuggestions(false);
+      addRecentSearch(trimmed);
+      navigate(`/search?q=${encodeURIComponent(trimmed)}`);
     }
   };
 
@@ -127,12 +182,31 @@ export default function Header() {
                 type="text"
                 value={query}
                 onChange={(e) => { handleSearch(e.target.value); setShowSuggestions(true); }}
-                onFocus={() => setShowSuggestions(true)}
-                onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                onCompositionStart={() => { isComposingRef.current = true; }}
+                onCompositionEnd={(e) => {
+                  isComposingRef.current = false;
+                  scheduleSearchAndSuggestions((e.target as HTMLInputElement).value);
+                }}
+                onFocus={() => { isFocusedRef.current = true; setShowSuggestions(true); }}
+                onBlur={() => {
+                  isFocusedRef.current = false;
+                  setTimeout(() => setShowSuggestions(false), 150);
+                }}
                 placeholder="Search for artists, tracks, podcasts"
-                className="w-full pl-3 pr-8 py-1.5 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none"
+                className={`w-full pl-3 ${query ? 'pr-14' : 'pr-8'} py-1.5 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none`}
               />
-              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white transition">
+              {query && (
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={handleClearSearch}
+                  className="absolute right-8 text-neutral-500 hover:text-white transition"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white transition" aria-label="Search">
                 <Search className="w-4 h-4" />
               </button>
             </div>
@@ -220,10 +294,27 @@ export default function Header() {
                 type="text"
                 value={query}
                 onChange={(e) => handleSearch(e.target.value)}
+                onCompositionStart={() => { isComposingRef.current = true; }}
+                onCompositionEnd={(e) => {
+                  isComposingRef.current = false;
+                  scheduleSearchAndSuggestions((e.target as HTMLInputElement).value);
+                }}
+                onFocus={() => { isFocusedRef.current = true; }}
+                onBlur={() => { isFocusedRef.current = false; }}
                 placeholder="Search tracks, artists, podcasts..."
-                className="w-full pl-3 pr-8 py-2 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none"
+                className={`w-full pl-3 ${query ? 'pr-14' : 'pr-8'} py-2 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none`}
               />
-              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white">
+              {query && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="absolute right-8 text-neutral-500 hover:text-white transition"
+                  aria-label="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white" aria-label="Search">
                 <Search className="w-4 h-4" />
               </button>
             </div>

@@ -2,6 +2,7 @@ package com.kvmusic.app.data.repository
 
 import com.kvmusic.app.data.api.RetrofitClient
 import com.kvmusic.app.data.model.*
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -17,6 +18,8 @@ class MusicRepository {
             } else {
                 Result.failure(Exception("Search failed: ${response.message()}"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -30,6 +33,8 @@ class MusicRepository {
             } else {
                 Result.failure(Exception("Universal search failed: ${response.message()}"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -57,6 +62,8 @@ class MusicRepository {
             } else {
                 search("Top Hits")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             search("Top Hits")
         }
@@ -70,6 +77,8 @@ class MusicRepository {
             } else {
                 search("New Music")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             search("New Music")
         }
@@ -83,6 +92,8 @@ class MusicRepository {
             } else {
                 Result.failure(Exception("Artists failed: ${response.message()}"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -96,6 +107,8 @@ class MusicRepository {
             } else {
                 search("Recommended Music")
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             search("Recommended Music")
         }
@@ -109,6 +122,8 @@ class MusicRepository {
             } else {
                 Result.failure(Exception("Lyrics failed"))
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Result.failure(e)
         }
