@@ -618,8 +618,8 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* Footer */}
                 <div className="p-4 border-t border-white/10 bg-[#121212] text-center">
-                    <p className="text-[11px] font-extrabold text-[#ff5500]">kv-music v2.5.0 PRO VIP</p>
-                    <p className="text-[10px] text-neutral-400 mt-0.5">SoundCloud Engine Edition</p>
+                    <p className="text-[11px] font-extrabold text-[#ff5500]">KV Music PRO • v1.2.4</p>
+                    <p className="text-[10px] text-neutral-400 mt-0.5">Hi-Res Audio &amp; Synced Lyrics Engine</p>
                 </div>
             </div>
         </div>

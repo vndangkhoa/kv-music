@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Logo from './Logo';
 
 interface CoverImageProps {
     src?: string;
@@ -15,11 +16,12 @@ export default function CoverImage({ src, alt, className = "", fallbackText = "â
     if (!src || error) {
         return (
             <div
-                className={`relative overflow-hidden bg-gradient-to-br from-neutral-700 to-neutral-900 flex items-center justify-center text-2xl font-bold text-white/60 ${className}`}
+                className={`relative overflow-hidden bg-gradient-to-br from-[#231914] via-[#18181b] to-[#111318] flex items-center justify-center ${className}`}
                 aria-label={alt}
                 onClick={onClick}
             >
-                {fallbackText}
+                <Logo size={28} showText={false} />
+                <span className="sr-only">{fallbackText}</span>
             </div>
         );
     }

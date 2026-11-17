@@ -133,7 +133,7 @@ fun HomeScreen(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(bottom = 120.dp)
             ) {
-                // 1. Web App Top Header Bar (SOUNDCLOUD PRO KV MUSIC PLATFORM)
+                // 1. Web App Top Header Bar (KV MUSIC PRO — HI-RES STREAMING)
                 item {
                     Row(
                         modifier = Modifier
@@ -144,14 +144,14 @@ fun HomeScreen(
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Surface(
-                                shape = RoundedCornerShape(6.dp),
+                                shape = RoundedCornerShape(8.dp),
                                 color = SoundCloudNeonOrange,
                                 modifier = Modifier.size(34.dp)
                             ) {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
                                         imageVector = Icons.Default.GraphicEq,
-                                        contentDescription = "SoundCloud",
+                                        contentDescription = "KV Music",
                                         tint = Color.White,
                                         modifier = Modifier.size(22.dp)
                                     )
@@ -161,7 +161,7 @@ fun HomeScreen(
                             Column {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
-                                        text = "SOUNDCLOUD",
+                                        text = "KV MUSIC",
                                         style = MaterialTheme.typography.titleLarge.copy(
                                             fontWeight = FontWeight.Black,
                                             fontSize = 17.sp,
@@ -184,7 +184,7 @@ fun HomeScreen(
                                     }
                                 }
                                 Text(
-                                    text = "KV MUSIC PLATFORM",
+                                    text = "HI-RES STREAMING",
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = TextLightGray

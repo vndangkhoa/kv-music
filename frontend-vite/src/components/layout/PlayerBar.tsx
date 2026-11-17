@@ -13,6 +13,7 @@ import CoverImage from '../CoverImage';
 import Waveform from '../Waveform';
 import Lyrics from '../Lyrics';
 import DownloadMenu from '../DownloadMenu';
+import Logo from '../Logo';
 
 type DrawerTab = 'queue' | 'lyrics' | 'related' | null;
 
@@ -117,7 +118,10 @@ export default function PlayerBar() {
                     />
                     <div className="w-36 flex-shrink-0 min-w-0">
                         <p className="text-xs font-bold text-white truncate hover:text-[#ff5500] cursor-pointer transition">{currentTrack.title}</p>
-                        <p className="text-[11px] text-neutral-400 truncate">{currentTrack.artist}</p>
+                        <div className="flex items-center gap-1.5 min-w-0 mt-0.5">
+                            <Logo size={14} showText={false} />
+                            <p className="text-[11px] text-neutral-400 truncate">{currentTrack.artist}</p>
+                        </div>
                     </div>
 
                     <div className="flex-1 min-w-0 flex items-center gap-2">
@@ -210,18 +214,21 @@ export default function PlayerBar() {
                         className="hidden md:flex fixed top-12 right-0 bottom-14 z-[58] w-80 bg-[#181818] border-l border-white/10 flex-col shadow-2xl"
                     >
                         <div className="flex items-center justify-between px-3 py-2 border-b border-white/10">
-                            <div className="flex items-center gap-1">
-                                {(['queue', 'lyrics', 'related'] as const).map((tab) => (
-                                    <button
-                                        key={tab}
-                                        onClick={() => setDrawer(tab)}
-                                        className={`px-2.5 py-1 rounded text-xs font-bold capitalize transition ${
-                                            drawer === tab ? 'bg-[#ff5500] text-white' : 'text-neutral-400 hover:text-white'
-                                        }`}
-                                    >
-                                        {tab === 'queue' ? 'Next Up' : tab}
-                                    </button>
-                                ))}
+                            <div className="flex items-center gap-1.5">
+                                <Logo size={16} showText={false} />
+                                <div className="flex items-center gap-1">
+                                    {(['queue', 'lyrics', 'related'] as const).map((tab) => (
+                                        <button
+                                            key={tab}
+                                            onClick={() => setDrawer(tab)}
+                                            className={`px-2.5 py-1 rounded text-xs font-bold capitalize transition ${
+                                                drawer === tab ? 'bg-[#ff5500] text-white' : 'text-neutral-400 hover:text-white'
+                                            }`}
+                                        >
+                                            {tab === 'queue' ? 'Next Up' : tab}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                             <button onClick={() => setDrawer(null)} className="p-1 text-neutral-400 hover:text-white transition">
                                 <X className="w-4 h-4" />

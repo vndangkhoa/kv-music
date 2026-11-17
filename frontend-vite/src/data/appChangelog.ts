@@ -13,6 +13,15 @@ export interface AppChangelogEntry {
 
 export const APP_CHANGELOG: AppChangelogEntry[] = [
     {
+        version: '1.0.0-24',
+        date: '2026-11-17',
+        highlights: [
+            'Unified KV Music flame-orange studio disc & 7-bar waveform icon across Web, PWA, Synology DSM SPK, Android & iOS',
+            'Synced PWA manifest (#121212 theme, separate standard & maskable icons, shortcuts, Open Graph banner)',
+            'Upgraded OS MediaSession lock-screen controls & MobileMiniBar/PlayerBar control cards with live timestamps and prev/next buttons',
+        ],
+    },
+    {
         version: '1.0.0-23',
         date: '2026-11-13',
         highlights: [

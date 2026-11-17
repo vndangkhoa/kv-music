@@ -131,7 +131,7 @@ fun FullPlayerScreen(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "PLAYING FROM PLAYLIST",
+                        text = "NOW PLAYING",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Bold,
                             fontSize = 9.sp,
@@ -140,7 +140,7 @@ fun FullPlayerScreen(
                         color = TextLightGray
                     )
                     Text(
-                        text = "SOUNDCLOUD PRO",
+                        text = "KV MUSIC PRO",
                         style = MaterialTheme.typography.labelSmall.copy(
                             fontWeight = FontWeight.Black,
                             fontSize = 11.sp,

@@ -355,7 +355,7 @@ export default function SoundCloudSidebar() {
         </div>
       </div>
 
-      {/* Bottom SoundCloud Legal Footer */}
+      {/* Bottom KV Music Legal Footer */}
       <div className="pt-6 mt-6 border-t border-white/5 text-[11px] text-neutral-500 space-y-3 leading-relaxed">
         <div className="flex flex-wrap gap-x-2 gap-y-1 font-medium text-[11px]">
           <a href="#" className="hover:text-white transition">Legal</a>
@@ -368,9 +368,9 @@ export default function SoundCloudSidebar() {
         </div>
         <div className="flex items-center justify-between text-neutral-500 text-[10px]">
           <span>Language: English (US)</span>
-          <span className="text-[#ff5500] font-bold">KV SoundCloud v2.0</span>
+          <span className="text-[#ff5500] font-bold">KV Music PRO</span>
         </div>
-        <p className="text-neutral-600 text-[10px]">© 2026 SoundCloud Clone Inc. All rights reserved.</p>
+        <p className="text-neutral-600 text-[10px]">© 2026 KV Music Platform. All rights reserved.</p>
       </div>
     </aside>
   );

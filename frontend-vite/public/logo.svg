@@ -1,22 +1,32 @@
-<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
-  <!-- SoundCloud-style app icon: orange rounded square + white waveform bars -->
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="KV Music">
   <defs>
-    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#ff7a00" />
-      <stop offset="100%" stop-color="#ff5500" />
+    <linearGradient id="kvMusicBg" x1="48" y1="24" x2="464" y2="488" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FF7A00"/>
+      <stop offset="52%" stop-color="#FF5500"/>
+      <stop offset="100%" stop-color="#CC3700"/>
     </linearGradient>
+    <linearGradient id="kvMusicSheen" x1="0" y1="0" x2="0" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0.02"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0.18"/>
+    </linearGradient>
+    <filter id="kvMusicDiscShadow" x="-15%" y="-15%" width="130%" height="135%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000000" flood-opacity="0.4"/>
+    </filter>
   </defs>
-
-  <rect x="0" y="0" width="512" height="512" rx="116" fill="url(#bg)"/>
-
-  <!-- Waveform bars -->
-  <g fill="#ffffff">
-    <rect x="96" y="268" width="28" height="96" rx="14"/>
-    <rect x="142" y="196" width="28" height="168" rx="14"/>
-    <rect x="188" y="120" width="28" height="244" rx="14"/>
-    <rect x="234" y="86" width="28" height="278" rx="14"/>
-    <rect x="280" y="146" width="28" height="218" rx="14"/>
-    <rect x="326" y="222" width="28" height="142" rx="14"/>
-    <rect x="372" y="286" width="28" height="78" rx="14"/>
-  </g>
+  <!-- Flame-Orange Squircle Base -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#kvMusicBg)"/>
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#kvMusicSheen)"/>
+  <rect x="20" y="20" width="472" height="472" rx="108" stroke="#FFFFFF" stroke-opacity="0.20" stroke-width="4"/>
+  <!-- Obsidian Studio Disc -->
+  <circle cx="256" cy="256" r="178" fill="#111318" stroke="#FF6A00" stroke-opacity="0.36" stroke-width="4" filter="url(#kvMusicDiscShadow)"/>
+  <circle cx="256" cy="256" r="156" stroke="#FF6A00" stroke-opacity="0.22" stroke-width="2.5"/>
+  <!-- 7 Harmonic SoundCloud Waveform Bars -->
+  <rect x="150" y="218" width="20" height="76" rx="10" fill="#FFE8D6" fill-opacity="0.96"/>
+  <rect x="182" y="190" width="20" height="132" rx="10" fill="#FFFFFF" fill-opacity="0.96"/>
+  <rect x="214" y="160" width="20" height="192" rx="10" fill="#FF6A00"/>
+  <rect x="246" y="144" width="20" height="224" rx="10" fill="#FFFFFF"/>
+  <rect x="278" y="170" width="20" height="172" rx="10" fill="#FF6A00"/>
+  <rect x="310" y="200" width="20" height="112" rx="10" fill="#FFFFFF" fill-opacity="0.96"/>
+  <rect x="342" y="223" width="20" height="66" rx="10" fill="#FFE8D6" fill-opacity="0.96"/>
 </svg>

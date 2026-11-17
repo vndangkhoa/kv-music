@@ -14,6 +14,7 @@ import Waveform from '../Waveform';
 import Lyrics from '../Lyrics';
 import BottomSheet from '../BottomSheet';
 import AddToPlaylistModal from '../AddToPlaylistModal';
+import Logo from '../Logo';
 
 function formatTime(t: number) {
     if (isNaN(t)) return '0:00';
@@ -135,9 +136,12 @@ export default function MobileFullPlayer() {
                         >
                             <ChevronDown className="w-6 h-6" />
                         </button>
-                        <p className="text-[11px] font-bold text-white/60 uppercase tracking-widest truncate px-2">
-                            SoundCloud Playing
-                        </p>
+                        <div className="flex items-center gap-1.5 min-w-0 px-2">
+                            <Logo size={16} showText={false} />
+                            <span className="text-[11px] font-extrabold text-white/80 uppercase tracking-widest truncate">
+                                KV Music • Now Playing
+                            </span>
+                        </div>
                         <button
                             onClick={() => setShowSheet(true)}
                             className="p-2 rounded-full text-white/80 hover:text-white transition"

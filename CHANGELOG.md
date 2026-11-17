@@ -4,6 +4,16 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.4] - 2026-11-17
+
+### Added
+- **Unified Brand Icon & Logo Suite** - 4x-supersampled KV Music flame-orange squircle + obsidian studio disc + 7 harmonic waveform bars across Web (`icon.svg`, `logo.svg`, `favicon.svg`, `icon-maskable.svg`, `og-image.png`), PWA icons (`72x72`–`512x512` standard & maskable), Synology DSM SPK icons (`PACKAGE_ICON*.PNG`, `KVMusic-{16..256}.png`), Android launcher icons (`ic_launcher*.png`), and iOS `AppIcon-1024.png`
+- **Unified `<Logo />` Component** - Exported reusable `Logo` with scoped SVG IDs and `KVMusic PRO / HI-RES STREAMING` identity across header, modals, sidebar, missing-cover fallbacks, and player control cards
+
+### Changed
+- **PWA Manifest & Metadata** - Standardized `#121212` theme/background colors across `index.html`, `manifest.json`, `site.webmanifest`, and `vite.config`, separated `any` and `maskable` icons, added shortcuts & Open Graph tags, and excluded `/api/` from SW navigation fallback
+- **Media Control Cards & OS MediaSession** - Replaced blob-fetch artwork in `useMediaSession.ts` with direct origin-resolved URLs and KV Music icon fallbacks, bound native `<audio>` lifecycle events for reliable lock-screen state/position sync, and upgraded `MobileMiniBar`, `PlayerBar`, and `MobileFullPlayer` with unified brand badges, transport buttons, and live `currentTime / duration` readouts
+
 ## [1.2.3] - 2026-11-13
 
 ### Fixed
