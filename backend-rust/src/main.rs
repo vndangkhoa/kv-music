@@ -44,6 +44,12 @@ fn resolve_static_dir() -> String {
 
 #[tokio::main]
 async fn main() {
+    std::panic::set_hook(Box::new(|info| {
+        eprintln!("FATAL PANIC: {}", info);
+        let _ = std::io::stderr().flush();
+        std::process::abort();
+    }));
+
     println!("SERVER STARTING UP...");
     std::io::stdout().flush().unwrap();
     

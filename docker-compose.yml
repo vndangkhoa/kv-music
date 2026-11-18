@@ -61,7 +61,7 @@ services:
     image: vndangkhoa/kv-music:latest
     container_name: kv-music
     restart: unless-stopped
-    mem_limit: 500m
+    mem_limit: 2g
     cpus: 1.5
     # Host networking gives yt-dlp direct access to the host's native routed IPv6
     # and the local usque WARP MASQUE proxy (127.0.0.1:29083) on Linux/Synology

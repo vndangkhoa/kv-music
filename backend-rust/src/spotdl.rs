@@ -5,7 +5,7 @@ use std::fs;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use tokio::sync::RwLock;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Instant, Duration};
 use futures::future::join_all;
 
@@ -171,6 +171,13 @@ impl SpotdlService {
     }
 
     async fn run_command_output(path: String, args: Vec<String>) -> std::io::Result<std::process::Output> {
+        static YTDLP_SEMAPHORE: std::sync::OnceLock<tokio::sync::Semaphore> =
+            std::sync::OnceLock::new();
+        let sem = YTDLP_SEMAPHORE.get_or_init(|| tokio::sync::Semaphore::new(3));
+        let _permit = sem
+            .acquire()
+            .await
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
         tokio::task::spawn_blocking(move || Command::new(&path).args(&args).output())
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
@@ -281,6 +288,16 @@ impl SpotdlService {
         };
 
         if needs_fetch {
+            static IN_FLIGHT_COUNTRIES: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> =
+                std::sync::OnceLock::new();
+            let in_flight = IN_FLIGHT_COUNTRIES.get_or_init(|| std::sync::Mutex::new(HashSet::new()));
+            {
+                let mut set = in_flight.lock().unwrap_or_else(|e| e.into_inner());
+                if !set.insert(country.clone()) {
+                    return;
+                }
+            }
+
             println!("Country {} not cached. Triggering lazy preload.", country);
             
             // Check if we have VN cached to use as temporary placeholder
@@ -294,11 +311,14 @@ impl SpotdlService {
                 cache.insert(country.clone(), data);
             }
 
-            // Spawn dynamic preload
+            // Spawn deduplicated dynamic preload
             let cache_arc = self.browse_cache.clone();
             let country_task = country.clone();
             tokio::spawn(async move {
                 Self::fetch_browse_content(&country_task, &cache_arc).await;
+                if let Ok(mut set) = in_flight.lock() {
+                    set.remove(&country_task);
+                }
             });
         }
     }
@@ -471,13 +491,14 @@ impl SpotdlService {
             search_query.as_str(), "--dump-json", "--no-playlist", "--flat-playlist",
         ];
 
-        // Try IPv6 first when available; fall back to IPv4 on network errors
+        // Try IPv6 first when available; fall back to IPv4 or direct connection on errors
         let mut use_ipv6 = Self::ipv6_connectivity();
+        let mut disable_proxy = false;
 
-        // Retry up to 2 times with backoff for transient 429 errors
+        // Retry up to 2 times with backoff for transient 429 / proxy / IPv6 errors
         let mut last_err = String::new();
         for attempt in 0..3 {
-            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, disable_proxy, &output_args);
             let output = match Self::run_command_output(path.clone(), all_args).await {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
@@ -547,7 +568,11 @@ impl SpotdlService {
             let stderr = String::from_utf8_lossy(&output.stderr);
             last_err = stderr.to_string();
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+            if Self::is_proxy_error(&stderr) && !disable_proxy && attempt < 2 {
+                Self::invalidate_warp_probe_cache();
+                disable_proxy = true;
+                println!("[Search] WARP proxy unreachable, retrying direct connection...");
+            } else if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
                 Self::reject_user_cookies();
                 println!("[Search] Cookies rejected by YouTube, retrying without rejected cookies...");
             } else if is_rate_limit && attempt < 2 {
@@ -589,10 +614,11 @@ impl SpotdlService {
         ];
 
         let mut use_ipv6 = Self::ipv6_connectivity();
+        let mut disable_proxy = false;
         let mut last_err = String::new();
 
         for attempt in 0..3 {
-            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, disable_proxy, &output_args);
             let output = match Self::run_command_output(path.clone(), all_args).await {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
@@ -653,7 +679,11 @@ impl SpotdlService {
             let stderr = String::from_utf8_lossy(&output.stderr);
             last_err = stderr.to_string();
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+            if Self::is_proxy_error(&stderr) && !disable_proxy && attempt < 2 {
+                Self::invalidate_warp_probe_cache();
+                disable_proxy = true;
+                println!("[TrackInfo] WARP proxy unreachable, retrying direct connection...");
+            } else if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
                 Self::reject_user_cookies();
                 println!("[TrackInfo] Cookies rejected by YouTube, retrying without rejected cookies...");
             } else if is_rate_limit && attempt < 2 {
@@ -756,12 +786,13 @@ impl SpotdlService {
             chart_url, "--dump-json", "--flat-playlist",
         ];
 
-        // Try IPv6 first when available; fall back to IPv4 on network errors
+        // Try IPv6 first when available; fall back to IPv4 or direct connection on errors
         let mut use_ipv6 = Self::ipv6_connectivity();
+        let mut disable_proxy = false;
 
         let mut last_err = String::new();
         for attempt in 0..3 {
-            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, &output_args);
+            let all_args = Self::yt_dlp_args_with_flags_vec(use_ipv6, disable_proxy, &output_args);
             let output = match Self::run_command_output(path.clone(), all_args).await {
                 Ok(o) => o,
                 Err(e) => return Err(format!("Failed to execute yt-dlp: {}", e)),
@@ -833,7 +864,11 @@ impl SpotdlService {
             let stderr = String::from_utf8_lossy(&output.stderr);
             last_err = stderr.to_string();
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+            if Self::is_proxy_error(&stderr) && !disable_proxy && attempt < 2 {
+                Self::invalidate_warp_probe_cache();
+                disable_proxy = true;
+                println!("[Chart] WARP proxy unreachable, retrying direct connection...");
+            } else if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
                 Self::reject_user_cookies();
                 println!("[Chart] Cookies rejected by YouTube, retrying without rejected cookies...");
             } else if is_rate_limit && attempt < 2 {
@@ -1190,6 +1225,27 @@ impl SpotdlService {
             || lower.contains("error 111")
     }
 
+    fn is_proxy_error(stderr: &str) -> bool {
+        let lower = stderr.to_lowercase();
+        lower.contains("unable to connect to proxy")
+            || lower.contains("proxyerror")
+            || lower.contains("connection refused")
+            || lower.contains("127.0.0.1', port=29083")
+            || lower.contains("127.0.0.1:29083")
+    }
+
+    fn warp_probe_cache() -> &'static std::sync::Mutex<Option<(bool, Instant)>> {
+        static WARP_PROBE_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(bool, Instant)>>> =
+            std::sync::OnceLock::new();
+        WARP_PROBE_CACHE.get_or_init(|| std::sync::Mutex::new(None))
+    }
+
+    pub fn invalidate_warp_probe_cache() {
+        if let Ok(mut guard) = Self::warp_probe_cache().lock() {
+            *guard = Some((false, Instant::now()));
+        }
+    }
+
     /// Resolve outbound HTTP/SOCKS proxy for YouTube traffic (KV-Tube WARP MASQUE symmetry).
     /// Checks `YTDLP_PROXY` / standard `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` env vars first,
     /// then auto-detects a local `usque` WARP MASQUE HTTP proxy listening on `127.0.0.1:29083`
@@ -1223,9 +1279,7 @@ impl SpotdlService {
         // or host-networked compose stacks automatically use WARP without manual config.
         use std::net::{SocketAddr, TcpStream};
         use std::str::FromStr;
-        static WARP_PROBE_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(bool, Instant)>>> =
-            std::sync::OnceLock::new();
-        let mutex = WARP_PROBE_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+        let mutex = Self::warp_probe_cache();
         if let Ok(guard) = mutex.lock() {
             if let Some((alive, ts)) = *guard {
                 if ts.elapsed() < Duration::from_secs(30) {
@@ -1264,15 +1318,16 @@ impl SpotdlService {
         builder
     }
 
-    /// Build yt-dlp args with the IPv6 flag toggleable per attempt (for fallback).
-    fn yt_dlp_args_with_flags_vec(use_ipv6: bool, extra_args: &[&str]) -> Vec<String> {
-        Self::yt_dlp_args_with_options_vec(use_ipv6, false, false, extra_args)
+    /// Build yt-dlp args with the IPv6 and proxy flags toggleable per attempt (for fallback).
+    fn yt_dlp_args_with_flags_vec(use_ipv6: bool, disable_proxy: bool, extra_args: &[&str]) -> Vec<String> {
+        Self::yt_dlp_args_with_options_vec(use_ipv6, false, false, disable_proxy, extra_args)
     }
 
     fn yt_dlp_args_with_options_vec(
         use_ipv6: bool,
         skip_cookies: bool,
         use_alt_clients: bool,
+        disable_proxy: bool,
         extra_args: &[&str],
     ) -> Vec<String> {
         let mut args = vec![];
@@ -1280,7 +1335,7 @@ impl SpotdlService {
         args.push("--js-runtimes".to_string());
         args.push("node".to_string());
 
-        let outbound_proxy = Self::outbound_proxy();
+        let outbound_proxy = if disable_proxy { None } else { Self::outbound_proxy() };
         if let Some(ref proxy) = outbound_proxy {
             args.push("--proxy".to_string());
             args.push(proxy.clone());
@@ -1315,7 +1370,7 @@ impl SpotdlService {
     }
 
     pub fn build_yt_dlp_base_args_vec() -> Vec<String> {
-        Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), &[])
+        Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), false, &[])
     }
 
     /// Visit YouTube anonymously through the shared cookie-aware client, collect the
@@ -1705,18 +1760,20 @@ impl SpotdlService {
             &target_url,
         ];
 
-        // Try IPv6 first when available; fall back to IPv4 on network errors
+        // Try IPv6 first when available; fall back to IPv4, Companion, or direct connection on errors
         let mut use_ipv6 = Self::ipv6_connectivity();
         let mut skip_cookies = false;
         let mut use_alt_clients = false;
+        let mut disable_proxy = false;
 
-        // Retry with fallbacks for transient 429 / rejected cookies / IPv6 errors
+        // Retry with fallbacks for transient 429 / proxy / rejected cookies / IPv6 errors
         let mut last_err = String::new();
         for attempt in 0..3 {
             let all_args = Self::yt_dlp_args_with_options_vec(
                 use_ipv6,
                 skip_cookies,
                 use_alt_clients,
+                disable_proxy,
                 &output_args,
             );
             let output = match Command::new(Self::yt_dlp_path())
@@ -1742,35 +1799,42 @@ impl SpotdlService {
             println!("[Stream] yt-dlp download failed (attempt {}): {}", attempt + 1, stderr);
             
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if Self::is_rejected_cookie_error(&stderr) {
+            if Self::is_proxy_error(&stderr) && !disable_proxy && attempt < 2 {
+                Self::invalidate_warp_probe_cache();
+                disable_proxy = true;
+                if let Some(companion_file) = self.try_companion_download(&video_id, prefer_m4a) {
+                    return Ok(companion_file);
+                }
+                println!("[Stream] WARP proxy unreachable, retrying direct connection...");
+            } else if Self::is_rejected_cookie_error(&stderr) {
                 // Fast-path fallback: if Invidious Companion is reachable (local or Tailscale),
                 // download the audio stream in 2 MiB Range chunks in <1s instead of failing on IPv4.
                 if let Some(companion_file) = self.try_companion_download(&video_id, prefer_m4a) {
                     return Ok(companion_file);
                 }
-            }
-            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
-                // User cookies expired/rotated or bot check triggered.
-                Self::reject_user_cookies();
-                use_alt_clients = true;
-                let has_auth = Self::cookies_file_path().is_file()
-                    && fs::read_to_string(Self::cookies_file_path())
-                        .map(|c| Self::is_authenticated_cookie_content(&c))
-                        .unwrap_or(false);
-                if !has_auth {
-                    skip_cookies = true;
+                if attempt < 2 {
+                    // User cookies expired/rotated or bot check triggered.
+                    Self::reject_user_cookies();
+                    use_alt_clients = true;
+                    let has_auth = Self::cookies_file_path().is_file()
+                        && fs::read_to_string(Self::cookies_file_path())
+                            .map(|c| Self::is_authenticated_cookie_content(&c))
+                            .unwrap_or(false);
+                    if !has_auth {
+                        skip_cookies = true;
+                    }
+                    if let Ok(handle) = tokio::runtime::Handle::try_current() {
+                        let s = self.clone();
+                        handle.spawn(async move {
+                            match s.refresh_cookies().await {
+                                Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
+                                Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
+                            }
+                        });
+                    }
+                    println!("[Stream] Cookies rejected / bot check - retrying with alternate clients (skip_cookies={})...", skip_cookies);
+                    std::thread::sleep(Duration::from_secs(1));
                 }
-                if let Ok(handle) = tokio::runtime::Handle::try_current() {
-                    let s = self.clone();
-                    handle.spawn(async move {
-                        match s.refresh_cookies().await {
-                            Ok(msg) => println!("[Cookies] Auto-refresh after rejection: {}", msg),
-                            Err(e) => println!("[Cookies] Auto-refresh after rejection failed: {}", e),
-                        }
-                    });
-                }
-                println!("[Stream] Cookies rejected / bot check - retrying with alternate clients (skip_cookies={})...", skip_cookies);
-                std::thread::sleep(Duration::from_secs(1));
             } else if is_rate_limit && attempt < 2 {
                 let delay_secs = (attempt + 1) * 5;
                 println!("[Stream] Rate limited, retrying in {}s...", delay_secs);
@@ -1834,18 +1898,20 @@ impl SpotdlService {
             &target_url,
         ];
 
-        // Try IPv6 first when available; fall back to IPv4 on network errors
+        // Try IPv6 first when available; fall back to IPv4 or direct connection on errors
         let mut use_ipv6 = Self::ipv6_connectivity();
         let mut skip_cookies = false;
         let mut use_alt_clients = false;
+        let mut disable_proxy = false;
 
-        // Retry up to 2 times with backoff for transient 429 errors
+        // Retry up to 2 times with backoff for transient 429 / proxy / network errors
         let mut last_err = String::new();
         for attempt in 0..3 {
             let all_args = Self::yt_dlp_args_with_options_vec(
                 use_ipv6,
                 skip_cookies,
                 use_alt_clients,
+                disable_proxy,
                 &output_args,
             );
             let output = match Command::new(Self::yt_dlp_path())
@@ -1877,7 +1943,11 @@ impl SpotdlService {
             println!("[Download] yt-dlp download failed (attempt {}): {}", attempt + 1, stderr);
 
             let is_rate_limit = stderr.contains("429") || stderr.contains("Too Many Requests");
-            if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
+            if Self::is_proxy_error(&stderr) && !disable_proxy && attempt < 2 {
+                Self::invalidate_warp_probe_cache();
+                disable_proxy = true;
+                println!("[Download] WARP proxy unreachable, retrying direct connection...");
+            } else if Self::is_rejected_cookie_error(&stderr) && attempt < 2 {
                 Self::reject_user_cookies();
                 use_alt_clients = true;
                 let has_auth = Self::cookies_file_path().is_file()
@@ -1931,7 +2001,7 @@ impl SpotdlService {
         let artist_search_args = vec![
             search_query.as_str(), "--dump-json", "--flat-playlist",
         ];
-        let all_args = Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), &artist_search_args);
+        let all_args = Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), false, &artist_search_args);
         
         let output = Self::run_command_output(path.clone(), all_args).await;
         

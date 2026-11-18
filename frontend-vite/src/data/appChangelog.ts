@@ -13,9 +13,10 @@ export interface AppChangelogEntry {
 
 export const APP_CHANGELOG: AppChangelogEntry[] = [
     {
-        version: '1.0.0-25',
+        version: '1.0.0-26',
         date: '2026-11-18',
         highlights: [
+            'Fixed Synology cgroup memory exhaustion / Tokio epoll deadlock on sp.khoavo.myds.me by bounding concurrent yt-dlp preloads, supervising WARP usque restarts, and adding automatic direct fallback',
             'Redesigned Web & Android UI with YouTube Music visual layout (#030303 dark canvas, 240px/72px guide rail, 72px player bar, expandable split Watch Page) while preserving KV Music brand identity',
             'Built-in Cloudflare WARP MASQUE (usque v4.2.1) auto-failover & proxy routing across backend and Android to bypass YouTube IP blocks',
             'Instant Home Quick Picks & Trending chart hydration with accessible horizontal scroll-snap carousels',
