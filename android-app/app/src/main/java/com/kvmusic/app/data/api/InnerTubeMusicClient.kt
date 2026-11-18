@@ -151,8 +151,10 @@ object InnerTubeMusicClient {
                 put("androidSdkVersion", cfg.androidSdk)
             }
             cfg.extraClientFields.forEach { (k, v) -> put(k, v) }
-            put("hl", "en")
-            put("gl", "VN")
+            if (cfg.name != "ANDROID") {
+                put("hl", "en")
+                put("gl", "VN")
+            }
         }
         val bodyJson = JSONObject().apply {
             put("videoId", videoId)

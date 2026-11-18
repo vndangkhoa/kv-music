@@ -246,6 +246,7 @@ pub struct SearchQuery {
 #[derive(Deserialize, Default)]
 pub struct StreamQuery {
     pub fmt: Option<String>,
+    pub prefetch: Option<String>,
 }
 
 pub async fn search_handler(
@@ -531,6 +532,38 @@ pub async fn track_page_handler(
         .into_response()
 }
 
+/// Parse HTTP `Range: bytes=START-END`. Returns `(has_range_header, starts_at_zero, opt_end)`.
+fn parse_zero_range_header(headers: &axum::http::HeaderMap) -> (bool, bool, Option<u64>) {
+    let Some(raw) = headers
+        .get(axum::http::header::RANGE)
+        .and_then(|v| v.to_str().ok())
+    else {
+        return (false, true, None);
+    };
+    let trimmed = raw.trim();
+    if let Some(spec) = trimmed.strip_prefix("bytes=") {
+        if spec.contains(',') {
+            return (true, false, None);
+        }
+        if let Some((start_s, end_s)) = spec.split_once('-') {
+            if let Ok(start) = start_s.trim().parse::<u64>() {
+                if start == 0 {
+                    let end_opt = if end_s.trim().is_empty() {
+                        None
+                    } else {
+                        match end_s.trim().parse::<u64>() {
+                            Ok(e) => Some(e),
+                            Err(_) => return (true, false, None),
+                        }
+                    };
+                    return (true, true, end_opt);
+                }
+            }
+        }
+    }
+    (true, false, None)
+}
+
 pub async fn stream_handler(
     State(state): State<Arc<AppState>>,
     Path(id): Path<String>,
@@ -541,6 +574,80 @@ pub async fn stream_handler(
     // codec-restricted clients like VS Code's webview (no AAC/MP3 decoder).
     // fmt=m4a: AAC - needed for Safari, which cannot play WebM/Opus.
     let prefer_m4a = params.fmt.as_deref() == Some("m4a");
+    let is_prefetch = params.prefetch.as_deref() == Some("1");
+
+    // 1. Instant disk cache hit (< 2ms)
+    if let Some(file_path) = state.spotdl.find_cached_audio(&id, prefer_m4a) {
+        if is_prefetch {
+            return (StatusCode::OK, Json(serde_json::json!({"cached": true}))).into_response();
+        }
+        let service = tower_http::services::ServeFile::new(&file_path);
+        return match tower::ServiceExt::oneshot(service, req).await {
+            Ok(res) => res.into_response(),
+            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Error serving file").into_response(),
+        };
+    }
+
+    // 2. Non-blocking background prefetch endpoint (`/api/stream/{id}?prefetch=1`)
+    if is_prefetch {
+        state.spotdl.spawn_prefetch(id, prefer_m4a);
+        return (
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({"cached": false, "prefetching": true})),
+        )
+            .into_response();
+    }
+
+    // 3. Progressive first-byte streaming for cold tracks when starting from byte 0:
+    //    delivers the first 256 KiB burst right after Companion resolves (~0.7s)
+    //    while fetching the rest in 3x parallel and caching on disk.
+    let is_head = *req.method() == axum::http::Method::HEAD;
+    let (has_range, starts_at_zero, req_end) = parse_zero_range_header(req.headers());
+    if starts_at_zero {
+        if let Some(plan) = state
+            .spotdl
+            .stream_progressive_or_cache(&id, prefer_m4a, has_range, req_end)
+            .await
+        {
+            let status = if plan.status_206 {
+                StatusCode::PARTIAL_CONTENT
+            } else {
+                StatusCode::OK
+            };
+            let mut builder = Response::builder()
+                .status(status)
+                .header(axum::http::header::CONTENT_TYPE, plan.content_type)
+                .header(axum::http::header::ACCEPT_RANGES, "bytes")
+                .header(axum::http::header::CACHE_CONTROL, "public, max-age=86400");
+            if let Some(ref cr) = plan.content_range {
+                builder = builder.header(axum::http::header::CONTENT_RANGE, cr);
+            }
+            if let Some(cl) = plan.content_length {
+                builder = builder.header(axum::http::header::CONTENT_LENGTH, cl.to_string());
+            }
+            let body = if is_head {
+                Body::empty()
+            } else if let Some(rx) = plan.body_rx {
+                Body::from_stream(futures::stream::unfold(rx, |mut rx| async move {
+                    rx.recv().await.map(|item| (item, rx))
+                }))
+            } else {
+                Body::from(plan.initial_bytes)
+            };
+            return builder.body(body).unwrap().into_response();
+        }
+    }
+
+    // 4. Wait if a progressive download or prefetch for this track is already active
+    if let Some(file_path) = state.spotdl.wait_for_in_flight(&id, prefer_m4a).await {
+        let service = tower_http::services::ServeFile::new(&file_path);
+        return match tower::ServiceExt::oneshot(service, req).await {
+            Ok(res) => res.into_response(),
+            Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Error serving file").into_response(),
+        };
+    }
+
+    // 5. Fallback: blocking download (Companion 4x parallel -> yt-dlp) + ServeFile
     let spotdl = state.spotdl.clone();
     let id_clone = id.clone();
     let result = tokio::task::spawn_blocking(move || spotdl.get_stream_url(&id_clone, prefer_m4a))
@@ -694,7 +801,7 @@ fn default_limit() -> usize {
     10
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct Recommendations {
     pub tracks: Vec<crate::models::Track>,
     pub albums: Vec<AlbumSuggestion>,
@@ -702,7 +809,7 @@ pub struct Recommendations {
     pub artists: Vec<ArtistSuggestion>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct AlbumSuggestion {
     pub id: String,
     pub title: String,
@@ -710,7 +817,7 @@ pub struct AlbumSuggestion {
     pub cover_url: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct PlaylistSuggestion {
     pub id: String,
     pub title: String,
@@ -718,7 +825,7 @@ pub struct PlaylistSuggestion {
     pub track_count: usize,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Clone)]
 pub struct ArtistSuggestion {
     pub id: String,
     pub name: String,
@@ -1101,6 +1208,7 @@ pub async fn charts_handler(
     match state.spotdl.fetch_chart_tracks(chart_url, 100).await {
         Ok(tracks) => {
             let results: Vec<_> = tracks.into_iter().take(50).collect();
+            state.spotdl.prefetch_top_tracks(&results, 2);
             (StatusCode::OK, Json(serde_json::json!({"tracks": results})))
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
@@ -1167,6 +1275,7 @@ pub async fn new_releases_handler(
         return (StatusCode::OK, Json(serde_json::json!({"tracks": []})));
     }
 
+    state.spotdl.prefetch_top_tracks(&tracks, 2);
     (StatusCode::OK, Json(serde_json::json!({"tracks": tracks})))
 }
 
@@ -1712,6 +1821,7 @@ pub async fn universal_search_handler(
     });
 
     if !songs.is_empty() || !albums.is_empty() || !playlists.is_empty() || !artists.is_empty() {
+        state.spotdl.prefetch_top_tracks(&songs, 2);
         let mut cache = state.spotdl.universal_search_cache.write().await;
         if cache.len() > 500 {
             cache.clear();
@@ -1742,6 +1852,7 @@ pub async fn collection_handler(
 
     match state.spotdl.fetch_collection_tracks(id, 100).await {
         Ok(tracks) => {
+            state.spotdl.prefetch_top_tracks(&tracks, 2);
             let cover_url = tracks.first().map(|t| t.cover_url.clone()).unwrap_or_default();
             (StatusCode::OK, Json(serde_json::json!({
                 "id": id,

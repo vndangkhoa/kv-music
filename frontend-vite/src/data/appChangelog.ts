@@ -13,6 +13,16 @@ export interface AppChangelogEntry {
 
 export const APP_CHANGELOG: AppChangelogEntry[] = [
     {
+        version: '1.0.0-27',
+        date: '2026-11-18',
+        highlights: [
+            'Progressive instant streaming: starts audio playback in under 1 second via 256 KiB burst delivery while downloading remaining chunks in parallel',
+            'Companion-first 4x parallel Range chunk downloader bypassing slow single-stream throttling and avoiding cold yt-dlp subprocess delays',
+            'Direct YouTube Music InnerTube search, browse & cached recommendations (~400-850ms vs 5-8s yt-dlp)',
+            'Smart background queue pre-warming (next 3 UP NEXT tracks), top-track prefetching, hover/touch warm-up, and 400ms Android ExoPlayer fast-start buffer',
+        ],
+    },
+    {
         version: '1.0.0-26',
         date: '2026-11-18',
         highlights: [

@@ -14,6 +14,7 @@ import {
     Trash2,
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
+import { prefetchTrack } from '../services/library';
 import CoverImage from './CoverImage';
 import BottomSheet from './BottomSheet';
 import AddToPlaylistModal from './AddToPlaylistModal';
@@ -343,11 +344,20 @@ export default function TrackRow({
     return (
         <>
             {disableSwipe ? (
-                <div className={`relative group ${rowClasses}`} onClick={handlePlay}>
+                <div
+                    className={`relative group ${rowClasses}`}
+                    onClick={handlePlay}
+                    onMouseEnter={() => prefetchTrack(track.id)}
+                    onPointerDown={() => prefetchTrack(track.id)}
+                >
                     {rowInner}
                 </div>
             ) : (
-                <div className="relative overflow-hidden group rounded-[6px]">
+                <div
+                    className="relative overflow-hidden group rounded-[6px]"
+                    onMouseEnter={() => prefetchTrack(track.id)}
+                    onPointerDown={() => prefetchTrack(track.id)}
+                >
                     {/* Revealed swipe-left actions */}
                     <motion.div
                         style={{ opacity: revealedOpacity }}
@@ -503,6 +513,7 @@ export interface YtmMediaCardProps {
     subtitle?: string;
     imageUrl?: string;
     to?: string;
+    videoId?: string;
     onClick?: () => void;
     onPlay?: (e: React.MouseEvent) => void;
     variant?: 'square' | 'artist' | 'video';
@@ -517,6 +528,7 @@ export function YtmMediaCard({
     subtitle,
     imageUrl,
     to,
+    videoId,
     onClick,
     onPlay,
     variant = 'square',
@@ -528,6 +540,13 @@ export function YtmMediaCard({
     const isArtist = variant === 'artist';
     const aspectClass =
         variant === 'video' ? 'aspect-video rounded-[6px]' : isArtist ? 'aspect-square rounded-full' : 'aspect-square rounded-[6px]';
+    const inferredVideoId =
+        videoId ||
+        (to?.startsWith('/track/') ? to.slice(7).split(/[/?#]/)[0] : undefined) ||
+        imageUrl?.match(/i\.ytimg\.com\/vi\/([a-zA-Z0-9_-]{11})\//)?.[1];
+    const warmCardTrack = () => {
+        if (inferredVideoId) prefetchTrack(inferredVideoId);
+    };
 
     const cardBody = (
         <div className={`group flex flex-col w-full ${className}`}>
@@ -590,7 +609,12 @@ export function YtmMediaCard({
 
     if (to) {
         return (
-            <Link to={to} className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded-[6px]">
+            <Link
+                to={to}
+                onMouseEnter={warmCardTrack}
+                onPointerDown={warmCardTrack}
+                className="block focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded-[6px]"
+            >
                 {cardBody}
             </Link>
         );
@@ -602,6 +626,8 @@ export function YtmMediaCard({
                 role="button"
                 tabIndex={0}
                 onClick={onClick}
+                onMouseEnter={warmCardTrack}
+                onPointerDown={warmCardTrack}
                 onKeyDown={(e) => {
                     if (e.key === 'Enter' || e.key === ' ') {
                         e.preventDefault();
@@ -615,7 +641,11 @@ export function YtmMediaCard({
         );
     }
 
-    return cardBody;
+    return (
+        <div onMouseEnter={warmCardTrack} onPointerDown={warmCardTrack}>
+            {cardBody}
+        </div>
+    );
 }
 
 export interface YtmCarouselProps {

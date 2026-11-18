@@ -144,14 +144,42 @@ const apiFetch = async (path: string) => {
 };
 
 const CACHE_KEY_INITIAL = 'initial_tracks_cache_v1';
+const prefetchedTrackIds = new Set<string>();
+
+function normalizeVideoIdForPrefetch(rawId?: string | null): string | null {
+    if (!rawId) return null;
+    const trimmed = rawId.trim();
+    if (/^[a-zA-Z0-9_-]{11}$/.test(trimmed)) return trimmed;
+    const fromDiscovery = extractVideoIdFromDiscoveryId(trimmed);
+    if (fromDiscovery) return fromDiscovery;
+    return null;
+}
+
+export function prefetchTrack(rawId?: string | null): void {
+    const id = normalizeVideoIdForPrefetch(rawId);
+    if (!id || prefetchedTrackIds.has(id)) return;
+    if (prefetchedTrackIds.size > 300) {
+        prefetchedTrackIds.clear();
+    }
+    prefetchedTrackIds.add(id);
+    const url = streamUrl(id);
+    const prefetchUrl = `${url}${url.includes('?') ? '&' : '?'}prefetch=1`;
+    try {
+        fetch(prefetchUrl, { priority: 'low' } as RequestInit).catch(() => {});
+    } catch {
+        // Ignore prefetch failures cleanly
+    }
+}
+
+export function prefetchTracks(tracks: Array<{ id?: string }>, count = 3): void {
+    if (!Array.isArray(tracks) || tracks.length === 0) return;
+    for (const track of tracks.slice(0, count)) {
+        prefetchTrack(track?.id);
+    }
+}
 
 async function preFetchAudio(tracks: Track[]) {
-    for (const track of tracks.slice(0, 3)) {
-        try {
-            const audio = new Audio(`${streamUrl(track.id)}`);
-            audio.preload = 'auto';
-        } catch {}
-    }
+    prefetchTracks(tracks, 3);
 }
 
 export const libraryService = {
@@ -159,7 +187,7 @@ export const libraryService = {
         const data = await apiFetch(`/search?q=${encodeURIComponent(query)}`);
         if (data?.tracks && data.tracks.length > 0) {
             // Normalize track IDs - extract YouTube video ID from discovery-* IDs
-            return data.tracks.map((track: Track) => {
+            const normalized = data.tracks.map((track: Track) => {
                 let videoId = track.id;
                 if (track.id.includes('discovery-') || track.id.includes('artist-') || track.id.includes('album-')) {
                     const parts = track.id.split('-');
@@ -172,6 +200,8 @@ export const libraryService = {
                 }
                 return { ...track, id: videoId, url: `${streamUrl(videoId)}` };
             });
+            prefetchTracks(normalized, 2);
+            return normalized;
         }
         return [];
     },
@@ -186,11 +216,13 @@ export const libraryService = {
         if (!data) {
             return { songs: [], albums: [], playlists: [], artists: [] };
         }
+        const songs = (data.songs || []).map((t: Track) => ({
+            ...t,
+            url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
+        }));
+        prefetchTracks(songs, 2);
         return {
-            songs: (data.songs || []).map((t: Track) => ({
-                ...t,
-                url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
-            })),
+            songs,
             albums: data.albums || [],
             playlists: data.playlists || [],
             artists: data.artists || [],
@@ -200,15 +232,17 @@ export const libraryService = {
     async getCollection(id: string): Promise<StaticPlaylist | null> {
         const res = await apiFetch(`/collection?id=${encodeURIComponent(id)}`);
         if (!res || !res.tracks || res.tracks.length === 0) return null;
+        const tracks = (res.tracks as Track[]).map(t => ({
+            ...t,
+            url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
+        }));
+        prefetchTracks(tracks, 2);
         return {
             id,
             title: res.title || 'Collection',
             description: `${res.tracks.length} bài hát`,
             cover_url: res.cover_url || '',
-            tracks: (res.tracks as Track[]).map(t => ({
-                ...t,
-                url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
-            })),
+            tracks,
             type: id.startsWith('MPRE') ? 'Album' : 'Playlist',
         };
     },
@@ -324,8 +358,10 @@ export const libraryService = {
         try {
             const data = await apiFetch(`/recommendations?seed=${encodeURIComponent(seed)}&seed_type=${seedType}&limit=${limit}`);
             if (data) {
+                const tracks = data.tracks || [];
+                prefetchTracks(tracks, 2);
                 return {
-                    tracks: data.tracks || [],
+                    tracks,
                     albums: data.albums || [],
                     playlists: data.playlists || [],
                     artists: data.artists || []
@@ -772,20 +808,24 @@ async getLyrics(track: string, artist: string, videoId?: string): Promise<{ plai
         const res = await apiFetch(`/charts?chart_type=${encodeURIComponent(chartType)}`);
         if (!res) return [];
         const data = res as { tracks?: Track[] };
-        return (data.tracks || []).map(t => ({
+        const tracks = (data.tracks || []).map(t => ({
             ...t,
             url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
         }));
+        prefetchTracks(tracks, 2);
+        return tracks;
     },
 
     async getNewReleases(region: 'vn' | 'us' = 'vn'): Promise<Track[]> {
         const res = await apiFetch(`/new-releases?region=${region}`);
         if (!res) return [];
         const data = res as { tracks?: Track[] };
-        return (data.tracks || []).map(t => ({
+        const tracks = (data.tracks || []).map(t => ({
             ...t,
             url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
         }));
+        prefetchTracks(tracks, 2);
+        return tracks;
     },
 
     async getArtists(region: 'vn' | 'us' | 'kr' | 'cn' = 'vn'): Promise<Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string; topTrack: string }>> {

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useToastStore } from '../../stores/toastStore';
+import { prefetchTracks, streamUrl } from '../../services/library';
 import useMediaSession from '../../hooks/useMediaSession';
 
 export default function MiniPlayer() {
@@ -10,6 +11,9 @@ export default function MiniPlayer() {
   const isPlaying = usePlayerStore(s => s.isPlaying);
   const volume = usePlayerStore(s => s.volume);
   const pendingSeek = usePlayerStore(s => s.pendingSeek);
+  const queue = usePlayerStore(s => s.queue);
+  const currentIndex = usePlayerStore(s => s.currentIndex);
+  const repeatMode = usePlayerStore(s => s.repeatMode);
   const nextTrack = usePlayerStore(s => s.nextTrack);
   const setProgress = usePlayerStore(s => s.setProgress);
   const setDuration = usePlayerStore(s => s.setDuration);
@@ -17,6 +21,7 @@ export default function MiniPlayer() {
   const seekTo = usePlayerStore(s => s.seekTo);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const preloadAudioRef = useRef<HTMLAudioElement | null>(null);
   const streamFailCount = useRef(0);
   // Remembers which track the audio element is currently loaded for, so a
   // track change ALWAYS reloads even when two songs resolve to the same URL.
@@ -79,6 +84,34 @@ export default function MiniPlayer() {
     }
   }, [volume]);
 
+  // Warm the next 3 tracks in the queue on the server and pre-buffer the immediate next track locally
+  useEffect(() => {
+    if (!currentTrack || queue.length === 0) return;
+    const idx = currentIndex >= 0 ? currentIndex : queue.findIndex(t => t.id === currentTrack.id);
+    const startIdx = idx >= 0 ? idx + 1 : 0;
+    const upcoming = queue.slice(startIdx, startIdx + 3);
+    if (upcoming.length === 0 && repeatMode === 'all' && queue[0]?.id !== currentTrack.id) {
+      upcoming.push(queue[0]);
+    }
+    if (upcoming.length === 0) return;
+
+    prefetchTracks(upcoming, 3);
+
+    const next = upcoming[0];
+    const nextAudioUrl = next.url && (next.url.startsWith('/') || next.url.startsWith('http'))
+      ? next.url
+      : streamUrl(next.id);
+    const timer = window.setTimeout(() => {
+      const el = preloadAudioRef.current;
+      if (el && nextAudioUrl && next.id !== currentTrack.id && !el.src.endsWith(nextAudioUrl)) {
+        el.src = nextAudioUrl;
+        el.load();
+      }
+    }, 1200);
+
+    return () => window.clearTimeout(timer);
+  }, [currentTrack?.id, currentIndex, queue, repeatMode]);
+
   const handleTimeUpdate = () => {
     if (!audioRef.current) return;
     setProgress(audioRef.current.currentTime);
@@ -123,15 +156,24 @@ export default function MiniPlayer() {
   };
 
   return (
-    <audio
-      ref={audioRef}
-      preload="auto"
-      onEnded={nextTrack}
-      onWaiting={() => usePlayerStore.getState().setBuffering(true)}
-      onPlaying={() => usePlayerStore.getState().setBuffering(false)}
-      onTimeUpdate={handleTimeUpdate}
-      onLoadedMetadata={handleTimeUpdate}
-      onError={handleAudioError}
-    />
+    <>
+      <audio
+        ref={audioRef}
+        preload="auto"
+        onEnded={nextTrack}
+        onWaiting={() => usePlayerStore.getState().setBuffering(true)}
+        onPlaying={() => usePlayerStore.getState().setBuffering(false)}
+        onTimeUpdate={handleTimeUpdate}
+        onLoadedMetadata={handleTimeUpdate}
+        onError={handleAudioError}
+      />
+      <audio
+        ref={preloadAudioRef}
+        preload="auto"
+        muted
+        aria-hidden="true"
+        className="hidden"
+      />
+    </>
   );
 }

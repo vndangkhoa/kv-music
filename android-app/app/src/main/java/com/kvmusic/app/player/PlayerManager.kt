@@ -20,8 +20,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.okhttp.OkHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import okhttp3.Request
 import com.kvmusic.app.KVMusicApp
 import com.kvmusic.app.data.api.InnerTubeMusicClient
 import com.kvmusic.app.data.api.RetrofitClient
@@ -36,9 +38,11 @@ object PlayerManager {
     private var exoPlayer: ExoPlayer? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var activePlayJob: Job? = null
+    private var prefetchJob: Job? = null
     @Volatile
     private var currentPlayUsedDirectInnerTube: Boolean = false
     private val failoverAttemptedTrackIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
+    private val prefetchedTrackIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private val _currentTrack = MutableStateFlow<Track?>(null)
     val currentTrack: StateFlow<Track?> = _currentTrack
@@ -93,7 +97,12 @@ object PlayerManager {
             val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext)
                 .setDataSourceFactory(okHttpDataSourceFactory)
 
+            val loadControl = DefaultLoadControl.Builder()
+                .setBufferDurationsMs(15_000, 50_000, 400, 1_000)
+                .build()
+
             exoPlayer = ExoPlayer.Builder(context.applicationContext)
+                .setLoadControl(loadControl)
                 .setMediaSourceFactory(mediaSourceFactory)
                 .setAudioAttributes(audioAttributes, true)
                 .setHandleAudioBecomingNoisy(true)
@@ -198,6 +207,39 @@ object PlayerManager {
         } else {
             startMediaItem(track, serverStreamUrl, MimeTypes.AUDIO_AAC, usedDirectInnerTube = false)
         }
+
+        prefetchUpcoming(newQueue, _queueIndex.value)
+    }
+
+    private fun prefetchUpcoming(queue: List<Track>, currentIndex: Int) {
+        val nextTracks = ((currentIndex + 1)..(currentIndex + 2))
+            .mapNotNull { idx -> queue.getOrNull(idx) }
+        if (nextTracks.isEmpty()) return
+
+        prefetchJob?.cancel()
+        prefetchJob = scope.launch(Dispatchers.IO) {
+            delay(400)
+            for (next in nextTracks) {
+                if (!isActive) break
+                val cleanId = InnerTubeMusicClient.extractVideoId(next.id)
+                val isYtId = cleanId.matches(Regex("[A-Za-z0-9_-]{11}"))
+                if (RetrofitClient.isWarpBypassEnabled() && isYtId && !next.url.startsWith("http://") && !next.url.startsWith("https://")) {
+                    try {
+                        InnerTubeMusicClient.resolveAudioStream(trackId = next.id, preferM4a = true)
+                    } catch (_: Exception) { }
+                }
+                if (isYtId && prefetchedTrackIds.add(cleanId)) {
+                    try {
+                        val serverUrl = buildServerStreamUrl(next)
+                        val prefetchUrl = if (serverUrl.contains("?")) "$serverUrl&prefetch=1" else "$serverUrl?prefetch=1"
+                        val req = Request.Builder().url(prefetchUrl).build()
+                        RetrofitClient.getMediaOkHttpClient().newCall(req).execute().close()
+                    } catch (_: Exception) {
+                        prefetchedTrackIds.remove(cleanId)
+                    }
+                }
+            }
+        }
     }
 
     private fun startMediaItem(
@@ -272,7 +314,7 @@ object PlayerManager {
                                 .build()
 
                             val p = exoPlayer
-                            if (p != null) {
+                            if (p != null && p.playbackState == Player.STATE_READY) {
                                 val curPos = p.currentPosition
                                 p.replaceMediaItem(p.currentMediaItemIndex.coerceAtLeast(0), updatedItem)
                                 p.seekTo(curPos)

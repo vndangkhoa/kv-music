@@ -79,7 +79,8 @@ services:
       - YTDLP_PROXY=http://127.0.0.1:29083
       - HTTP_PROXY=http://127.0.0.1:29083
       - HTTPS_PROXY=http://127.0.0.1:29083
-      - NO_PROXY=localhost,127.0.0.1,0.0.0.0,companion,host.docker.internal
+      - NO_PROXY=localhost,127.0.0.1,0.0.0.0,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.64.0.0/10,companion,host.docker.internal
+      # - COMPANION_URL=http://127.0.0.1:8282/companion,http://100.94.92.63:8282/companion
       # - FORCE_IPV6=0   # uncomment to force IPv4 for yt-dlp
     depends_on:
       warp:

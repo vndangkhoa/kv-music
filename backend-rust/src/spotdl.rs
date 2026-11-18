@@ -101,6 +101,103 @@ pub struct SpotdlService {
     pub track_info_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
     /// Fast oEmbed previews used by the Open Graph share page (see resolve_share_preview).
     pub share_preview_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
+    /// Cached recommendations results by seed/type/limit (30m TTL).
+    pub recommendations_cache: Arc<RwLock<HashMap<String, (Instant, crate::api::Recommendations)>>>,
+}
+
+pub struct CompanionResolvedStream {
+    pub playback_url: String,
+    pub total_size: Option<u64>,
+    pub ext: &'static str,
+    pub content_type: &'static str,
+}
+
+pub struct ProgressiveStreamPlan {
+    pub status_206: bool,
+    pub content_type: &'static str,
+    pub total_size: Option<u64>,
+    pub content_range: Option<String>,
+    pub content_length: Option<u64>,
+    pub initial_bytes: Vec<u8>,
+    pub body_rx: Option<tokio::sync::mpsc::Receiver<Result<axum::body::Bytes, std::io::Error>>>,
+}
+
+fn companion_no_redirect_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .redirect(reqwest::redirect::Policy::none())
+            .connect_timeout(Duration::from_millis(1200))
+            .timeout(Duration::from_secs(6))
+            .pool_max_idle_per_host(8)
+            .tcp_nodelay(true)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+fn companion_chunk_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(Duration::from_millis(1500))
+            .timeout(Duration::from_secs(15))
+            .pool_max_idle_per_host(12)
+            .tcp_nodelay(true)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+fn companion_fast_burst_client() -> &'static reqwest::Client {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    CLIENT.get_or_init(|| {
+        reqwest::Client::builder()
+            .no_proxy()
+            .connect_timeout(Duration::from_millis(1500))
+            .timeout(Duration::from_secs(5))
+            .pool_max_idle_per_host(8)
+            .tcp_nodelay(true)
+            .build()
+            .unwrap_or_default()
+    })
+}
+
+fn last_working_companion() -> &'static std::sync::Mutex<Option<String>> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<String>>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(|| std::sync::Mutex::new(None))
+}
+
+fn in_flight_downloads_map() -> &'static std::sync::Mutex<HashMap<String, Arc<tokio::sync::Notify>>> {
+    static MAP: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Arc<tokio::sync::Notify>>>> =
+        std::sync::OnceLock::new();
+    MAP.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+struct InFlightGuard {
+    key: String,
+    notify: Arc<tokio::sync::Notify>,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        if let Ok(mut map) = in_flight_downloads_map().lock() {
+            map.remove(&self.key);
+        }
+        self.notify.notify_waiters();
+    }
+}
+
+fn in_flight_prefetch_set() -> &'static std::sync::Mutex<HashSet<String>> {
+    static SET: std::sync::OnceLock<std::sync::Mutex<HashSet<String>>> = std::sync::OnceLock::new();
+    SET.get_or_init(|| std::sync::Mutex::new(HashSet::new()))
+}
+
+fn prefetch_semaphore() -> &'static tokio::sync::Semaphore {
+    static SEM: std::sync::OnceLock<tokio::sync::Semaphore> = std::sync::OnceLock::new();
+    SEM.get_or_init(|| tokio::sync::Semaphore::new(2))
 }
 
 impl SpotdlService {
@@ -145,6 +242,7 @@ impl SpotdlService {
             browse_cache: Arc::new(RwLock::new(HashMap::new())),
             track_info_cache: Arc::new(RwLock::new(HashMap::new())),
             share_preview_cache: Arc::new(RwLock::new(HashMap::new())),
+            recommendations_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -312,15 +410,346 @@ impl SpotdlService {
             }
 
             // Spawn deduplicated dynamic preload
+            let service_clone = self.clone();
             let cache_arc = self.browse_cache.clone();
             let country_task = country.clone();
             tokio::spawn(async move {
-                Self::fetch_browse_content(&country_task, &cache_arc).await;
+                service_clone.fetch_browse_content(&country_task, &cache_arc).await;
                 if let Ok(mut set) = in_flight.lock() {
                     set.remove(&country_task);
                 }
             });
         }
+    }
+
+    fn strip_ytsearch_prefix(raw: &str) -> String {
+        let mut s = raw.trim();
+        for prefix in ["ytsearch", "ytmusicsearch"] {
+            if let Some(rest) = s.strip_prefix(prefix) {
+                if let Some((_, tail)) = rest.split_once(':') {
+                    s = tail.trim();
+                }
+            }
+        }
+        if let Some(stripped) = s.strip_suffix(" audio") {
+            s = stripped.trim();
+        }
+        s.to_string()
+    }
+
+    fn parse_duration_secs(text: &str) -> Option<i32> {
+        let parts: Vec<&str> = text.trim().split(':').collect();
+        if parts.len() == 2 {
+            let m: i32 = parts[0].parse().ok()?;
+            let s: i32 = parts[1].parse().ok()?;
+            return Some(m * 60 + s);
+        } else if parts.len() == 3 {
+            let h: i32 = parts[0].parse().ok()?;
+            let m: i32 = parts[1].parse().ok()?;
+            let s: i32 = parts[2].parse().ok()?;
+            return Some(h * 3600 + m * 60 + s);
+        }
+        None
+    }
+
+    fn upgrade_thumb_url(url: &str, video_id: &str) -> String {
+        if url.is_empty() {
+            return format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", video_id);
+        }
+        if url.contains("googleusercontent.com/") && (url.contains("=w60-h60") || url.contains("=w120-h120")) {
+            if let Some((base, _)) = url.split_once('=') {
+                return format!("{}=w544-h544-l90-rj", base);
+            }
+        }
+        url.to_string()
+    }
+
+    fn parse_innertube_track(renderer: &serde_json::Value) -> Option<Track> {
+        let flex = renderer.get("flexColumns")?.as_array()?;
+        let col0_runs = flex
+            .first()?
+            .get("musicResponsiveListItemFlexColumnRenderer")?
+            .get("text")?
+            .get("runs")?
+            .as_array()?;
+
+        let first_run = col0_runs.first()?;
+        let title = first_run.get("text")?.as_str()?.trim().to_string();
+        if title.is_empty() {
+            return None;
+        }
+
+        let video_id = first_run
+            .get("navigationEndpoint")
+            .and_then(|ne| ne.get("watchEndpoint"))
+            .and_then(|we| we.get("videoId"))
+            .and_then(|v| v.as_str())
+            .or_else(|| renderer.get("playlistItemData").and_then(|p| p.get("videoId")).and_then(|v| v.as_str()))
+            .or_else(|| {
+                renderer
+                    .get("overlay")
+                    .and_then(|o| o.get("musicItemThumbnailOverlayRenderer"))
+                    .and_then(|m| m.get("content"))
+                    .and_then(|c| c.get("musicPlayButtonRenderer"))
+                    .and_then(|p| p.get("playNavigationEndpoint"))
+                    .and_then(|ne| ne.get("watchEndpoint"))
+                    .and_then(|we| we.get("videoId"))
+                    .and_then(|v| v.as_str())
+            })?
+            .to_string();
+
+        if video_id.len() != 11 || video_id.starts_with("UC") || video_id.starts_with("PL") {
+            return None;
+        }
+
+        let mut segments: Vec<String> = Vec::new();
+        if let Some(col1_runs) = flex
+            .get(1)
+            .and_then(|c| c.get("musicResponsiveListItemFlexColumnRenderer"))
+            .and_then(|r| r.get("text"))
+            .and_then(|t| t.get("runs"))
+            .and_then(|r| r.as_array())
+        {
+            let mut cur = String::new();
+            for r in col1_runs {
+                if let Some(txt) = r.get("text").and_then(|t| t.as_str()) {
+                    if txt.trim() == "•" {
+                        let s = cur.trim().to_string();
+                        if !s.is_empty() {
+                            segments.push(s);
+                        }
+                        cur.clear();
+                    } else {
+                        cur.push_str(txt);
+                    }
+                }
+            }
+            let tail = cur.trim().to_string();
+            if !tail.is_empty() {
+                segments.push(tail);
+            }
+        }
+
+        segments.retain(|s| {
+            let low = s.to_ascii_lowercase();
+            low != "song" && low != "video" && low != "single" && low != "ep"
+        });
+
+        let mut duration = 0;
+        if let Some(last) = segments.last() {
+            if let Some(secs) = Self::parse_duration_secs(last) {
+                duration = secs;
+                segments.pop();
+            }
+        }
+        segments.retain(|s| {
+            let low = s.to_ascii_lowercase();
+            !low.ends_with("plays") && !low.ends_with("views") && !low.ends_with("subscribers")
+        });
+
+        let artist = segments
+            .first()
+            .cloned()
+            .unwrap_or_else(|| "YouTube Music".to_string());
+        let album = segments
+            .get(1)
+            .cloned()
+            .unwrap_or_else(|| "YouTube Music".to_string());
+
+        let raw_thumb = renderer
+            .get("thumbnail")
+            .and_then(|th| th.get("musicThumbnailRenderer"))
+            .and_then(|r| r.get("thumbnail"))
+            .and_then(|th| th.get("thumbnails"))
+            .and_then(|arr| arr.as_array())
+            .and_then(|arr| arr.last())
+            .and_then(|t| t.get("url"))
+            .and_then(|u| u.as_str())
+            .unwrap_or("");
+        let cover_url = Self::upgrade_thumb_url(raw_thumb, &video_id);
+
+        Some(Track {
+            id: video_id.clone(),
+            title,
+            artist,
+            album,
+            duration,
+            cover_url,
+            url: format!("/api/stream/{}", video_id),
+            view_count: None,
+            like_count: None,
+            comment_count: None,
+            bitrate: None,
+            codec: None,
+        })
+    }
+
+    fn collect_innertube_tracks(value: &serde_json::Value, out: &mut Vec<Track>) {
+        match value {
+            serde_json::Value::Array(arr) => {
+                for item in arr {
+                    Self::collect_innertube_tracks(item, out);
+                }
+            }
+            serde_json::Value::Object(map) => {
+                if let Some(renderer) = map.get("musicResponsiveListItemRenderer") {
+                    if let Some(track) = Self::parse_innertube_track(renderer) {
+                        if !out.iter().any(|t| t.id == track.id) {
+                            out.push(track);
+                        }
+                    }
+                }
+                for v in map.values() {
+                    Self::collect_innertube_tracks(v, out);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    async fn search_innertube_filtered(&self, query: &str, params: &str) -> Vec<Track> {
+        let body = serde_json::json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB_REMIX",
+                    "clientVersion": "1.20260808.01.00",
+                    "hl": "en",
+                    "gl": "VN"
+                }
+            },
+            "query": query,
+            "params": params
+        });
+
+        let res = match self
+            .yt_client
+            .post("https://music.youtube.com/youtubei/v1/search?prettyPrint=false")
+            .timeout(Duration::from_secs(4))
+            .header("Content-Type", "application/json")
+            .header("Origin", "https://music.youtube.com")
+            .json(&body)
+            .send()
+            .await
+        {
+            Ok(r) if r.status().is_success() => r,
+            _ => return Vec::new(),
+        };
+
+        let Ok(json) = res.json::<serde_json::Value>().await else {
+            return Vec::new();
+        };
+        let mut tracks = Vec::new();
+        Self::collect_innertube_tracks(&json, &mut tracks);
+        tracks
+    }
+
+    async fn search_tracks_innertube(&self, raw_query: &str) -> Option<Vec<Track>> {
+        let cleaned = Self::strip_ytsearch_prefix(raw_query);
+        if cleaned.is_empty()
+            || cleaned.starts_with("http://")
+            || cleaned.starts_with("https://")
+        {
+            return None;
+        }
+        // Single 11-char video ID lookup works more reliably via yt-dlp/get_track_info
+        if cleaned.len() == 11
+            && !cleaned.contains(' ')
+            && cleaned
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+        {
+            return None;
+        }
+
+        // Songs + Videos concurrently (~400-900ms, zero subprocess overhead)
+        let (songs, videos) = tokio::join!(
+            self.search_innertube_filtered(&cleaned, "EgWKAQIIAWoMEA4QChADEAQQCRAF"),
+            self.search_innertube_filtered(&cleaned, "EgWKAQIQAWoMEA4QChADEAQQCRAF")
+        );
+
+        let mut merged = Vec::new();
+        let mut seen = HashSet::new();
+        for t in songs.into_iter().chain(videos.into_iter()) {
+            if t.duration > 0 && t.duration > 1200 {
+                continue;
+            }
+            if seen.insert(t.id.clone()) {
+                merged.push(t);
+            }
+            if merged.len() >= 30 {
+                break;
+            }
+        }
+
+        if merged.is_empty() {
+            None
+        } else {
+            Some(merged)
+        }
+    }
+
+    async fn fetch_innertube_artist_photo(&self, query: &str) -> Option<String> {
+        let body = serde_json::json!({
+            "context": {
+                "client": {
+                    "clientName": "WEB_REMIX",
+                    "clientVersion": "1.20260808.01.00",
+                    "hl": "en"
+                }
+            },
+            "query": query,
+            "params": "EgWKAQIgAWoMEA4QChADEAQQCRAF"
+        });
+
+        let res = self
+            .yt_client
+            .post("https://music.youtube.com/youtubei/v1/search?prettyPrint=false")
+            .timeout(Duration::from_millis(3500))
+            .header("Content-Type", "application/json")
+            .header("Origin", "https://music.youtube.com")
+            .json(&body)
+            .send()
+            .await
+            .ok()?;
+        if !res.status().is_success() {
+            return None;
+        }
+        let json: serde_json::Value = res.json().await.ok()?;
+
+        fn find_first_artist_thumb(v: &serde_json::Value) -> Option<String> {
+            match v {
+                serde_json::Value::Array(arr) => arr.iter().find_map(find_first_artist_thumb),
+                serde_json::Value::Object(map) => {
+                    if let Some(renderer) = map.get("musicResponsiveListItemRenderer") {
+                        if let Some(url) = renderer
+                            .get("thumbnail")
+                            .and_then(|th| th.get("musicThumbnailRenderer"))
+                            .and_then(|r| r.get("thumbnail"))
+                            .and_then(|th| th.get("thumbnails"))
+                            .and_then(|arr| arr.as_array())
+                            .and_then(|arr| arr.last())
+                            .and_then(|t| t.get("url"))
+                            .and_then(|u| u.as_str())
+                        {
+                            if url.starts_with("http") {
+                                return Some(url.to_string());
+                            }
+                        }
+                    }
+                    map.values().find_map(find_first_artist_thumb)
+                }
+                _ => None,
+            }
+        }
+
+        find_first_artist_thumb(&json).map(|u| {
+            if u.contains("googleusercontent.com/") && (u.contains("=w60-h60") || u.contains("=w120-h120")) {
+                if let Some((base, _)) = u.split_once('=') {
+                    return format!("{}=w544-h544-l90-rj", base);
+                }
+            }
+            u
+        })
     }
 
     fn get_queries_for_country(country: &str) -> Vec<(&'static str, String)> {
@@ -374,59 +803,117 @@ impl SpotdlService {
         }
     }
 
-    async fn fetch_browse_content(country: &str, cache_arc: &Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>) {
+    async fn fetch_browse_content(&self, country: &str, cache_arc: &Arc<RwLock<HashMap<String, HashMap<String, Vec<StaticPlaylist>>>>>) {
+        use futures::stream::{self, StreamExt};
+
         let country = country.to_uppercase();
-        let queries = Self::get_queries_for_country(&country);
-
+        let queries: Vec<(String, String)> = Self::get_queries_for_country(&country)
+            .into_iter()
+            .map(|(cat, q)| (cat.to_string(), q))
+            .collect();
         let path = Self::yt_dlp_path();
-        let mut all_data: HashMap<String, Vec<StaticPlaylist>> = HashMap::new();
 
-        for (category, search_query) in queries {
-            let mut cmd_args = Self::build_yt_dlp_base_args_vec();
-            cmd_args.push(search_query);
-            cmd_args.push("--dump-json".to_string());
-            cmd_args.push("--no-playlist".to_string());
-            cmd_args.push("--flat-playlist".to_string());
-            
-            let output = Self::run_command_output(path.clone(), cmd_args).await;
-            
-            if let Ok(o) = output {
-                let stdout = String::from_utf8_lossy(&o.stdout);
-                let mut items = Vec::new();
-                
-                for line in stdout.lines() {
-                    if let Ok(res) = serde_json::from_str::<YTResult>(line) {
-                        let duration = res.duration.unwrap_or(0.0);
-                        if res.id.starts_with("UC") || duration < 60.0 { continue; }
-                        
-                        let cover_url = if let Some(t) = res.thumbnails.last() { t.url.clone() } else { format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id) };
-                        
-                        let artist = res.uploader.replace(" - Topic", "");
-                        
-                        let is_album = category == "Top Albums";
-                        let p_type = if is_album { "Album" } else { "Playlist" };
-                        let title = if is_album { 
-                            res.title.clone()
-                        } else {
-                            format!("{} Mix", res.title.clone())
-                        };
-                        
-                        let id_slug = res.title.replace(|c: char| !c.is_alphanumeric() && c != ' ', "").replace(' ', "-");
-                        items.push(StaticPlaylist {
-                            id: format!("discovery-{}-{}-{}", p_type.to_lowercase(), id_slug, res.id),
-                            title,
-                            description: Some(if is_album { "Album".to_string() } else { format!("Made for you • {}", artist) }),
-                            cover_url: Some(cover_url),
-                            creator: Some(artist),
-                            tracks: Vec::new(),
-                            playlist_type: p_type.to_string(),
-                        });
+        let category_results: Vec<(String, Vec<StaticPlaylist>)> = stream::iter(queries)
+            .map(|(category, search_query)| {
+                let path = path.clone();
+                let this = self.clone();
+                async move {
+                    let is_album = category == "Top Albums";
+                    let p_type = if is_album { "Album" } else { "Playlist" };
+
+                    // Fast path: direct InnerTube WEB_REMIX search (~400ms, zero subprocess RAM)
+                    if let Some(tracks) = this.search_tracks_innertube(&search_query).await {
+                        let items: Vec<StaticPlaylist> = tracks
+                            .into_iter()
+                            .filter(|t| t.duration == 0 || t.duration >= 60)
+                            .map(|t| {
+                                let title = if is_album {
+                                    t.title.clone()
+                                } else {
+                                    format!("{} Mix", t.title)
+                                };
+                                let id_slug = t
+                                    .title
+                                    .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                                    .replace(' ', "-");
+                                StaticPlaylist {
+                                    id: format!("discovery-{}-{}-{}", p_type.to_lowercase(), id_slug, t.id),
+                                    title,
+                                    description: Some(if is_album {
+                                        "Album".to_string()
+                                    } else {
+                                        format!("Made for you • {}", t.artist)
+                                    }),
+                                    cover_url: Some(t.cover_url),
+                                    creator: Some(t.artist),
+                                    tracks: Vec::new(),
+                                    playlist_type: p_type.to_string(),
+                                }
+                            })
+                            .collect();
+                        if !items.is_empty() {
+                            return (category, items);
+                        }
                     }
+
+                    // Fallback: yt-dlp flat-playlist search
+                    let mut cmd_args = Self::build_yt_dlp_base_args_vec();
+                    cmd_args.push(search_query);
+                    cmd_args.push("--dump-json".to_string());
+                    cmd_args.push("--no-playlist".to_string());
+                    cmd_args.push("--flat-playlist".to_string());
+
+                    let mut items = Vec::new();
+                    if let Ok(o) = Self::run_command_output(path, cmd_args).await {
+                        let stdout = String::from_utf8_lossy(&o.stdout);
+                        for line in stdout.lines() {
+                            if let Ok(res) = serde_json::from_str::<YTResult>(line) {
+                                let duration = res.duration.unwrap_or(0.0);
+                                if res.id.starts_with("UC") || duration < 60.0 {
+                                    continue;
+                                }
+                                let cover_url = if let Some(t) = res.thumbnails.last() {
+                                    t.url.clone()
+                                } else {
+                                    format!("https://i.ytimg.com/vi/{}/hqdefault.jpg", res.id)
+                                };
+                                let artist = res.uploader.replace(" - Topic", "");
+                                let title = if is_album {
+                                    res.title.clone()
+                                } else {
+                                    format!("{} Mix", res.title.clone())
+                                };
+                                let id_slug = res
+                                    .title
+                                    .replace(|c: char| !c.is_alphanumeric() && c != ' ', "")
+                                    .replace(' ', "-");
+                                items.push(StaticPlaylist {
+                                    id: format!("discovery-{}-{}-{}", p_type.to_lowercase(), id_slug, res.id),
+                                    title,
+                                    description: Some(if is_album {
+                                        "Album".to_string()
+                                    } else {
+                                        format!("Made for you • {}", artist)
+                                    }),
+                                    cover_url: Some(cover_url),
+                                    creator: Some(artist),
+                                    tracks: Vec::new(),
+                                    playlist_type: p_type.to_string(),
+                                });
+                            }
+                        }
+                    }
+                    (category, items)
                 }
-                
-                if !items.is_empty() {
-                    all_data.insert(category.to_string(), items);
-                }
+            })
+            .buffer_unordered(4)
+            .collect()
+            .await;
+
+        let mut all_data: HashMap<String, Vec<StaticPlaylist>> = HashMap::new();
+        for (category, items) in category_results {
+            if !items.is_empty() {
+                all_data.insert(category.to_string(), items);
             }
         }
 
@@ -479,8 +966,23 @@ impl SpotdlService {
             if let Some(item) = cache.get(query) {
                 if item.timestamp.elapsed() < Duration::from_secs(3600) {
                     println!("Cache Hit: {}", query);
+                    self.prefetch_top_tracks(&item.tracks, 2);
                     return Ok(item.tracks.clone());
                 }
+            }
+        }
+
+        // 2. Fast path: direct InnerTube WEB_REMIX search (~400-900ms, no subprocess)
+        if let Some(tracks) = self.search_tracks_innertube(query).await {
+            if !tracks.is_empty() {
+                let mut cache = self.search_cache.write().await;
+                cache.insert(query.to_string(), CacheItem {
+                    tracks: tracks.clone(),
+                    timestamp: Instant::now(),
+                });
+                drop(cache);
+                self.prefetch_top_tracks(&tracks, 2);
+                return Ok(tracks);
             }
         }
 
@@ -561,6 +1063,8 @@ impl SpotdlService {
                         tracks: tracks.clone(),
                         timestamp: Instant::now(),
                     });
+                    drop(cache);
+                    self.prefetch_top_tracks(&tracks, 2);
                 }
                 return Ok(tracks);
             }
@@ -1466,6 +1970,7 @@ impl SpotdlService {
         self.browse_cache.write().await.clear();
         self.track_info_cache.write().await.clear();
         self.share_preview_cache.write().await.clear();
+        self.recommendations_cache.write().await.clear();
         println!("[Cookies] All caches cleared - next fetches will use fresh cookies.");
     }
 
@@ -1508,211 +2013,678 @@ impl SpotdlService {
         None
     }
 
-    /// Fallback downloader via Invidious Companion (`COMPANION_URL`, local `:8282`, or Tailscale
-    /// peer `100.94.92.63:8282`). Fetches in 2 MiB HTTP Range chunks so YouTube does not
-    /// throttle the stream after the initial 512 KiB buffer.
+    /// Public disk cache check used by `stream_handler` and `spawn_prefetch`.
+    pub fn find_cached_audio(&self, video_url: &str, prefer_m4a: bool) -> Option<String> {
+        let video_id = Self::extract_id(video_url);
+        let ext = if prefer_m4a { "m4a" } else { "webm" };
+        self.find_downloaded_audio(&video_id, ext, !prefer_m4a)
+    }
+
+    /// Wait up to 12s for an active download/prefetch of the given track to land on disk.
+    pub async fn wait_for_in_flight(&self, video_or_id: &str, prefer_m4a: bool) -> Option<String> {
+        let video_id = Self::extract_id(video_or_id);
+        let key = format!("{}:{}", video_id, if prefer_m4a { "m4a" } else { "webm" });
+        let notified = {
+            let map = in_flight_downloads_map().lock().ok()?;
+            map.get(&key).map(|n| {
+                let notify = n.clone();
+                async move { notify.notified().await }
+            })
+        };
+        if let Some(fut) = notified {
+            let _ = tokio::time::timeout(Duration::from_secs(12), fut).await;
+            return self.find_cached_audio(&video_id, prefer_m4a);
+        }
+        None
+    }
+
+    /// Trigger a background audio download so the track is already cached on disk
+    /// when the user clicks or the queue advances to it.
+    pub fn spawn_prefetch(&self, video_or_id: String, prefer_m4a: bool) {
+        let video_id = Self::extract_id(&video_or_id);
+        if video_id.is_empty() || self.find_cached_audio(&video_id, prefer_m4a).is_some() {
+            return;
+        }
+        let key = format!("{}:{}", video_id, if prefer_m4a { "m4a" } else { "webm" });
+        {
+            let Ok(mut set) = in_flight_prefetch_set().lock() else {
+                return;
+            };
+            if !set.insert(key.clone()) {
+                return;
+            }
+        }
+        if let Ok(map) = in_flight_downloads_map().lock() {
+            if map.contains_key(&key) {
+                if let Ok(mut set) = in_flight_prefetch_set().lock() {
+                    set.remove(&key);
+                }
+                return;
+            }
+        }
+
+        let service = self.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let _permit = prefetch_semaphore().acquire().await;
+                if service.find_cached_audio(&video_id, prefer_m4a).is_none() {
+                    let s2 = service.clone();
+                    let vid2 = video_id.clone();
+                    let _ = tokio::task::spawn_blocking(move || s2.get_stream_url(&vid2, prefer_m4a)).await;
+                }
+                if let Ok(mut set) = in_flight_prefetch_set().lock() {
+                    set.remove(&key);
+                }
+            });
+        } else if let Ok(mut set) = in_flight_prefetch_set().lock() {
+            set.remove(&key);
+        }
+    }
+
+    /// Background-warm up to `count` (capped at 2) top tracks from lists/search results.
+    pub fn prefetch_top_tracks(&self, tracks: &[Track], count: usize) {
+        let cap = count.min(2);
+        for track in tracks.iter().take(cap) {
+            if track.id.len() == 11 {
+                self.spawn_prefetch(track.id.clone(), false);
+            }
+        }
+    }
+
+    fn candidate_companion_bases() -> Vec<String> {
+        let mut bases: Vec<String> = Vec::new();
+        if let Ok(guard) = last_working_companion().lock() {
+            if let Some(ref cached) = *guard {
+                bases.push(cached.clone());
+            }
+        }
+        if let Ok(custom) = env::var("COMPANION_URL") {
+            for u in custom.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+                let trimmed = u.trim_end_matches('/').to_string();
+                if !bases.iter().any(|b| b == &trimmed) {
+                    bases.push(trimmed);
+                }
+            }
+        }
+        for default_base in [
+            "http://companion:8282/companion",
+            "http://127.0.0.1:8282/companion",
+            "http://172.18.0.4:8282/companion",
+            "http://192.168.31.71:8282/companion",
+            "http://100.94.92.63:8282/companion",
+            "http://host.docker.internal:8282/companion",
+        ] {
+            if !bases.iter().any(|b| b == default_base) {
+                bases.push(default_base.to_string());
+            }
+        }
+        bases
+    }
+
+    fn rewrite_companion_location(base: &str, loc: &str) -> (String, Option<u64>) {
+        let origin = if let Some(idx) = base.find("/companion") {
+            &base[..idx]
+        } else {
+            base
+        };
+
+        let mut total_size: Option<u64> = None;
+        let playback_url = if let Ok(parsed) = reqwest::Url::parse(loc) {
+            for (k, v) in parsed.query_pairs() {
+                if k == "clen" {
+                    if let Ok(clen) = v.parse::<u64>() {
+                        if clen > 0 {
+                            total_size = Some(clen);
+                        }
+                    }
+                    break;
+                }
+            }
+            let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+            if host.ends_with(".googlevideo.com") || host == "googlevideo.com" {
+                let path = parsed.path();
+                let target_path = if path.starts_with("/companion/") {
+                    path.to_string()
+                } else if path == "/" || path.is_empty() {
+                    "/companion/videoplayback".to_string()
+                } else {
+                    format!("/companion{}", path)
+                };
+                let query = parsed.query().unwrap_or_default();
+                let has_host_param = query.split('&').any(|kv| kv.starts_with("host="));
+                let joined_query = if has_host_param || query.is_empty() {
+                    if query.is_empty() {
+                        format!("host={}", urlencoding::encode(&host))
+                    } else {
+                        query.to_string()
+                    }
+                } else {
+                    format!("{}&host={}", query, urlencoding::encode(&host))
+                };
+                format!("{}{}?{}", origin, target_path, joined_query)
+            } else {
+                loc.to_string()
+            }
+        } else if loc.starts_with('/') {
+            format!("{}{}", origin, loc)
+        } else {
+            format!("{}/{}", base, loc)
+        };
+
+        (playback_url, total_size)
+    }
+
+    fn parse_content_range_total(headers: &reqwest::header::HeaderMap) -> Option<u64> {
+        headers
+            .get(reqwest::header::CONTENT_RANGE)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|cr| cr.rsplit('/').next())
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .filter(|&n| n > 0)
+    }
+
+    /// Resolve a Companion playback URL and immediately fetch the initial 256 KiB burst
+    /// so we verify the stream works and know `total_size` before returning HTTP headers.
+    async fn fetch_companion_first_chunk(
+        &self,
+        video_id: &str,
+        prefer_m4a: bool,
+        first_chunk_end: u64,
+    ) -> Option<(CompanionResolvedStream, Vec<u8>, bool)> {
+        let bases = Self::candidate_companion_bases();
+        let itags: &[(&str, &str, &str)] = if prefer_m4a {
+            &[
+                ("140", "m4a", "audio/mp4"),
+                ("251", "webm", "video/webm"),
+            ]
+        } else {
+            &[
+                ("251", "webm", "video/webm"),
+                ("250", "webm", "video/webm"),
+                ("140", "m4a", "audio/mp4"),
+            ]
+        };
+
+        let no_redirect_client = companion_no_redirect_client();
+        let burst_client = companion_fast_burst_client();
+
+        for base in &bases {
+            for &(itag, ext, content_type) in itags {
+                let resolve_url = format!(
+                    "{}/latest_version?id={}&itag={}&local=true",
+                    base, video_id, itag
+                );
+                let resp = match no_redirect_client.get(&resolve_url).send().await {
+                    Ok(r) => r,
+                    Err(_) => {
+                        if let Ok(mut guard) = last_working_companion().lock() {
+                            if guard.as_deref() == Some(base.as_str()) {
+                                *guard = None;
+                            }
+                        }
+                        break;
+                    }
+                };
+
+                if !resp.status().is_redirection() {
+                    continue;
+                }
+
+                let Some(loc) = resp
+                    .headers()
+                    .get(reqwest::header::LOCATION)
+                    .and_then(|v| v.to_str().ok())
+                else {
+                    continue;
+                };
+
+                let (playback_url, mut total_size) = Self::rewrite_companion_location(base, loc);
+                let end = match total_size {
+                    Some(t) if t > 0 => first_chunk_end.min(t - 1),
+                    _ => first_chunk_end,
+                };
+                let range_hdr = format!("bytes=0-{}", end);
+                let Ok(chunk_resp) = burst_client
+                    .get(&playback_url)
+                    .header(reqwest::header::RANGE, &range_hdr)
+                    .send()
+                    .await
+                else {
+                    continue;
+                };
+
+                let status = chunk_resp.status();
+                if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
+                    println!(
+                        "[Companion] Initial chunk HTTP {} for {} itag={}",
+                        status, video_id, itag
+                    );
+                    continue;
+                }
+
+                if total_size.is_none() {
+                    total_size = Self::parse_content_range_total(chunk_resp.headers());
+                }
+                if total_size.is_none() && status == reqwest::StatusCode::OK {
+                    total_size = chunk_resp
+                        .headers()
+                        .get(reqwest::header::CONTENT_LENGTH)
+                        .and_then(|v| v.to_str().ok())
+                        .and_then(|s| s.trim().parse::<u64>().ok())
+                        .filter(|&n| n > 0);
+                }
+
+                let Ok(bytes) = chunk_resp.bytes().await else {
+                    continue;
+                };
+                if bytes.is_empty() {
+                    continue;
+                }
+
+                if let Ok(mut guard) = last_working_companion().lock() {
+                    *guard = Some(base.clone());
+                }
+
+                let resolved = CompanionResolvedStream {
+                    playback_url,
+                    total_size,
+                    ext,
+                    content_type,
+                };
+                return Some((resolved, bytes.to_vec(), status == reqwest::StatusCode::OK));
+            }
+        }
+        None
+    }
+
+    async fn fetch_companion_chunk_with_retry(
+        client: &reqwest::Client,
+        url: &str,
+        start: u64,
+        end: u64,
+    ) -> Result<(u64, Vec<u8>), String> {
+        let range_hdr = format!("bytes={}-{}", start, end);
+        for attempt in 0..2 {
+            match client
+                .get(url)
+                .header(reqwest::header::RANGE, &range_hdr)
+                .send()
+                .await
+            {
+                Ok(resp) => {
+                    let status = resp.status();
+                    if status == reqwest::StatusCode::PARTIAL_CONTENT || status == reqwest::StatusCode::OK {
+                        match resp.bytes().await {
+                            Ok(b) if !b.is_empty() => return Ok((start, b.to_vec())),
+                            Ok(_) if attempt == 0 => continue,
+                            Ok(_) => return Err("empty chunk".to_string()),
+                            Err(e) if attempt == 0 => {
+                                println!("[Companion] Chunk read retry for {}: {}", range_hdr, e);
+                                continue;
+                            }
+                            Err(e) => return Err(format!("chunk read failed: {}", e)),
+                        }
+                    } else if attempt == 0 {
+                        continue;
+                    } else {
+                        return Err(format!("unexpected HTTP {}", status));
+                    }
+                }
+                Err(e) if attempt == 0 => {
+                    println!("[Companion] Chunk request retry for {}: {}", range_hdr, e);
+                    continue;
+                }
+                Err(e) => return Err(format!("chunk request failed: {}", e)),
+            }
+        }
+        Err("chunk failed after retries".to_string())
+    }
+
+    /// Stream the first 256 KiB burst immediately to the HTTP caller while downloading
+    /// the remaining 1 MiB chunks in 3x parallel in the background and caching to disk.
+    pub async fn stream_progressive_or_cache(
+        &self,
+        video_id: &str,
+        prefer_m4a: bool,
+        has_range_header: bool,
+        requested_end: Option<u64>,
+    ) -> Option<ProgressiveStreamPlan> {
+        let vid = Self::extract_id(video_id);
+        let key = format!("{}:{}", vid, if prefer_m4a { "m4a" } else { "webm" });
+
+        // Coordinate with any concurrent progressive download / prefetch
+        let guard = {
+            let mut map = in_flight_downloads_map().lock().ok()?;
+            if map.contains_key(&key) {
+                return None;
+            }
+            let notify = Arc::new(tokio::sync::Notify::new());
+            map.insert(key.clone(), notify.clone());
+            InFlightGuard { key, notify }
+        };
+
+        let first_burst_end: u64 = 262_143; // 256 KiB (~13s of 160kbps Opus audio)
+        let (resolved, initial_bytes, upstream_was_200) = self
+            .fetch_companion_first_chunk(&vid, prefer_m4a, first_burst_end)
+            .await?;
+
+        let total_size = resolved.total_size;
+        let initial_len = initial_bytes.len() as u64;
+        let already_complete = upstream_was_200
+            || matches!(total_size, Some(t) if initial_len >= t && t > 0);
+
+        let target_end = match total_size {
+            Some(t) if t > 0 => requested_end.map(|e| e.min(t - 1)).unwrap_or(t - 1),
+            _ => requested_end.unwrap_or(u64::MAX),
+        };
+
+        let download_dir = self.download_dir.clone();
+        let ext = resolved.ext;
+        let content_type = resolved.content_type;
+
+        if already_complete {
+            let tmp_path = download_dir.join(format!("{}.{}.tmp", vid, ext));
+            let final_path = download_dir.join(format!("{}.{}", vid, ext));
+            if initial_bytes.len() > 10_000
+                && fs::write(&tmp_path, &initial_bytes).is_ok()
+                && fs::rename(&tmp_path, &final_path).is_ok()
+            {
+                println!(
+                    "[Progressive] Cached complete {} ({} bytes)",
+                    final_path.display(),
+                    initial_bytes.len()
+                );
+            } else {
+                let _ = fs::remove_file(&tmp_path);
+            }
+            drop(guard);
+
+            let (status_206, content_range, content_length, slice_end) =
+                Self::build_progressive_headers(
+                    has_range_header,
+                    Some(initial_bytes.len() as u64),
+                    target_end.min(initial_bytes.len().saturating_sub(1) as u64),
+                );
+            let slice = initial_bytes[..=slice_end as usize].to_vec();
+            return Some(ProgressiveStreamPlan {
+                status_206,
+                content_type,
+                total_size: Some(initial_bytes.len() as u64),
+                content_range,
+                content_length,
+                initial_bytes: slice,
+                body_rx: None,
+            });
+        }
+
+        // Fast path for small bounded probes (e.g. Safari 0-1 or 0-65535): respond immediately
+        // from initial_bytes while continuing background caching to disk!
+        let only_needs_initial = has_range_header && requested_end.is_some() && target_end < initial_len;
+
+        let (tx_opt, body_rx) = if only_needs_initial {
+            (None, None)
+        } else {
+            let (tx, rx) =
+                tokio::sync::mpsc::channel::<Result<axum::body::Bytes, std::io::Error>>(16);
+            let send_end = target_end.min(initial_len - 1) as usize;
+            let _ = tx.try_send(Ok(axum::body::Bytes::copy_from_slice(&initial_bytes[..=send_end])));
+            (Some(tx), Some(rx))
+        };
+
+        let playback_url = resolved.playback_url.clone();
+        let vid_bg = vid.clone();
+        let initial_bg = initial_bytes.clone();
+
+        tokio::spawn(async move {
+            use futures::stream::{self, StreamExt};
+
+            let _guard = guard;
+            let mut tx = tx_opt;
+            let client = companion_chunk_client();
+            let chunk_size: u64 = 1024 * 1024; // 1 MiB parallel chunks
+
+            let mut full_data = Vec::with_capacity(total_size.unwrap_or(4 * 1024 * 1024) as usize);
+            full_data.extend_from_slice(&initial_bg);
+            let mut ok = true;
+
+            if let Some(total) = total_size {
+                let mut ranges = Vec::new();
+                let mut offset = initial_bg.len() as u64;
+                while offset < total {
+                    let end = (offset + chunk_size - 1).min(total - 1);
+                    ranges.push((offset, end));
+                    offset = end + 1;
+                }
+
+                let mut chunk_stream = stream::iter(ranges)
+                    .map(|(s, e)| Self::fetch_companion_chunk_with_retry(client, &playback_url, s, e))
+                    .buffered(3);
+
+                while let Some(res) = chunk_stream.next().await {
+                    match res {
+                        Ok((chunk_start, bytes)) => {
+                            let bytes_len = bytes.len() as u64;
+                            full_data.extend_from_slice(&bytes);
+
+                            if let Some(ref sender) = tx {
+                                if chunk_start <= target_end {
+                                    let avail_end = target_end - chunk_start;
+                                    let take_len = ((avail_end + 1).min(bytes_len)) as usize;
+                                    let slice = axum::body::Bytes::copy_from_slice(&bytes[..take_len]);
+                                    if sender.send(Ok(slice)).await.is_err() {
+                                        tx = None;
+                                    } else if chunk_start + (take_len as u64) - 1 >= target_end {
+                                        tx = None;
+                                    }
+                                } else {
+                                    tx = None;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("[Progressive] Chunk error for {}: {}", vid_bg, e);
+                            if let Some(sender) = tx.take() {
+                                let _ = sender
+                                    .send(Err(std::io::Error::new(std::io::ErrorKind::Other, e)))
+                                    .await;
+                            }
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+
+                if ok && full_data.len() as u64 == total && total > 10_000 {
+                    let tmp_path = download_dir.join(format!("{}.{}.tmp", vid_bg, ext));
+                    let final_path = download_dir.join(format!("{}.{}", vid_bg, ext));
+                    if fs::write(&tmp_path, &full_data).is_ok()
+                        && fs::rename(&tmp_path, &final_path).is_ok()
+                    {
+                        println!(
+                            "[Progressive] Streamed & cached {} ({} bytes)",
+                            final_path.display(),
+                            full_data.len()
+                        );
+                    } else {
+                        let _ = fs::remove_file(&tmp_path);
+                    }
+                }
+            } else {
+                // Unknown total size: sequential continuation
+                let mut offset = initial_bg.len() as u64;
+                loop {
+                    let end = offset + chunk_size - 1;
+                    match Self::fetch_companion_chunk_with_retry(client, &playback_url, offset, end).await {
+                        Ok((_, bytes)) => {
+                            let got = bytes.len() as u64;
+                            full_data.extend_from_slice(&bytes);
+                            if let Some(ref sender) = tx {
+                                if sender.send(Ok(axum::body::Bytes::from(bytes))).await.is_err() {
+                                    tx = None;
+                                }
+                            }
+                            offset += got;
+                            if got < chunk_size {
+                                break;
+                            }
+                        }
+                        Err(_) => {
+                            ok = false;
+                            break;
+                        }
+                    }
+                }
+                if ok && full_data.len() > 10_000 {
+                    let tmp_path = download_dir.join(format!("{}.{}.tmp", vid_bg, ext));
+                    let final_path = download_dir.join(format!("{}.{}", vid_bg, ext));
+                    if fs::write(&tmp_path, &full_data).is_ok()
+                        && fs::rename(&tmp_path, &final_path).is_ok()
+                    {
+                        println!(
+                            "[Progressive] Streamed & cached {} ({} bytes)",
+                            final_path.display(),
+                            full_data.len()
+                        );
+                    } else {
+                        let _ = fs::remove_file(&tmp_path);
+                    }
+                }
+            }
+        });
+
+        let (status_206, content_range, content_length, _) =
+            Self::build_progressive_headers(has_range_header, total_size, target_end);
+
+        let initial_slice = if only_needs_initial {
+            initial_bytes[..=(target_end as usize)].to_vec()
+        } else {
+            initial_bytes
+        };
+
+        Some(ProgressiveStreamPlan {
+            status_206,
+            content_type,
+            total_size,
+            content_range,
+            content_length,
+            initial_bytes: initial_slice,
+            body_rx,
+        })
+    }
+
+    fn build_progressive_headers(
+        has_range_header: bool,
+        total_size: Option<u64>,
+        target_end: u64,
+    ) -> (bool, Option<String>, Option<u64>, u64) {
+        match total_size {
+            Some(total) if total > 0 => {
+                let clamped_end = target_end.min(total - 1);
+                let len = clamped_end + 1;
+                if has_range_header {
+                    (
+                        true,
+                        Some(format!("bytes 0-{}/{}", clamped_end, total)),
+                        Some(len),
+                        clamped_end,
+                    )
+                } else {
+                    (false, None, Some(total), total - 1)
+                }
+            }
+            _ => (false, None, None, target_end),
+        }
+    }
+
+    /// Parallel Companion downloader (`4x 1 MiB` concurrent chunks) used by
+    /// `get_stream_url`, prefetching, and `/api/download`.
     fn try_companion_download(&self, video_id: &str, prefer_m4a: bool) -> Option<String> {
         let handle = tokio::runtime::Handle::try_current().ok()?;
         let download_dir = self.download_dir.clone();
         let vid = video_id.to_string();
+        let this = self.clone();
 
         handle.block_on(async move {
-            let mut bases: Vec<String> = Vec::new();
-            if let Ok(custom) = env::var("COMPANION_URL") {
-                for u in custom.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
-                    bases.push(u.trim_end_matches('/').to_string());
-                }
-            }
-            for default_base in [
-                "http://companion:8282/companion",
-                "http://127.0.0.1:8282/companion",
-                "http://192.168.31.71:8282/companion",
-                "http://100.94.92.63:8282/companion",
-                "http://host.docker.internal:8282/companion",
-            ] {
-                if !bases.iter().any(|b| b == default_base) {
-                    bases.push(default_base.to_string());
-                }
-            }
+            use futures::stream::{self, StreamExt};
 
-            let itags: &[(&str, &str)] = if prefer_m4a {
-                &[("140", "m4a"), ("251", "webm")]
-            } else {
-                &[("251", "webm"), ("250", "webm"), ("140", "m4a")]
-            };
+            let (resolved, initial_bytes, upstream_was_200) =
+                this.fetch_companion_first_chunk(&vid, prefer_m4a, 1024 * 1024 - 1).await?;
 
-            let no_redirect_client = reqwest::Client::builder()
-                .no_proxy()
-                .redirect(reqwest::redirect::Policy::none())
-                .connect_timeout(Duration::from_millis(1500))
-                .timeout(Duration::from_secs(8))
-                .build()
-                .ok()?;
+            let ext = resolved.ext;
+            let mut data = Vec::with_capacity(resolved.total_size.unwrap_or(4 * 1024 * 1024) as usize);
+            data.extend_from_slice(&initial_bytes);
 
-            let chunk_client = reqwest::Client::builder()
-                .no_proxy()
-                .connect_timeout(Duration::from_millis(2000))
-                .timeout(Duration::from_secs(15))
-                .build()
-                .ok()?;
+            let complete = upstream_was_200
+                || matches!(resolved.total_size, Some(t) if initial_bytes.len() as u64 >= t);
 
-            for base in &bases {
-                let origin = if let Some(idx) = base.find("/companion") {
-                    &base[..idx]
-                } else {
-                    base.as_str()
-                };
-
-                for &(itag, ext) in itags {
-                    let resolve_url = format!(
-                        "{}/latest_version?id={}&itag={}&local=true",
-                        base, vid, itag
-                    );
-                    let resp = match no_redirect_client.get(&resolve_url).send().await {
-                        Ok(r) => r,
-                        Err(_) => break, // This companion base is unreachable; try next base
-                    };
-
-                    if !resp.status().is_redirection() {
-                        continue;
+            let mut ok = true;
+            if !complete {
+                let client = companion_chunk_client();
+                let chunk_size: u64 = 1024 * 1024;
+                if let Some(total) = resolved.total_size {
+                    let mut ranges = Vec::new();
+                    let mut offset = initial_bytes.len() as u64;
+                    while offset < total {
+                        let end = (offset + chunk_size - 1).min(total - 1);
+                        ranges.push((offset, end));
+                        offset = end + 1;
                     }
-
-                    let Some(loc) = resp
-                        .headers()
-                        .get(reqwest::header::LOCATION)
-                        .and_then(|v| v.to_str().ok())
-                    else {
-                        continue;
-                    };
-
-                    // Strict Stream IP-Symmetry (KV-Tube rule): if Companion returns a signed
-                    // *.googlevideo.com URL (bound to Companion's WARP egress IP), rewrite it back
-                    // through `${origin}/companion/videoplayback?...&host=<edge-host>` so stream bytes
-                    // egress through the exact same WARP IP that extracted the player response.
-                    let playback_url = if let Ok(parsed) = reqwest::Url::parse(loc) {
-                        let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
-                        if host.ends_with(".googlevideo.com") || host == "googlevideo.com" {
-                            let path = parsed.path();
-                            let target_path = if path.starts_with("/companion/") {
-                                path.to_string()
-                            } else if path == "/" || path.is_empty() {
-                                "/companion/videoplayback".to_string()
-                            } else {
-                                format!("/companion{}", path)
-                            };
-                            let query = parsed.query().unwrap_or_default();
-                            let has_host_param = query.split('&').any(|kv| kv.starts_with("host="));
-                            let joined_query = if has_host_param || query.is_empty() {
-                                if query.is_empty() {
-                                    format!("host={}", urlencoding::encode(&host))
-                                } else {
-                                    query.to_string()
-                                }
-                            } else {
-                                format!("{}&host={}", query, urlencoding::encode(&host))
-                            };
-                            format!("{}{}?{}", origin, target_path, joined_query)
-                        } else {
-                            loc.to_string()
-                        }
-                    } else if loc.starts_with('/') {
-                        format!("{}{}", origin, loc)
-                    } else {
-                        format!("{}/{}", base, loc)
-                    };
-
-                    let chunk_size: u64 = 2 * 1024 * 1024; // 2 MiB
-                    let mut offset: u64 = 0;
-                    let mut total_size: Option<u64> = None;
-                    let mut data: Vec<u8> = Vec::new();
-                    let mut ok = true;
-
-                    loop {
-                        let end = match total_size {
-                            Some(t) if t > 0 => (offset + chunk_size - 1).min(t - 1),
-                            _ => offset + chunk_size - 1,
-                        };
-                        let range_hdr = format!("bytes={}-{}", offset, end);
-                        let chunk_resp = match chunk_client
-                            .get(&playback_url)
-                            .header(reqwest::header::RANGE, &range_hdr)
-                            .send()
-                            .await
-                        {
-                            Ok(r) => r,
+                    let mut chunk_stream = stream::iter(ranges)
+                        .map(|(s, e)| {
+                            Self::fetch_companion_chunk_with_retry(client, &resolved.playback_url, s, e)
+                        })
+                        .buffered(4);
+                    while let Some(res) = chunk_stream.next().await {
+                        match res {
+                            Ok((_, bytes)) => data.extend_from_slice(&bytes),
                             Err(e) => {
-                                println!("[Companion] Chunk request error for {}: {}", vid, e);
+                                println!("[Companion] Parallel chunk failed for {}: {}", vid, e);
                                 ok = false;
                                 break;
                             }
-                        };
-
-                        let status = chunk_resp.status();
-                        if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
-                            println!("[Companion] Unexpected HTTP {} for {}", status, vid);
-                            ok = false;
-                            break;
                         }
-
-                        if total_size.is_none() {
-                            if let Some(cr) = chunk_resp
-                                .headers()
-                                .get(reqwest::header::CONTENT_RANGE)
-                                .and_then(|v| v.to_str().ok())
-                            {
-                                // Format: "bytes 0-2097151/6507225"
-                                if let Some(slash_part) = cr.rsplit('/').next() {
-                                    if let Ok(parsed_total) = slash_part.trim().parse::<u64>() {
-                                        total_size = Some(parsed_total);
-                                        data.reserve(parsed_total as usize);
-                                    }
+                    }
+                } else {
+                    let mut offset = initial_bytes.len() as u64;
+                    loop {
+                        let end = offset + chunk_size - 1;
+                        match Self::fetch_companion_chunk_with_retry(
+                            client,
+                            &resolved.playback_url,
+                            offset,
+                            end,
+                        )
+                        .await
+                        {
+                            Ok((_, bytes)) => {
+                                let got = bytes.len() as u64;
+                                data.extend_from_slice(&bytes);
+                                offset += got;
+                                if got < chunk_size {
+                                    break;
                                 }
                             }
-                        }
-
-                        let bytes = match chunk_resp.bytes().await {
-                            Ok(b) => b,
                             Err(_) => {
                                 ok = false;
                                 break;
                             }
-                        };
-
-                        if bytes.is_empty() {
-                            break;
                         }
-
-                        offset += bytes.len() as u64;
-                        data.extend_from_slice(&bytes);
-
-                        if status == reqwest::StatusCode::OK {
-                            break;
-                        }
-                        if let Some(t) = total_size {
-                            if offset >= t {
-                                break;
-                            }
-                        } else if (bytes.len() as u64) < chunk_size {
-                            break;
-                        }
-                    }
-
-                    if ok && data.len() > 10_000 {
-                        let tmp_path = download_dir.join(format!("{}.{}.tmp", vid, ext));
-                        let final_path = download_dir.join(format!("{}.{}", vid, ext));
-                        if fs::write(&tmp_path, &data).is_ok() && fs::rename(&tmp_path, &final_path).is_ok() {
-                            println!(
-                                "[Companion] Downloaded {} ({} bytes, itag={}) via {}",
-                                final_path.display(),
-                                data.len(),
-                                itag,
-                                base
-                            );
-                            return Some(final_path.to_string_lossy().into_owned());
-                        }
-                        let _ = fs::remove_file(&tmp_path);
                     }
                 }
+            }
+
+            if ok && data.len() > 10_000 {
+                let tmp_path = download_dir.join(format!("{}.{}.tmp", vid, ext));
+                let final_path = download_dir.join(format!("{}.{}", vid, ext));
+                if fs::write(&tmp_path, &data).is_ok() && fs::rename(&tmp_path, &final_path).is_ok() {
+                    println!(
+                        "[Companion] Parallel downloaded {} ({} bytes)",
+                        final_path.display(),
+                        data.len()
+                    );
+                    return Some(final_path.to_string_lossy().into_owned());
+                }
+                let _ = fs::remove_file(&tmp_path);
             }
             None
         })
@@ -1720,11 +2692,8 @@ impl SpotdlService {
 
     /// Fetch (or return cached) audio for a video.
     ///
-    /// `prefer_m4a`: when true, download AAC-in-MP4 (needed by Safari, which
-    /// cannot play WebM/Opus). When false (default), download WebM/Opus - an
-    /// open codec that plays in Chrome/Firefox/Edge and codec-restricted
-    /// clients such as VS Code's embedded webview, which ships without an
-    /// AAC/MP3 decoder.
+    /// Checks disk cache -> Companion 4x parallel download (~1-3s, no subprocess) ->
+    /// `yt-dlp --concurrent-fragments 4` fallback.
     pub fn get_stream_url(&self, video_url: &str, prefer_m4a: bool) -> Result<String, String> {
         let target_url = if video_url.starts_with("http") {
             video_url.to_string()
@@ -1734,6 +2703,11 @@ impl SpotdlService {
         
         let video_id = Self::extract_id(&target_url);
         let ext = if prefer_m4a { "m4a" } else { "webm" };
+
+        // Fast lock-free disk hit check before acquiring per-video mutex
+        if let Some(cached) = self.find_downloaded_audio(&video_id, ext, !prefer_m4a) {
+            return Ok(cached);
+        }
 
         // Per-video lock so concurrent range/probe requests wait for the active download
         let video_lock = {
@@ -1748,6 +2722,11 @@ impl SpotdlService {
             return Ok(cached);
         }
 
+        // Fast path: Invidious Companion 4x parallel Range downloader (~1-3s, zero yt-dlp spawn)
+        if let Some(companion_file) = self.try_companion_download(&video_id, prefer_m4a) {
+            return Ok(companion_file);
+        }
+
         let output_pattern = format!("{}.%(ext)s", video_id);
         let format_selector = if prefer_m4a {
             "bestaudio[ext=m4a]/bestaudio[acodec=aac]/bestaudio/best"
@@ -1756,6 +2735,7 @@ impl SpotdlService {
         };
         let output_args = vec![
             "-f", format_selector,
+            "--concurrent-fragments", "4",
             "--output", &output_pattern,
             &target_url,
         ];
@@ -1995,6 +2975,11 @@ impl SpotdlService {
             }
         }
 
+        // Fast path: direct InnerTube artist search (~350-600ms, zero subprocess)
+        if let Some(photo) = self.fetch_innertube_artist_photo(query).await {
+            return Ok(photo);
+        }
+
         let path = Self::yt_dlp_path();
         let search_query = format!("ytsearch5:{} artist", query);
         
@@ -2095,6 +3080,18 @@ impl SpotdlService {
         seed_type: &str,
         limit: usize,
     ) -> Result<crate::api::Recommendations, String> {
+        let cache_key = format!("{}:{}:{}", seed.trim().to_lowercase(), seed_type, limit);
+        {
+            let cache = self.recommendations_cache.read().await;
+            if let Some((ts, rec)) = cache.get(&cache_key) {
+                if ts.elapsed() < Duration::from_secs(1800) {
+                    println!("[Recommendations] Cache Hit: {}", cache_key);
+                    self.prefetch_top_tracks(&rec.tracks, 2);
+                    return Ok(rec.clone());
+                }
+            }
+        }
+
         // Generate recommendations based on seed type
         let mut tracks = Vec::new();
         let mut albums = Vec::new();
@@ -2235,7 +3232,8 @@ impl SpotdlService {
             }
         }
 
-        // Fetch real artist photos concurrently
+        // Fetch real artist photos concurrently (cap to top 5 for speed)
+        unique_artist_names.truncate(5);
         let photo_results = join_all(
             unique_artist_names.iter().map(|name| self.search_artist(name))
         ).await;
@@ -2249,11 +3247,21 @@ impl SpotdlService {
             });
         }
 
-        Ok(crate::api::Recommendations {
+        let rec = crate::api::Recommendations {
             tracks,
             albums,
             playlists,
             artists,
-        })
+        };
+        self.prefetch_top_tracks(&rec.tracks, 2);
+        if !rec.tracks.is_empty() || !rec.artists.is_empty() {
+            let mut cache = self.recommendations_cache.write().await;
+            if cache.len() > 300 {
+                cache.clear();
+            }
+            cache.insert(cache_key, (Instant::now(), rec.clone()));
+        }
+
+        Ok(rec)
     }
 }

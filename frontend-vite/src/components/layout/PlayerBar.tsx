@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useKeyboardShortcuts } from '../../hooks/useKeyboardShortcuts';
-import { libraryService } from '../../services/library';
+import { libraryService, prefetchTrack } from '../../services/library';
 import { toast } from '../../stores/toastStore';
 import { haptic } from '../../utils/haptic';
 import type { Track } from '../../types';
@@ -394,6 +394,8 @@ export default function PlayerBar() {
                             key={`${track.id}-${idx}`}
                             type="button"
                             onClick={() => playTrack(track, queueTracks)}
+                            onMouseEnter={() => prefetchTrack(track.id)}
+                            onPointerDown={() => prefetchTrack(track.id)}
                             className={`w-full h-14 px-2 rounded-[8px] flex items-center gap-3 text-left group transition-colors border-b border-white/[0.06] last:border-b-0 ${
                               isCurrent ? 'bg-white/10' : 'hover:bg-white/[0.06]'
                             }`}
@@ -865,6 +867,8 @@ function RelatedTracksPanel({
             key={`${item.id}-${idx}`}
             type="button"
             onClick={() => onPlay(item, tracks)}
+            onMouseEnter={() => prefetchTrack(item.id)}
+            onPointerDown={() => prefetchTrack(item.id)}
             className="w-full h-14 px-2 rounded-[8px] flex items-center gap-3 text-left group hover:bg-white/[0.06] transition-colors border-b border-white/[0.06] last:border-b-0"
           >
             <div className="relative w-12 h-12 rounded-[4px] overflow-hidden flex-shrink-0 bg-[#181818]">
