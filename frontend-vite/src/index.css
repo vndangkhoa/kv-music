@@ -3,478 +3,489 @@
 @tailwind utilities;
 
 :root {
-    /* ── SoundCloud dark theme ── */
-    --background: #111111;
-    --foreground: #FFFFFF;
+  color-scheme: dark;
+  accent-color: #FF0033;
 
-    --sc-base: #111111;
-    --sc-surface: #222222;
-    --sc-card: #2a2a2a;
-    --sc-card-hover: #333333;
-    --sc-orange: #ff5500;
-    --sc-orange-2: #ff7a00;
-    --sc-border: rgba(255, 255, 255, 0.1);
-    --sc-text-main: #FFFFFF;
-    --sc-text-muted: #999999;
-    --sc-text-faint: #666666;
+  /* ── YouTube Music Web Design Tokens ── */
+  --ytmusic-background: #030303;
+  --ytmusic-nav-bar: #030303;
+  --ytmusic-player-bar: #212121;
+  --ytmusic-surface: #181818;
+  --ytmusic-surface-elevated: #212121;
+  --ytmusic-chip-bg: rgba(255, 255, 255, 0.1);
+  --ytmusic-chip-hover: rgba(255, 255, 255, 0.16);
+  --ytmusic-divider: rgba(255, 255, 255, 0.1);
+  --ytmusic-text-primary: #FFFFFF;
+  --ytmusic-text-secondary: rgba(255, 255, 255, 0.7);
+  --ytmusic-text-disabled: rgba(255, 255, 255, 0.5);
+  --ytmusic-red: #FF0033;
+  --ytmusic-progress-gradient: linear-gradient(to right, #FF0033 0%, #FF2791 100%);
+  --ytmusic-subscribe-pink: #FF5577;
+  --ytmusic-call-to-action: #3EA6FF;
 
-    --spotify-base: #111111;
-    --spotify-sidebar: #222222;
-    --spotify-player: #222222;
-    --spotify-highlight: #ff5500;
-    --spotify-hover: rgba(255, 85, 0, 0.14);
-    --spotify-text-main: #FFFFFF;
-    --spotify-text-muted: #999999;
-    --spotify-card: #2a2a2a;
-    --spotify-card-hover: #333333;
+  --ytmusic-nav-bar-height: 64px;
+  --ytmusic-player-bar-height: 72px;
+  --ytmusic-guide-width: 240px;
 
-    --nct-orange: #ff5500;
-    --nct-teal: #ff8f1f;
-    --nct-blue: #ff7a00;
-    --nct-gold: #ff9f43;
-    --nct-purple: #ff7a00;
-    --nct-dark-card: #2a2a2a;
-    --nct-dark-card-hover: #3a3a3a;
+  --ytmusic-font-sans: 'Roboto', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  --ytmusic-font-display: 'YouTube Sans', 'YT Sans', 'Roboto', -apple-system, BlinkMacSystemFont, sans-serif;
+  --ytmusic-font-mono: 'Roboto Mono', ui-monospace, SFMono-Regular, monospace;
 
-    --font-family: 'Inter', 'Roboto', 'Noto Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --ytm-scrollbar-thumb: rgba(255, 255, 255, 0.2);
+  --ytm-scrollbar-track: transparent;
+  scrollbar-color: var(--ytm-scrollbar-thumb) var(--ytm-scrollbar-track);
+
+  /* ── Backward-compatible surface & token aliases ── */
+  --background: #030303;
+  --foreground: #FFFFFF;
+  --font-family: var(--ytmusic-font-sans);
+
+  --sc-base: #030303;
+  --sc-surface: #181818;
+  --sc-card: #212121;
+  --sc-card-hover: #282828;
+  --sc-orange: #FF0033;
+  --sc-orange-2: #FF2791;
+  --sc-border: rgba(255, 255, 255, 0.1);
+  --sc-text-main: #FFFFFF;
+  --sc-text-muted: rgba(255, 255, 255, 0.7);
+  --sc-text-faint: rgba(255, 255, 255, 0.5);
+
+  --spotify-base: #030303;
+  --spotify-sidebar: #030303;
+  --spotify-player: #212121;
+  --spotify-highlight: #FF0033;
+  --spotify-hover: rgba(255, 255, 255, 0.1);
+  --spotify-text-main: #FFFFFF;
+  --spotify-text-muted: rgba(255, 255, 255, 0.7);
+  --spotify-text-subdued: rgba(255, 255, 255, 0.5);
+  --spotify-card: #181818;
+  --spotify-card-hover: #212121;
+
+  --nct-orange: #FF0033;
+  --nct-teal: #3EA6FF;
+  --nct-blue: #3EA6FF;
+  --nct-gold: #FBC02D;
+  --nct-purple: #B47BFF;
+  --nct-dark-card: #181818;
+  --nct-dark-card-hover: #212121;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  html,
+  body {
+    background-color: var(--ytmusic-background);
+    color: var(--ytmusic-text-primary);
+    font-family: var(--ytmusic-font-sans);
+    overscroll-behavior-y: none;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+/* Standard subtle dark scrollbars with legacy WebKit fallback */
+.ytm-scroller {
+  scrollbar-color: var(--ytm-scrollbar-thumb) var(--ytm-scrollbar-track);
+  scrollbar-width: thin;
+}
+
+@supports not (scrollbar-color: auto) {
+  :root,
+  .ytm-scroller {
+    scrollbar-width: auto;
+  }
+
+  :root::-webkit-scrollbar,
+  .ytm-scroller::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  :root::-webkit-scrollbar-thumb,
+  .ytm-scroller::-webkit-scrollbar-thumb {
+    background: var(--ytm-scrollbar-thumb);
+    border-radius: 9999px;
+  }
+
+  :root::-webkit-scrollbar-track,
+  .ytm-scroller::-webkit-scrollbar-track {
+    background: var(--ytm-scrollbar-track);
+  }
+}
+
+/* Horizontal scroll-snap carousel track */
+.ytm-carousel-track {
+  display: flex;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  touch-action: manipulation;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.ytm-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ytm-carousel-track {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Cross-browser YTM range slider (volume / progress) */
+.ytm-range {
+  --slider-track-size: 3px;
+  --slider-thumb-size: 12px;
+  --slider-track-radius: 9999px;
+  --slider-thumb-radius: 50%;
+  --slider-track-color: rgba(255, 255, 255, 0.2);
+  --slider-fill-color: #FFFFFF;
+  --slider-thumb-color: #FFFFFF;
+  --slider-progress: 0%;
+
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.ytm-range::-webkit-slider-runnable-track {
+  height: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: linear-gradient(
+    to right,
+    var(--slider-fill-color) var(--slider-progress),
+    var(--slider-track-color) var(--slider-progress)
+  );
+}
+
+.ytm-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  margin-block-start: calc((var(--slider-track-size) - var(--slider-thumb-size)) / 2);
+  border: 0;
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  transition: transform 0.12s ease;
+}
+
+.ytm-range:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+.ytm-range::-moz-range-track {
+  height: var(--slider-track-size);
+  border: 0;
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-track-color);
+}
+
+.ytm-range::-moz-range-progress {
+  height: var(--slider-track-size);
+  border-radius: var(--slider-track-radius);
+  background: var(--slider-fill-color);
+}
+
+.ytm-range::-moz-range-thumb {
+  width: var(--slider-thumb-size);
+  height: var(--slider-thumb-size);
+  border: 0;
+  border-radius: var(--slider-thumb-radius);
+  background: var(--slider-thumb-color);
+  transition: transform 0.12s ease;
+}
+
+.ytm-range:active::-moz-range-thumb {
+  transform: scale(1.2);
+}
+
+.ytm-range:focus-visible {
+  outline: 2px solid #FFFFFF;
+  outline-offset: 2px;
 }
 
 @layer utilities {
-    .no-scrollbar::-webkit-scrollbar {
-        display: none;
-    }
-
-    .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-    }
-
-    .pb-safe {
-        padding-bottom: env(safe-area-inset-bottom, 0px);
-    }
-
-    .line-clamp-2 {
-        display: -webkit-box;
-        -webkit-line-clamp: 2;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-
-    .line-clamp-3 {
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        -webkit-box-orient: vertical;
-        overflow: hidden;
-    }
-}
-
-* {
-    box-sizing: border-box;
-    margin: 0;
-    padding: 0;
-}
-
-html,
-body,
-#root {
-    height: 100%;
-    width: 100%;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-}
-
-html::-webkit-scrollbar,
-body::-webkit-scrollbar,
-#root::-webkit-scrollbar {
+  .no-scrollbar::-webkit-scrollbar {
     display: none;
-}
+  }
 
-*::-webkit-scrollbar {
-    display: none;
-}
-
-* {
-    scrollbar-width: none;
+  .no-scrollbar {
     -ms-overflow-style: none;
-}
+    scrollbar-width: none;
+  }
 
-body {
-    background: var(--spotify-base);
-    color: var(--spotify-text-main);
-    font-family: var(--font-family);
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-}
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
 
-/* Kill native pull-to-refresh / overscroll bounce on mobile so the app's
-   own pull-to-refresh (static layout) is the only refresh gesture. */
-html,
-body {
-    overscroll-behavior-y: none;
+  .ytm-display-font {
+    font-family: var(--ytmusic-font-display);
+  }
+
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 }
 
 /* Soundwave Logo Animations */
 @keyframes soundwave-1 {
-
-    0%,
-    100% {
-        height: 12px;
-    }
-
-    50% {
-        height: 8px;
-    }
+  0%, 100% { height: 12px; }
+  50% { height: 8px; }
 }
 
 @keyframes soundwave-2 {
-
-    0%,
-    100% {
-        height: 20px;
-    }
-
-    50% {
-        height: 10px;
-    }
+  0%, 100% { height: 20px; }
+  50% { height: 10px; }
 }
 
 @keyframes soundwave-3 {
-
-    0%,
-    100% {
-        height: 16px;
-    }
-
-    50% {
-        height: 6px;
-    }
+  0%, 100% { height: 16px; }
+  50% { height: 6px; }
 }
 
 @keyframes soundwave-4 {
-
-    0%,
-    100% {
-        height: 8px;
-    }
-
-    50% {
-        height: 14px;
-    }
+  0%, 100% { height: 8px; }
+  50% { height: 14px; }
 }
 
-.animate-soundwave-1 {
-    animation: soundwave-1 0.8s ease-in-out infinite;
-}
+.animate-soundwave-1 { animation: soundwave-1 0.8s ease-in-out infinite; }
+.animate-soundwave-2 { animation: soundwave-2 0.6s ease-in-out infinite; }
+.animate-soundwave-3 { animation: soundwave-3 0.7s ease-in-out infinite; }
+.animate-soundwave-4 { animation: soundwave-4 0.9s ease-in-out infinite; }
 
-.animate-soundwave-2 {
-    animation: soundwave-2 0.6s ease-in-out infinite;
-}
-
-.animate-soundwave-3 {
-    animation: soundwave-3 0.7s ease-in-out infinite;
-}
-
-.animate-soundwave-4 {
-    animation: soundwave-4 0.9s ease-in-out infinite;
-}
-
-/* Fade-in Animation */
+/* Transitions & Motion */
 @keyframes fadeIn {
-    from {
-        opacity: 0;
-        transform: translateY(10px);
-    }
-
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .animate-in {
-    animation: fadeIn 0.5s ease-out forwards;
+  animation: fadeIn 0.3s ease-out forwards;
 }
 
-/* Fade-in from bottom */
 @keyframes slideInBottom {
-    from {
-        transform: translateY(100%);
-        opacity: 0;
-    }
-
-    to {
-        transform: translateY(0);
-        opacity: 1;
-    }
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 .slide-in-from-bottom {
-    animation: slideInBottom 0.3s ease-out forwards;
+  animation: slideInBottom 0.3s ease-out forwards;
 }
 
-/* Slide in from right */
 @keyframes slideInRight {
-    from {
-        transform: translateX(100%);
-        opacity: 0;
-    }
-    to {
-        transform: translateX(0);
-        opacity: 1;
-    }
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 .slide-in-from-right {
-    animation: slideInRight 0.3s ease-out forwards;
+  animation: slideInRight 0.3s ease-out forwards;
 }
 
-/* Pulse animation for loading */
 @keyframes pulse {
-
-    0%,
-    100% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.5;
-    }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 
 .animate-pulse {
-    animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-/* Spin animation */
 @keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .animate-spin {
-    animation: spin 1s linear infinite;
+  animation: spin 1s linear infinite;
 }
 
-/* Custom Range Slider */
-input[type="range"] {
-    -webkit-appearance: none;
-    appearance: none;
-    background: transparent;
-    cursor: pointer;
+.fill-mode-backwards {
+  animation-fill-mode: backwards;
 }
 
-input[type="range"]::-webkit-slider-runnable-track {
-    height: 4px;
-    background: #4d4d4d;
-    border-radius: 4px;
+/* Focus indicators */
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid #FFFFFF;
+  outline-offset: 2px;
 }
 
-input[type="range"]::-webkit-slider-thumb {
-    -webkit-appearance: none;
-    appearance: none;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #fff;
-    margin-top: -4px;
-    opacity: 1;
-    /* Always visible */
-    transition: transform 0.1s;
-}
-
-input[type="range"]:active::-webkit-slider-thumb {
-    transform: scale(1.2);
-}
-
-input[type="range"]::-moz-range-thumb {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: #fff;
-    border: none;
-    opacity: 1;
-    /* Always visible */
-    transition: transform 0.1s;
-}
-
-input[type="range"]:active::-moz-range-thumb {
-    transform: scale(1.2);
-}
-
-/* Accent colors on hover */
-input[type="range"].accent-green::-webkit-slider-thumb {
-    background: var(--spotify-highlight);
-}
-
-input[type="range"].accent-green::-moz-range-thumb {
-    background: var(--spotify-highlight);
-}
-
-/* Backdrop blur for modals */
-.backdrop-blur-sm {
-    backdrop-filter: blur(4px);
-    -webkit-backdrop-filter: blur(4px);
-}
-
-/* Typography */
+/* Backward-compatible utility aliases mapped to YTM palette */
 .text-spotify-text-muted {
-    color: var(--spotify-text-muted);
+  color: var(--ytmusic-text-secondary);
 }
 
 .text-spotify-text-subdued {
-    color: var(--spotify-text-subdued);
+  color: var(--ytmusic-text-disabled);
 }
 
-/* Background Colors */
 .bg-spotify-base {
-    background-color: var(--spotify-base);
+  background-color: var(--ytmusic-background);
 }
 
 .bg-spotify-card {
-    background-color: var(--spotify-card);
+  background-color: var(--ytmusic-surface);
 }
 
 .bg-spotify-card-hover {
-    background-color: var(--spotify-card-hover);
+  background-color: var(--ytmusic-surface-elevated);
 }
 
-/* Smooth transitions for all interactive elements */
-button,
-a,
-.transition {
-    transition: all 0.2s ease-in-out;
-}
-
-/* Staggered animation utility */
-.fill-mode-backwards {
-    animation-fill-mode: backwards;
-}
-
-/* Focus styles */
-button:focus-visible,
-a:focus-visible {
-    outline: 2px solid var(--spotify-highlight);
-    outline-offset: 2px;
-}
-
-/* ── SoundCloud-style shared utilities ────────────────────────────────────── */
-
-/* Standard surface panel */
 .sc-surface {
-    background-color: var(--sc-card);
-    border: 1px solid var(--sc-border);
+  background-color: var(--ytmusic-surface);
+  border: 1px solid var(--ytmusic-divider);
 }
 
-/* Segment control (SC filter pills) */
 .sc-segment {
-    background-color: var(--sc-card);
-    border: 1px solid var(--sc-border);
-    border-radius: 999px;
-    padding: 3px;
+  background-color: var(--ytmusic-surface);
+  border: 1px solid var(--ytmusic-divider);
+  border-radius: 999px;
+  padding: 3px;
 }
 
 .sc-segment-active {
-    background: var(--sc-orange);
-    color: #fff;
-    border-radius: 999px;
-    box-shadow: 0 2px 8px rgba(255, 85, 0, 0.4);
+  background: #FFFFFF;
+  color: #030303;
+  border-radius: 999px;
 }
 
-/* Large page title */
 .sc-page-title {
-    font-weight: 800;
-    letter-spacing: -0.02em;
-    line-height: 1.15;
+  font-family: var(--ytmusic-font-display);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
-/* Section header (title + "see more") */
 .sc-section-header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 14px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
 
 .sc-section-header h2 {
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: -0.015em;
-    color: #fff;
+  font-family: var(--ytmusic-font-display);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  color: #FFFFFF;
 }
 
 .sc-section-header a {
-    font-size: 12px;
-    font-weight: 600;
-    color: rgba(255, 255, 255, 0.5);
-    flex-shrink: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ytmusic-text-secondary);
+  flex-shrink: 0;
 }
 
 .sc-section-header a:hover {
-    color: #fff;
+  color: #FFFFFF;
 }
 
-/* Bottom sheet surface */
 .sc-sheet {
-    background-color: #222222;
-    border: 1px solid var(--sc-border);
-    border-bottom: none;
-    box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.5);
+  background-color: var(--ytmusic-surface-elevated);
+  border: 1px solid var(--ytmusic-divider);
+  border-bottom: none;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.65);
 }
 
-/* Fullscreen overlays (lyrics) */
 .sc-overlay {
-    background-color: rgba(17, 17, 17, 0.96);
+  background-color: rgba(3, 3, 3, 0.96);
 }
 
-/* Small circle icon buttons */
 .sc-icon-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    background-color: rgba(255, 255, 255, 0.06);
-    border: 1px solid var(--sc-border);
-    border-radius: 999px;
-    transition: background-color 0.15s ease, transform 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--ytmusic-chip-bg);
+  border: 1px solid var(--ytmusic-divider);
+  border-radius: 999px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
 .sc-icon-btn:hover {
-    background-color: rgba(255, 255, 255, 0.12);
+  background-color: var(--ytmusic-chip-hover);
 }
 
 .sc-icon-btn:active {
-    background-color: rgba(255, 255, 255, 0.16);
-    transform: scale(0.92);
+  background-color: rgba(255, 255, 255, 0.22);
+  transform: scale(0.94);
 }
 
-/* Primary action (SC orange) */
 .sc-btn-primary {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    background: var(--sc-orange);
-    color: #fff;
-    font-weight: 700;
-    border-radius: 999px;
-    transition: background-color 0.15s ease, transform 0.1s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #FFFFFF;
+  color: #030303;
+  font-weight: 500;
+  border-radius: 999px;
+  transition: background-color 0.15s ease, transform 0.1s ease;
 }
 
 .sc-btn-primary:hover {
-    background: var(--sc-orange-2);
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .sc-btn-primary:active {
-    transform: scale(0.96);
+  transform: scale(0.96);
 }
 
-/* Orange text selection */
 ::selection {
-    background: var(--sc-orange);
-    color: #fff;
+  background: rgba(255, 0, 51, 0.35);
+  color: #FFFFFF;
 }

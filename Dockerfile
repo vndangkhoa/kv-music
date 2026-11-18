@@ -32,9 +32,13 @@ RUN apt-get update && apt-get install --no-install-recommends -y \
     ffmpeg \
     ca-certificates \
     curl \
+    unzip \
     gnupg \
     libssl3 \
     zlib1g \
+    && ARCH="$(uname -m)" \
+    && case "$ARCH" in x86_64) USQUE_ARCH="amd64" ;; aarch64|arm64) USQUE_ARCH="arm64" ;; *) USQUE_ARCH="amd64" ;; esac \
+    && (curl -fsSL "https://github.com/Diniboy1123/usque/releases/download/v4.2.1/usque_4.2.1_linux_${USQUE_ARCH}.zip" -o /tmp/usque.zip && unzip -o /tmp/usque.zip usque -d /usr/local/bin && chmod 0755 /usr/local/bin/usque && rm -f /tmp/usque.zip || true) \
     && curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
     && apt-get install --no-install-recommends -y nodejs \
     && rm -rf /usr/lib/node_modules/npm /usr/local/lib/node_modules/npm /root/.npm /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -71,5 +75,6 @@ EXPOSE 8080
 USER 0
 
 # Update yt-dlp to the latest nightly binary on every container start
-# (nightly has the newest YouTube anti-bot workarounds, e.g. PO tokens)
-CMD ["sh", "-c", "echo 'Starting KV Music...' && (curl -fsSL https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -o /opt/venv/bin/yt-dlp && chmod +x /opt/venv/bin/yt-dlp || true) && yt-dlp --version && echo 'yt-dlp ready.' && /app/server 2>&1"]
+# and start the built-in Cloudflare WARP MASQUE proxy (unless ENABLE_WARP=0
+# or the compose `warp` sidecar is already serving 127.0.0.1:29083).
+CMD ["sh", "-c", "echo 'Starting KV Music...' && (if [ \"${ENABLE_WARP:-1}\" != \"0\" ] && [ -x /usr/local/bin/usque ] && ! curl -fsS -m 1 http://127.0.0.1:29083 >/dev/null 2>&1; then [ -s /app/data/warp-config.json ] || /usr/local/bin/usque register --accept-tos -c /app/data/warp-config.json || true; if [ -s /app/data/warp-config.json ]; then chmod 0600 /app/data/warp-config.json; /usr/local/bin/usque -c /app/data/warp-config.json http-proxy --always-reconnect -b 127.0.0.1 -p 29083 -d 1.1.1.1 -d 2606:4700:4700::1111 >/tmp/usque.log 2>&1 & sleep 2; fi; fi) && (curl -fsSL https://github.com/yt-dlp/yt-dlp-nightly-builds/releases/latest/download/yt-dlp -o /opt/venv/bin/yt-dlp && chmod +x /opt/venv/bin/yt-dlp || true) && yt-dlp --version && echo 'yt-dlp ready.' && /app/server 2>&1"]

@@ -1,10 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- SoundCloud Signature Colors -->
-    <color name="soundcloud_orange">#FF5500</color>
-    <color name="soundcloud_orange_dark">#D84300</color>
-    <color name="soundcloud_black">#0A0A0A</color>
-    <color name="soundcloud_dark_gray">#121212</color>
-    <color name="soundcloud_surface">#1E1E1E</color>
-    <color name="soundcloud_text_primary">#FFFFFF</color>
-    <color name="soundcloud_text_secondary">#999999</color>
+    <!-- YouTube Music 9.46.51 Color Tokens -->
+    <color name="ytm_black">#000000</color>
+    <color name="ytm_black_4">#030303</color>
+    <color name="ytm_grey_13">#131313</color>
+    <color name="ytm_grey_12">#1D1D1D</color>
+    <color name="ytm_grey_11">#232323</color>
+    <color name="ytm_grey_10">#282828</color>
+    <color name="ytm_red_accent">#FF0034</color>
+    <color name="ytm_white">#FFFFFE</color>
+    <color name="ytm_white_67">#AAFFFFFF</color>
 </resources>

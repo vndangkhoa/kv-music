@@ -1,19 +1,24 @@
 import { Link } from 'react-router-dom';
-import { Music, Disc3, Users, Heart, Clock, Play, Trash2, CheckCircle2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { ThumbsUp, Plus, Trash2, Play, Disc3, Users, Clock, Music } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
 import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
-import CoverImage from '../components/CoverImage';
+import TrackRow, { YtmMediaCard, YtmDropdown, type YtmDropdownOption } from '../components/TrackRow';
 import ArtistAvatar from '../components/ArtistAvatar';
-import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
-import SoundCloudSidebar from '../components/SoundCloudSidebar';
 import Skeleton from '../components/Skeleton';
 import { usePagedList } from '../hooks/usePagedList';
 import { dbService } from '../services/db';
-import { getArtistCoverUrl } from '../services/library';
+import { libraryService } from '../services/library';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
+import { toast } from '../stores/toastStore';
 
-type LibraryFilter = 'all' | 'liked' | 'playlists' | 'albums' | 'artists' | 'recent';
+type LibraryTabKey = 'all' | 'playlists' | 'liked' | 'albums' | 'artists' | 'recent';
+type SortOrder = 'recent' | 'az';
+
+const SORT_OPTIONS: YtmDropdownOption<SortOrder>[] = [
+    { value: 'recent', label: 'Recently added' },
+    { value: 'az', label: 'A–Z' },
+];
 
 export default function Library() {
     const userPlaylists = useLibraryStore(s => s.userPlaylists);
@@ -28,9 +33,18 @@ export default function Library() {
     const likedTracksData = usePlayerStore(s => s.likedTracksData);
     const playHistory = usePlayerStore(s => s.playHistory);
     const playTrack = usePlayerStore(s => s.playTrack);
-
     const startAutoSync = useLibraryStore(s => s.startAutoSync);
-    const isSyncing = useLibraryStore(s => s.isSyncing);
+
+    const [localTab, setLocalTab] = useState<LibraryTabKey>(activeFilter || 'all');
+    const [sortBy, setSortBy] = useState<SortOrder>('recent');
+    const [showNewPlaylist, setShowNewPlaylist] = useState(false);
+    const [newPlaylistName, setNewPlaylistName] = useState('');
+
+    useEffect(() => {
+        if (activeFilter && localTab !== 'recent') {
+            setLocalTab(activeFilter);
+        }
+    }, [activeFilter]);
 
     const { containerRef, pullProps, indicator } = usePullToRefresh(refreshLibrary);
 
@@ -43,291 +57,503 @@ export default function Library() {
         return () => stopSync();
     }, []);
 
+    const handleTabChange = (key: LibraryTabKey) => {
+        setLocalTab(key);
+        if (key !== 'recent') {
+            setActiveFilter(key);
+        }
+    };
+
     const handleDeletePlaylist = async (e: React.MouseEvent, id: string) => {
         e.preventDefault();
         e.stopPropagation();
         if (confirm('Delete this playlist from your library?')) {
             await dbService.deletePlaylist(id);
-            refreshLibrary();
+            await refreshLibrary();
+            toast('Playlist deleted');
         }
     };
 
-    const tabs: { key: LibraryFilter; label: string; icon: typeof Music; count: number }[] = [
-        { key: 'all', label: 'Overview', icon: Music, count: userPlaylists.length + savedAlbums.length + followedArtists.length + likedTracksData.length },
-        { key: 'liked', label: 'Likes', icon: Heart, count: likedTracksData.length },
-        { key: 'playlists', label: 'Playlists', icon: Music, count: userPlaylists.length },
-        { key: 'albums', label: 'Albums', icon: Disc3, count: savedAlbums.length },
-        { key: 'artists', label: 'Following', icon: Users, count: followedArtists.length },
-        { key: 'recent', label: 'History', icon: Clock, count: playHistory.length },
-    ];
-
-    const filter = activeFilter as LibraryFilter;
-    const showPlaylists = filter === 'all' || filter === 'playlists';
-    const showLiked = filter === 'all' || filter === 'liked';
-    const showAlbums = filter === 'all' || filter === 'albums';
-    const showArtists = filter === 'all' || filter === 'artists';
-    const showRecent = filter === 'all' || filter === 'recent';
-
-    const playAllLiked = () => {
-        if (likedTracksData.length > 0) playTrack(likedTracksData[0], likedTracksData);
+    const handleCreatePlaylist = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const trimmed = newPlaylistName.trim();
+        if (!trimmed) return;
+        const created = await dbService.createPlaylist(trimmed);
+        if (created) {
+            await refreshLibrary();
+            toast(`Created "${trimmed}"`);
+        }
+        setNewPlaylistName('');
+        setShowNewPlaylist(false);
     };
 
-    const recent = playHistory.slice(0, 10);
+    const playCollection = async (id: string, isAlbum: boolean) => {
+        try {
+            const data = isAlbum ? await libraryService.getAlbum(id) : await libraryService.getPlaylist(id);
+            if (data && data.tracks.length > 0) {
+                playTrack(data.tracks[0], data.tracks);
+            }
+        } catch {
+            /* ignore */
+        }
+    };
 
-    // Song-by-song progressive rendering for the heavy waveform lists —
-    // first paint shows a few cards instantly, the rest stream in on scroll.
+    const playArtist = async (artistName: string) => {
+        try {
+            const songs = await libraryService.search(artistName);
+            if (songs.length > 0) playTrack(songs[0], songs);
+        } catch {
+            /* ignore */
+        }
+    };
+
+    const sortedPlaylists = useMemo(() => {
+        const list = [...userPlaylists];
+        if (sortBy === 'az') {
+            list.sort((a, b) => a.title.localeCompare(b.title));
+        } else {
+            list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        }
+        return list;
+    }, [userPlaylists, sortBy]);
+
+    const sortedAlbums = useMemo(() => {
+        const list = [...savedAlbums];
+        if (sortBy === 'az') {
+            list.sort((a, b) => a.title.localeCompare(b.title));
+        }
+        return list;
+    }, [savedAlbums, sortBy]);
+
+    const sortedArtists = useMemo(() => {
+        const list = [...followedArtists];
+        if (sortBy === 'az') {
+            list.sort((a, b) => a.localeCompare(b));
+        }
+        return list;
+    }, [followedArtists, sortBy]);
+
+    const sortedLiked = useMemo(() => {
+        const list = [...likedTracksData];
+        if (sortBy === 'az') {
+            list.sort((a, b) => a.title.localeCompare(b.title));
+        }
+        return list;
+    }, [likedTracksData, sortBy]);
+
+    const recent = useMemo(() => playHistory.slice(0, 15), [playHistory]);
+
     const {
-        visible: visibleLikes, total: totalLikes, hasMore: hasMoreLikes, sentinelRef: likesSentinelRef,
-    } = usePagedList(likedTracksData, 6, 5);
+        visible: visibleLikes,
+        total: totalLikes,
+        hasMore: hasMoreLikes,
+        sentinelRef: likesSentinelRef,
+    } = usePagedList(sortedLiked, 8, 6);
+
     const {
-        visible: visibleRecent, total: totalRecent, hasMore: hasMoreRecent, sentinelRef: recentSentinelRef,
-    } = usePagedList(recent, 5, 5);
+        visible: visibleRecent,
+        total: totalRecent,
+        hasMore: hasMoreRecent,
+        sentinelRef: recentSentinelRef,
+    } = usePagedList(recent, 8, 6);
+
+    const filterChips: { key: LibraryTabKey; label: string }[] = [
+        { key: 'all', label: 'All' },
+        { key: 'playlists', label: 'Playlists' },
+        { key: 'liked', label: 'Songs' },
+        { key: 'albums', label: 'Albums' },
+        { key: 'artists', label: 'Artists' },
+        { key: 'recent', label: 'History' },
+    ];
+
+    const showPlaylists = localTab === 'all' || localTab === 'playlists';
+    const showSongs = localTab === 'all' || localTab === 'liked';
+    const showAlbums = localTab === 'all' || localTab === 'albums';
+    const showArtists = localTab === 'all' || localTab === 'artists';
+    const showRecent = localTab === 'all' || localTab === 'recent';
 
     return (
-        <div className="min-h-full text-white bg-[#121212]">
-            <div
-                ref={containerRef}
-                {...pullProps}
-                className="max-w-[1240px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-6 overflow-y-auto no-scrollbar"
-                style={{ minHeight: '100%' }}
-            >
-                {indicator}
+        <div
+            ref={containerRef}
+            {...pullProps}
+            className="min-h-full bg-transparent text-white"
+        >
+            {indicator}
 
-                {/* SoundCloud Library Header & Sub-nav Tabs */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-white/10">
-                    <div className="flex items-center gap-3">
-                        <h1 className="text-2xl md:text-3xl font-extrabold text-white">Library</h1>
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#ff5500]/10 border border-[#ff5500]/30 text-[#ff5500] text-[10px] font-extrabold uppercase tracking-wider">
-                            <span className={`w-1.5 h-1.5 rounded-full bg-[#ff5500] ${isSyncing ? 'animate-ping' : ''}`} />
-                            Always Fresh
-                        </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
-                        {tabs.map(({ key, label, count }) => (
+            <div className="max-w-[1478px] mx-auto px-4 md:px-10 py-6 space-y-8">
+                {/* Header & Toolbar */}
+                <header className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-4">
+                        <h1
+                            className="text-[28px] sm:text-[32px] md:text-[34px] font-bold tracking-tight text-white leading-[1.15]"
+                            style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+                        >
+                            Library
+                        </h1>
+
+                        <div className="flex items-center gap-3">
+                            <YtmDropdown
+                                value={sortBy}
+                                options={SORT_OPTIONS}
+                                onChange={setSortBy}
+                                ariaLabel="Sort library"
+                            />
                             <button
-                                key={key}
-                                onClick={() => setActiveFilter(key as any)}
-                                className={`px-3.5 py-1.5 rounded-full text-xs font-extrabold whitespace-nowrap transition ${
-                                    filter === key
-                                        ? 'bg-[#ff5500] text-white shadow-md'
-                                        : 'text-neutral-400 hover:text-white bg-white/5 hover:bg-white/10'
-                                }`}
+                                type="button"
+                                onClick={() => setShowNewPlaylist(v => !v)}
+                                className="h-9 px-4 rounded-full bg-white/10 hover:bg-white/20 text-sm font-medium text-white inline-flex items-center gap-1.5 transition"
                             >
-                                {label} ({count})
+                                <Plus className="w-4 h-4" />
+                                <span>New playlist</span>
                             </button>
-                        ))}
+                        </div>
                     </div>
-                </div>
 
-                {/* 2-Column Responsive Layout */}
-                <div className="flex gap-8">
-                    {/* Left Column Content */}
-                    <div className="flex-1 min-w-0 space-y-8">
-                    {/* 1. Likes Section */}
-                    {showLiked && (
-                        <section>
-                            <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Heart className="w-5 h-5 text-[#ff5500]" fill="currentColor" />
-                                    <h2 className="text-lg font-extrabold text-white">Likes</h2>
-                                </div>
-                                {likedTracksData.length > 0 && (
-                                    <button
-                                        onClick={playAllLiked}
-                                        className="flex items-center gap-1.5 px-4 py-1 bg-[#ff5500] hover:bg-[#ff7a00] text-white text-xs font-bold rounded-full transition active:scale-95 shadow"
-                                    >
-                                        <Play className="w-3.5 h-3.5 fill-current" />
-                                        Play All
-                                    </button>
-                                )}
-                            </div>
-                            {likedTracksData.length > 0 ? (
-                                <div className="space-y-3">
-                                    {visibleLikes.map((track, i) => (
-                                        <SoundCloudTrackCard key={`${track.id}-${i}`} track={track} queue={likedTracksData} />
-                                    ))}
-                                    {hasMoreLikes && (
-                                        <>
-                                            <div ref={likesSentinelRef} aria-hidden>
-                                                <Skeleton className="h-32 w-full rounded-lg" />
-                                            </div>
-                                            <p className="text-center text-[11px] text-neutral-500 font-medium">
-                                                Showing {visibleLikes.length} of {totalLikes} liked tracks
-                                            </p>
-                                        </>
+                    {showNewPlaylist && (
+                        <form
+                            onSubmit={handleCreatePlaylist}
+                            className="flex flex-wrap items-center gap-2 p-3 rounded-[8px] bg-[#212121] border border-white/10 max-w-md"
+                        >
+                            <input
+                                type="text"
+                                value={newPlaylistName}
+                                onChange={(e) => setNewPlaylistName(e.target.value)}
+                                placeholder="Playlist title"
+                                autoFocus
+                                className="flex-1 min-w-[180px] h-9 px-3 rounded-[6px] bg-[#030303] border border-white/15 text-sm text-white placeholder-white/50 focus:outline-none focus:border-white/40"
+                            />
+                            <button
+                                type="submit"
+                                className="h-9 px-4 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 transition"
+                            >
+                                Create
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setShowNewPlaylist(false);
+                                    setNewPlaylistName('');
+                                }}
+                                className="h-9 px-3 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/10 transition"
+                            >
+                                Cancel
+                            </button>
+                        </form>
+                    )}
+
+                    {/* Filter Chips */}
+                    <div
+                        role="tablist"
+                        aria-label="Library category filters"
+                        className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1"
+                    >
+                        {filterChips.map(({ key, label }) => {
+                            const isActive = localTab === key;
+                            return (
+                                <button
+                                    key={key}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    onClick={() => handleTabChange(isActive && key !== 'all' ? 'all' : key)}
+                                    className={`h-8 px-3 rounded-[8px] text-sm font-medium whitespace-nowrap transition flex-shrink-0 ${
+                                        isActive
+                                            ? 'bg-white text-[#030303]'
+                                            : 'bg-white/10 text-white hover:bg-white/[0.16] border border-white/10'
+                                    }`}
+                                >
+                                    {label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </header>
+
+                {/* 1. Playlists Grid (includes Pinned Liked Music auto-playlist) */}
+                {showPlaylists && (
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2
+                                className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
+                                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+                            >
+                                Playlists
+                            </h2>
+                            <span className="text-xs text-white/60 tabular-nums">
+                                {sortedPlaylists.length + 1} items
+                            </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                            {/* Pinned Liked Music Auto-Playlist */}
+                            <Link
+                                to="/collection/tracks"
+                                className="group flex flex-col w-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded-[6px]"
+                            >
+                                <div className="relative w-full aspect-square rounded-[6px] overflow-hidden bg-gradient-to-br from-purple-600 via-fuchsia-600 to-red-500 flex items-center justify-center shadow-lg">
+                                    <ThumbsUp className="w-14 h-14 text-white fill-current drop-shadow-md transition-transform duration-300 group-hover:scale-105" />
+                                    {likedTracksData.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={(e) => {
+                                                e.preventDefault();
+                                                e.stopPropagation();
+                                                playTrack(likedTracksData[0], likedTracksData);
+                                            }}
+                                            aria-label="Play Liked Music"
+                                            className="absolute bottom-2.5 right-2.5 w-11 h-11 rounded-full bg-black/80 hover:bg-black hover:scale-105 text-white flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all"
+                                        >
+                                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                                        </button>
                                     )}
                                 </div>
-                            ) : (
-                                <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-2">
-                                    <Heart className="w-8 h-8 text-neutral-600 mx-auto" />
-                                    <p className="text-sm font-bold text-neutral-300">No liked tracks yet</p>
-                                    <p className="text-xs text-neutral-500">Tap the heart on any track to save it here</p>
+                                <div className="mt-2.5 min-w-0">
+                                    <h3 className="text-[14px] md:text-[15px] font-medium text-white leading-[1.25] line-clamp-2 group-hover:underline">
+                                        Liked Music
+                                    </h3>
+                                    <p className="text-[14px] text-white/70 leading-[1.3] line-clamp-2 mt-1">
+                                        Auto playlist • {likedTracksData.length} {likedTracksData.length === 1 ? 'song' : 'songs'}
+                                    </p>
                                 </div>
-                            )}
-                        </section>
-                    )}
+                            </Link>
 
-                    {/* 2. Playlists Section */}
-                    {showPlaylists && (
-                        <section>
-                            <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-4">
-                                <div className="flex items-center gap-2">
-                                    <Music className="w-5 h-5 text-[#ff5500]" />
-                                    <h2 className="text-lg font-extrabold text-white">Featured & User Playlists</h2>
-                                </div>
+                            {/* User & Seed Playlists */}
+                            {sortedPlaylists.map((playlist) => {
+                                const isDeletable =
+                                    !playlist.id.startsWith('playlist-') && !playlist.id.startsWith('discovery-');
+                                return (
+                                    <YtmMediaCard
+                                        key={playlist.id}
+                                        title={playlist.title}
+                                        subtitle={`Playlist • ${playlist.tracks?.length || 0} songs`}
+                                        imageUrl={playlist.cover_url}
+                                        to={`/playlist/${encodeURIComponent(playlist.id)}`}
+                                        onPlay={() =>
+                                            playlist.tracks && playlist.tracks.length > 0
+                                                ? playTrack(playlist.tracks[0], playlist.tracks)
+                                                : playCollection(playlist.id, false)
+                                        }
+                                        fallbackText={playlist.title?.substring(0, 2).toUpperCase() || 'PL'}
+                                        topRightSlot={
+                                            isDeletable ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => handleDeletePlaylist(e, playlist.id)}
+                                                    aria-label={`Delete ${playlist.title}`}
+                                                    title="Delete playlist"
+                                                    className="w-8 h-8 rounded-full bg-black/70 hover:bg-[#ff4e45] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
+                                                >
+                                                    <Trash2 className="w-4 h-4" />
+                                                </button>
+                                            ) : undefined
+                                        }
+                                    />
+                                );
+                            })}
+                        </div>
+                    </section>
+                )}
+
+                {/* 2. Saved Albums */}
+                {showAlbums && (
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2
+                                className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
+                                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+                            >
+                                Albums
+                            </h2>
+                            <span className="text-xs text-white/60 tabular-nums">{sortedAlbums.length}</span>
+                        </div>
+
+                        {sortedAlbums.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                                {sortedAlbums.map((album) => (
+                                    <YtmMediaCard
+                                        key={album.id}
+                                        title={album.title}
+                                        subtitle={`Album • ${album.artist}`}
+                                        imageUrl={album.cover_url}
+                                        to={`/album/${encodeURIComponent(album.title)}`}
+                                        onPlay={() => playCollection(album.title, true)}
+                                        fallbackText={album.title?.substring(0, 2).toUpperCase() || 'AL'}
+                                    />
+                                ))}
                             </div>
-                            {userPlaylists.length > 0 ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 xl:grid-cols-4 gap-4">
-                                    {userPlaylists.map((playlist) => (
-                                        <Link to={`/playlist/${playlist.id}`} key={playlist.id} className="group flex flex-col bg-[#181818] hover:bg-[#202020] p-3 rounded-xl border border-white/5 hover:border-white/20 transition shadow-sm">
-                                            <div className="relative mb-3 overflow-hidden rounded-lg aspect-square bg-neutral-900">
-                                                <CoverImage
-                                                    src={playlist.cover_url}
-                                                    alt={playlist.title}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                                                    fallbackText={playlist.title?.substring(0, 2).toUpperCase()}
-                                                />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition duration-300 flex items-center justify-center">
-                                                    <div className="w-12 h-12 bg-[#ff5500] text-white rounded-full flex items-center justify-center shadow-xl transform scale-90 group-hover:scale-100 transition">
-                                                        <Play className="w-6 h-6 fill-current ml-0.5" />
-                                                    </div>
-                                                </div>
-
-                                                <span className="absolute bottom-2 left-2 px-2 py-0.5 bg-black/70 backdrop-blur-md rounded-full text-[10px] font-extrabold text-white">
-                                                    {playlist.tracks?.length || 0} tracks
-                                                </span>
-
-                                                {!playlist.id.startsWith('playlist-') && !playlist.id.startsWith('discovery-') && (
-                                                    <button
-                                                        onClick={(e) => handleDeletePlaylist(e, playlist.id)}
-                                                        className="absolute top-2 right-2 w-7 h-7 bg-red-600/90 hover:bg-red-600 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow"
-                                                        title="Delete Playlist"
-                                                    >
-                                                        <Trash2 className="w-3.5 h-3.5" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                            <h3 className="font-extrabold text-white text-xs sm:text-sm line-clamp-1 group-hover:text-[#ff5500] transition">{playlist.title}</h3>
-                                            <p className="text-[11px] text-neutral-400 line-clamp-1 mt-1 font-medium">{playlist.description || 'SoundCloud Playlist'}</p>
-                                        </Link>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-3">
-                                    <Music className="w-10 h-10 text-neutral-600 mx-auto" />
-                                    <p className="text-sm font-bold text-neutral-300">No playlists found</p>
-                                </div>
-                            )}
-                        </section>
-                    )}
-
-                    {/* 3. Albums Section */}
-                    {showAlbums && (
-                        <section>
-                            <div className="flex items-center gap-2 pb-2 border-b border-white/10 mb-4">
-                                <Disc3 className="w-5 h-5 text-[#ff5500]" />
-                                <h2 className="text-lg font-extrabold text-white">Saved Albums</h2>
+                        ) : (
+                            <div className="bg-[#181818] border border-white/10 rounded-[8px] p-10 text-center space-y-2">
+                                <Disc3 className="w-9 h-9 text-white/30 mx-auto" />
+                                <p className="text-sm font-medium text-white">No saved albums yet</p>
+                                <p className="text-xs text-white/60">Albums from your listening history will appear here.</p>
                             </div>
-                            {savedAlbums.length > 0 ? (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
-                                    {savedAlbums.map((album) => (
-                                        <Link to={`/album/${encodeURIComponent(album.title)}`} key={album.id} className="group flex flex-col bg-[#181818] hover:bg-[#202020] p-3 rounded-xl border border-white/5 hover:border-white/20 transition shadow-sm">
-                                            <div className="relative mb-3 overflow-hidden rounded-lg aspect-square bg-neutral-900">
-                                                <CoverImage
-                                                    src={album.cover_url}
-                                                    alt={album.title}
-                                                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                                                    fallbackText={album.title?.substring(0, 2).toUpperCase()}
-                                                />
-                                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition duration-300 flex items-center justify-center">
-                                                    <div className="w-12 h-12 bg-[#ff5500] text-white rounded-full flex items-center justify-center shadow-xl transform scale-90 group-hover:scale-100 transition">
-                                                        <Play className="w-6 h-6 fill-current ml-0.5" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                            <h3 className="font-extrabold text-white text-xs sm:text-sm line-clamp-1 group-hover:text-[#ff5500] transition">{album.title}</h3>
-                                            <p className="text-[11px] text-neutral-400 line-clamp-1 mt-1 font-medium">{album.artist}</p>
-                                        </Link>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-2">
-                                    <Disc3 className="w-8 h-8 text-neutral-600 mx-auto" />
-                                    <p className="text-sm font-bold text-neutral-300">No albums saved</p>
-                                </div>
-                            )}
-                        </section>
-                    )}
+                        )}
+                    </section>
+                )}
 
-                    {/* 4. Following Artists Section */}
-                    {showArtists && (
-                        <section>
-                            <div className="flex items-center gap-2 pb-2 border-b border-white/10 mb-4">
-                                <Users className="w-5 h-5 text-[#ff5500]" />
-                                <h2 className="text-lg font-extrabold text-white">Following Creators ({followedArtists.length})</h2>
-                            </div>
-                            {followedArtists.length > 0 ? (
-                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-4">
-                                    {followedArtists.map((artistName) => (
-                                        <Link to={`/artist/${encodeURIComponent(artistName)}`} key={artistName} className="group text-center flex flex-col items-center bg-[#181818] hover:bg-[#202020] p-3 rounded-xl border border-white/5 hover:border-white/20 transition">
+                {/* 3. Followed Artists */}
+                {showArtists && (
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <h2
+                                className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
+                                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+                            >
+                                Artists
+                            </h2>
+                            <span className="text-xs text-white/60 tabular-nums">{sortedArtists.length}</span>
+                        </div>
+
+                        {sortedArtists.length > 0 ? (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                                {sortedArtists.map((artistName) => (
+                                    <Link
+                                        key={artistName}
+                                        to={`/artist/${encodeURIComponent(artistName)}`}
+                                        className="group flex flex-col items-center text-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-white rounded-[6px]"
+                                    >
+                                        <div className="relative w-full aspect-square rounded-full overflow-hidden bg-[#181818]">
                                             <ArtistAvatar
                                                 artistName={artistName}
-                                                className="w-20 h-20 sm:w-24 sm:h-24 rounded-full"
+                                                className="w-full h-full rounded-full border-0"
                                             />
-                                            <h3 className="font-extrabold text-white truncate text-xs mt-2.5 group-hover:text-[#ff5500] transition max-w-full">{artistName}</h3>
-                                            <span className="text-[10px] text-[#ff5500] font-semibold flex items-center gap-1 mt-0.5">
-                                                <CheckCircle2 className="w-3 h-3" /> Creator
-                                            </span>
-                                        </Link>
-                                    ))}
-                                </div>
-                            ) : (
-                                <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-2">
-                                    <Users className="w-8 h-8 text-neutral-600 mx-auto" />
-                                    <p className="text-sm font-bold text-neutral-300">Not following any creators yet</p>
-                                </div>
-                            )}
-                        </section>
-                    )}
-
-                    {/* 5. History Section */}
-                    {showRecent && (
-                        <section>
-                            <div className="flex items-center gap-2 pb-2 border-b border-white/10 mb-4">
-                                <Clock className="w-5 h-5 text-[#ff5500]" />
-                                <h2 className="text-lg font-extrabold text-white">Listening History</h2>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    playArtist(artistName);
+                                                }}
+                                                aria-label={`Play ${artistName}`}
+                                                className="absolute bottom-3 right-3 w-11 h-11 rounded-full bg-black/80 hover:bg-black hover:scale-105 text-white flex items-center justify-center shadow-xl opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-all"
+                                            >
+                                                <Play className="w-5 h-5 fill-current ml-0.5" />
+                                            </button>
+                                        </div>
+                                        <h3 className="text-[14px] md:text-[15px] font-medium text-white mt-2.5 truncate max-w-full group-hover:underline">
+                                            {artistName}
+                                        </h3>
+                                        <p className="text-[14px] text-white/70 mt-0.5">Artist</p>
+                                    </Link>
+                                ))}
                             </div>
-                            {recent.length > 0 ? (
-                                <div className="space-y-3">
-                                    {visibleRecent.map((track, i) => (
-                                        <SoundCloudTrackCard key={`recent-${track.id}-${i}`} track={track} queue={playHistory} />
-                                    ))}
-                                    {hasMoreRecent && (
-                                        <>
-                                            <div ref={recentSentinelRef} aria-hidden>
-                                                <Skeleton className="h-32 w-full rounded-lg" />
-                                            </div>
-                                            <p className="text-center text-[11px] text-neutral-500 font-medium">
-                                                Showing {visibleRecent.length} of {totalRecent} recent tracks
-                                            </p>
-                                        </>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="bg-[#181818] border border-white/10 rounded-xl p-8 text-center space-y-2">
-                                    <Clock className="w-8 h-8 text-neutral-600 mx-auto" />
-                                    <p className="text-sm font-bold text-neutral-300">No listening history yet</p>
-                                </div>
-                            )}
-                        </section>
-                    )}
-                    </div>
+                        ) : (
+                            <div className="bg-[#181818] border border-white/10 rounded-[8px] p-10 text-center space-y-2">
+                                <Users className="w-9 h-9 text-white/30 mx-auto" />
+                                <p className="text-sm font-medium text-white">No subscribed artists yet</p>
+                                <p className="text-xs text-white/60">Subscribe to artists to keep them in your library.</p>
+                            </div>
+                        )}
+                    </section>
+                )}
 
-                    {/* Right Desktop Sidebar */}
-                    <div className="hidden lg:flex flex-shrink-0 flex-col items-stretch">
-                        <SoundCloudSidebar />
-                    </div>
-                </div>
+                {/* 4. Songs (Liked Tracks) */}
+                {showSongs && (
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <h2
+                                className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
+                                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+                            >
+                                Songs
+                            </h2>
+                            {sortedLiked.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => playTrack(sortedLiked[0], sortedLiked)}
+                                    className="h-9 px-4 rounded-full border border-white/20 text-sm font-medium text-white hover:bg-white/10 inline-flex items-center gap-2 transition"
+                                >
+                                    <Play className="w-3.5 h-3.5 fill-current" />
+                                    <span>Play all</span>
+                                </button>
+                            )}
+                        </div>
+
+                        {sortedLiked.length > 0 ? (
+                            <div className="space-y-0.5">
+                                {visibleLikes.map((track, i) => (
+                                    <TrackRow
+                                        key={`lib-like-${track.id}-${i}`}
+                                        track={track}
+                                        queue={sortedLiked}
+                                    />
+                                ))}
+                                {hasMoreLikes && (
+                                    <>
+                                        <div ref={likesSentinelRef} className="pt-2" aria-hidden>
+                                            <Skeleton className="h-14 w-full rounded-[6px]" />
+                                        </div>
+                                        <p className="text-center text-xs text-white/50 pt-1">
+                                            Showing {visibleLikes.length} of {totalLikes} songs
+                                        </p>
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="bg-[#181818] border border-white/10 rounded-[8px] p-10 text-center space-y-3">
+                                <Music className="w-9 h-9 text-white/30 mx-auto" />
+                                <p className="text-base font-bold text-white">Explore your favorites</p>
+                                <p className="text-sm text-white/60">Like songs to build your Liked Music collection.</p>
+                                <Link
+                                    to="/feed"
+                                    className="inline-flex items-center justify-center h-9 px-5 rounded-full border border-white/20 text-sm font-medium text-white hover:bg-white/10 transition"
+                                >
+                                    Explore music
+                                </Link>
+                            </div>
+                        )}
+                    </section>
+                )}
+
+                {/* 5. Listening History */}
+                {showRecent && (
+                    <section className="space-y-4">
+                        <div className="flex items-center justify-between gap-4">
+                            <h2
+                                className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
+                                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+                            >
+                                History
+                            </h2>
+                            {recent.length > 0 && (
+                                <button
+                                    type="button"
+                                    onClick={() => playTrack(recent[0], recent)}
+                                    className="h-9 px-4 rounded-full border border-white/20 text-sm font-medium text-white hover:bg-white/10 transition"
+                                >
+                                    Play all
+                                </button>
+                            )}
+                        </div>
+
+                        {recent.length > 0 ? (
+                            <div className="space-y-0.5">
+                                {visibleRecent.map((track, i) => (
+                                    <TrackRow
+                                        key={`lib-recent-${track.id}-${i}`}
+                                        track={track}
+                                        queue={playHistory}
+                                    />
+                                ))}
+                                {hasMoreRecent && (
+                                    <>
+                                        <div ref={recentSentinelRef} className="pt-2" aria-hidden>
+                                            <Skeleton className="h-14 w-full rounded-[6px]" />
+                                        </div>
+                                        <p className="text-center text-xs text-white/50 pt-1">
+                                            Showing {visibleRecent.length} of {totalRecent} recent songs
+                                        </p>
+                                    </>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="bg-[#181818] border border-white/10 rounded-[8px] p-10 text-center space-y-2">
+                                <Clock className="w-9 h-9 text-white/30 mx-auto" />
+                                <p className="text-sm font-medium text-white">No listening history yet</p>
+                            </div>
+                        )}
+                    </section>
+                )}
             </div>
         </div>
     );

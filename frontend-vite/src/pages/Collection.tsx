@@ -1,7 +1,8 @@
-import { Play, Pause, Heart, Clock, Shuffle, ArrowLeft } from 'lucide-react';
+import { Play, Pause, ThumbsUp, Shuffle, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
-import CoverImage from '../components/CoverImage';
+import TrackRow from '../components/TrackRow';
+import DownloadMenu from '../components/DownloadMenu';
 
 export default function Collection() {
     const likedTracksData = usePlayerStore(s => s.likedTracksData);
@@ -10,8 +11,14 @@ export default function Collection() {
     const isPlaying = usePlayerStore(s => s.isPlaying);
     const togglePlay = usePlayerStore(s => s.togglePlay);
 
+    const isCollectionPlaying =
+        isPlaying && currentTrack && likedTracksData.some(t => t.id === currentTrack.id);
+
     const handlePlayAll = () => {
-        if (likedTracksData.length > 0) {
+        if (likedTracksData.length === 0) return;
+        if (currentTrack && likedTracksData.some(t => t.id === currentTrack.id)) {
+            togglePlay();
+        } else {
             playTrack(likedTracksData[0], likedTracksData);
         }
     };
@@ -23,131 +30,107 @@ export default function Collection() {
         }
     };
 
-    const formatDuration = (seconds?: number) => {
-        if (!seconds) return '--:--';
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
+    const totalSeconds = likedTracksData.reduce((acc, t) => acc + (t.duration || 0), 0);
+    const totalMinutes = Math.floor(totalSeconds / 60);
 
     return (
-        <div className="h-full overflow-y-auto no-scrollbar pb-24">
-            {/* Hero Header */}
-            <div className="h-72 md:h-80 bg-gradient-to-b from-indigo-800 to-[#111111] p-6 md:p-8 flex flex-col md:flex-row items-center md:items-end relative">
-                <Link to="/library" className="absolute top-4 left-4 md:hidden">
-                    <ArrowLeft className="w-6 h-6" />
+        <div className="min-h-full bg-transparent text-white relative">
+            {/* Ambient Gradient Backdrop */}
+            <div className="absolute inset-x-0 top-0 h-[49vh] min-h-[320px] bg-gradient-to-b from-purple-900/35 via-[#030303]/75 to-[#030303] pointer-events-none select-none" />
+
+            <div className="relative z-10 max-w-[1478px] mx-auto px-4 md:px-10 pt-8 md:pt-14 pb-28">
+                <Link
+                    to="/library"
+                    className="inline-flex items-center gap-2 text-sm text-white/70 hover:text-white mb-6 md:hidden"
+                >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>Library</span>
                 </Link>
 
-                <div className="w-40 h-40 md:w-56 md:h-56 bg-gradient-to-br from-indigo-700 via-purple-600 to-blue-400 rounded-md shadow-2xl flex items-center justify-center mb-4 md:mb-0 md:mr-8 flex-shrink-0">
-                    <Heart className="w-20 h-20 md:w-24 md:h-24 text-white fill-white" />
-                </div>
+                <div className="flex flex-col lg:flex-row gap-10 lg:gap-14 items-start">
+                    {/* Left Sticky Column */}
+                    <aside className="w-full lg:w-[340px] xl:w-[380px] lg:sticky lg:top-20 flex flex-col items-center text-center flex-shrink-0">
+                        <div className="w-[216px] h-[216px] sm:w-[264px] sm:h-[264px] rounded-[8px] bg-gradient-to-br from-purple-600 via-fuchsia-600 to-red-500 shadow-2xl flex items-center justify-center">
+                            <ThumbsUp className="w-24 h-24 text-white fill-current drop-shadow-lg" />
+                        </div>
 
-                <div className="text-center md:text-left">
-                    <p className="text-xs font-bold uppercase tracking-wider mb-1">Playlist</p>
-                    <h1 className="text-4xl md:text-6xl font-black mb-4">Liked Songs</h1>
-                    <p className="text-sm text-neutral-300">
-                        {likedTracksData.length} {likedTracksData.length === 1 ? 'song' : 'songs'}
-                    </p>
-                </div>
-            </div>
-
-            {/* Actions */}
-            <div className="px-6 py-4 flex items-center gap-4">
-                <button
-                    onClick={handlePlayAll}
-                    disabled={likedTracksData.length === 0}
-                    className="w-14 h-14 bg-[#FF0000] text-white rounded-full flex items-center justify-center hover:scale-105 transition shadow-lg disabled:opacity-50"
-                >
-                    <Play className="w-6 h-6 text-white fill-white ml-1" />
-                </button>
-                <button
-                    onClick={handleShufflePlay}
-                    disabled={likedTracksData.length === 0}
-                    className="text-neutral-400 hover:text-white transition disabled:opacity-50"
-                >
-                    <Shuffle className="w-6 h-6" />
-                </button>
-            </div>
-
-            {/* Track List */}
-            <div className="px-6">
-                {/* Header */}
-                <div className="hidden md:grid grid-cols-[16px_4fr_2fr_1fr] gap-4 px-4 py-2 text-sm text-neutral-400 border-b border-white/10 mb-2">
-                    <span>#</span>
-                    <span>TITLE</span>
-                    <span>ALBUM</span>
-                    <span className="flex justify-end"><Clock className="w-4 h-4" /></span>
-                </div>
-
-                {likedTracksData.length === 0 ? (
-                    <div className="text-center py-20">
-                        <Heart className="w-16 h-16 mx-auto text-neutral-600 mb-4" />
-                        <h2 className="text-xl font-bold mb-2">Songs you like will appear here</h2>
-                        <p className="text-neutral-400 mb-6">Save songs by tapping the heart icon.</p>
-                        <Link
-                            to="/search"
-                            className="inline-block px-6 py-3 bg-white text-black font-bold rounded-full hover:scale-105 transition"
+                        <h1
+                            className="text-[24px] sm:text-[28px] font-bold text-white leading-[1.2] mt-5"
+                            style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
                         >
-                            Find something to listen to
-                        </Link>
-                    </div>
-                ) : (
-                    likedTracksData.map((track, index) => {
-                        const isCurrentTrack = currentTrack?.id === track.id;
+                            Liked music
+                        </h1>
 
-                        return (
-                            <div
-                                key={track.id}
-                                onClick={() => playTrack(track, likedTracksData)}
-                                className={`grid grid-cols-[auto_1fr_auto] md:grid-cols-[16px_4fr_2fr_1fr] gap-4 px-4 py-2 rounded-md hover:bg-white/10 transition group cursor-pointer ${isCurrentTrack ? 'bg-white/10' : ''}`}
+                        <p className="text-sm text-white/70 mt-2">
+                            Auto playlist • {likedTracksData.length} {likedTracksData.length === 1 ? 'song' : 'songs'}
+                            {totalMinutes > 0 ? ` • ${totalMinutes} minutes` : ''}
+                        </p>
+
+                        {/* Action Button Triad */}
+                        <div className="flex items-center justify-center gap-5 mt-6">
+                            <button
+                                type="button"
+                                onClick={handleShufflePlay}
+                                disabled={likedTracksData.length === 0}
+                                aria-label="Shuffle liked music"
+                                title="Shuffle"
+                                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition disabled:opacity-40"
                             >
-                                {/* Index / Play indicator */}
-                                <div className="flex items-center">
-                                    <span className={`text-sm ${isCurrentTrack ? 'text-[#FF0000]' : 'text-neutral-400'} group-hover:hidden`}>
-                                        {isCurrentTrack && isPlaying ? (
-                                            <div className="flex items-end gap-[2px] h-4">
-                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-1" />
-                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-2" />
-                                                <div className="w-[3px] bg-[#FF0000] rounded-full animate-soundwave-3" />
-                                            </div>
-                                        ) : (
-                                            index + 1
-                                        )}
-                                    </span>
-                                    <button
-                                        onClick={(e) => { e.stopPropagation(); isCurrentTrack ? togglePlay() : playTrack(track, likedTracksData); }}
-                                        className="hidden group-hover:block text-white"
-                                    >
-                                        {isCurrentTrack && isPlaying ? <Pause className="w-4 h-4 fill-current" /> : <Play className="w-4 h-4 fill-current" />}
-                                    </button>
-                                </div>
+                                <Shuffle className="w-5 h-5" />
+                            </button>
 
-                                {/* Cover + Info */}
-                                <div className="flex items-center gap-4 min-w-0">
-                                    <CoverImage
-                                        src={track.cover_url}
-                                        alt={track.title}
-                                        className="w-10 h-10 rounded flex-shrink-0"
-                                        fallbackText="♪"
-                                    />
-                                    <div className="min-w-0">
-                                        <p className={`font-medium truncate ${isCurrentTrack ? 'text-[#FF0000]' : 'text-white'}`}>{track.title}</p>
-                                        <p className="text-sm text-neutral-400 truncate">{track.artist}</p>
-                                    </div>
-                                </div>
+                            <button
+                                type="button"
+                                onClick={handlePlayAll}
+                                disabled={likedTracksData.length === 0}
+                                aria-label={isCollectionPlaying ? 'Pause liked music' : 'Play liked music'}
+                                className="w-16 h-16 rounded-full bg-[#F1F1F1] hover:bg-white text-[#030303] flex items-center justify-center shadow-xl hover:scale-105 active:scale-95 transition disabled:opacity-40"
+                            >
+                                {isCollectionPlaying ? (
+                                    <Pause className="w-7 h-7 fill-current" />
+                                ) : (
+                                    <Play className="w-7 h-7 fill-current ml-0.5" />
+                                )}
+                            </button>
 
-                                {/* Album */}
-                                <p className="hidden md:flex items-center text-sm text-neutral-400 truncate">{track.album}</p>
+                            <DownloadMenu
+                                tracks={likedTracksData}
+                                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white justify-center transition"
+                                iconClassName="w-5 h-5"
+                            />
+                        </div>
+                    </aside>
 
-                                {/* Duration */}
-                                <div className="flex items-center justify-end">
-                                    <Heart className="w-4 h-4 text-[#FF0000] fill-current mr-4 opacity-0 group-hover:opacity-100" />
-                                    <span className="text-sm text-neutral-400">{formatDuration(track.duration)}</span>
-                                </div>
+                    {/* Right Scrollable Tracklist */}
+                    <div className="flex-1 min-w-0 w-full">
+                        {likedTracksData.length === 0 ? (
+                            <div className="bg-[#181818] border border-white/10 rounded-[8px] p-12 text-center space-y-4">
+                                <ThumbsUp className="w-12 h-12 mx-auto text-white/30" />
+                                <h2 className="text-lg font-bold text-white">Songs you like will appear here</h2>
+                                <p className="text-sm text-white/60">
+                                    Tap the thumbs-up icon on any song to save it to Liked music.
+                                </p>
+                                <Link
+                                    to="/feed"
+                                    className="inline-flex items-center justify-center h-9 px-6 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 transition"
+                                >
+                                    Explore music
+                                </Link>
                             </div>
-                        );
-                    })
-                )}
+                        ) : (
+                            <div className="space-y-0.5">
+                                {likedTracksData.map((track, index) => (
+                                    <TrackRow
+                                        key={`${track.id}-${index}`}
+                                        track={track}
+                                        index={index}
+                                        queue={likedTracksData}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
             </div>
         </div>
     );

@@ -3,9 +3,11 @@ package com.kvmusic.app
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.*
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -25,6 +27,8 @@ import com.kvmusic.app.ui.screens.player.FullPlayerScreen
 import com.kvmusic.app.ui.screens.search.SearchScreen
 import com.kvmusic.app.ui.screens.settings.SettingsScreen
 import com.kvmusic.app.ui.theme.KVMusicTheme
+import com.kvmusic.app.ui.theme.YtmGrey12
+import com.kvmusic.app.ui.theme.YtmPureBlack
 
 data class ActiveDetailData(
     val id: String,
@@ -70,43 +74,78 @@ class MainActivity : ComponentActivity() {
 
                 val progressFraction = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
 
-                // Maximize whole screen view with 100% full screen edge-to-edge layout
-                Box(modifier = Modifier.fillMaxSize()) {
+                val navigateToTab: (String) -> Unit = { route ->
+                    activeDetail = null
+                    if (currentRoute != route) {
+                        navController.navigate(route) {
+                            popUpTo(NavScreen.Home.route) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
+                }
+
+                BackHandler(enabled = isFullPlayerExpanded || activeDetail != null) {
+                    when {
+                        isFullPlayerExpanded -> isFullPlayerExpanded = false
+                        activeDetail != null -> activeDetail = null
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(YtmPureBlack)
+                ) {
                     Scaffold(
+                        containerColor = YtmPureBlack,
+                        contentWindowInsets = WindowInsets(0, 0, 0, 0),
                         bottomBar = {
                             Column(
-                                modifier = Modifier.windowInsetsPadding(WindowInsets.navigationBars)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(YtmPureBlack)
                             ) {
-                                // SoundCloud Floating MiniPlayer (Always stacked directly above bottom navigation bar or detail screen)
-                                if (currentTrack != null) {
-                                    MiniPlayer(
-                                        track = currentTrack,
-                                        isPlaying = isPlaying,
-                                        progressFraction = progressFraction,
-                                        onTogglePlay = { PlayerManager.togglePlayPause() },
-                                        onSkipNext = { PlayerManager.playNext() },
-                                        onClickExpand = { isFullPlayerExpanded = true }
-                                    )
-                                }
+                                // Docked YTM MiniPlayer flush edge-to-edge directly above BottomNavBar
+                                MiniPlayer(
+                                    track = currentTrack,
+                                    isPlaying = isPlaying,
+                                    progressFraction = progressFraction,
+                                    onTogglePlay = { PlayerManager.togglePlayPause() },
+                                    onSkipNext = { PlayerManager.playNext() },
+                                    onClickExpand = { isFullPlayerExpanded = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                )
 
                                 if (activeDetail == null) {
-                                    BottomNavBar(
-                                        currentRoute = currentRoute,
-                                        onNavigate = { route ->
-                                            if (currentRoute != route) {
-                                                navController.navigate(route) {
-                                                    popUpTo(NavScreen.Home.route) { saveState = true }
-                                                    launchSingleTop = true
-                                                    restoreState = true
-                                                }
-                                            }
-                                        }
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(YtmGrey12)
+                                            .windowInsetsPadding(WindowInsets.navigationBars)
+                                    ) {
+                                        BottomNavBar(
+                                            currentRoute = currentRoute,
+                                            onNavigate = navigateToTab
+                                        )
+                                    }
+                                } else {
+                                    Spacer(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(YtmPureBlack)
+                                            .windowInsetsPadding(WindowInsets.navigationBars)
                                     )
                                 }
                             }
                         }
                     ) { innerPadding ->
-                        Box(modifier = Modifier.padding(innerPadding)) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .background(YtmPureBlack)
+                                .padding(innerPadding)
+                        ) {
                             NavHost(
                                 navController = navController,
                                 startDestination = NavScreen.Home.route
@@ -114,7 +153,7 @@ class MainActivity : ComponentActivity() {
                                 composable(NavScreen.Home.route) {
                                     HomeScreen(
                                         musicRepo = musicRepo,
-                                        onNavigateSettings = { navController.navigate(NavScreen.Settings.route) },
+                                        onNavigateSettings = { navigateToTab(NavScreen.Settings.route) },
                                         onArtistClick = { name, avatarUrl, subtitle ->
                                             activeDetail = ActiveDetailData(
                                                 id = name,
@@ -123,7 +162,8 @@ class MainActivity : ComponentActivity() {
                                                 subtitle = subtitle,
                                                 type = "artist"
                                             )
-                                        }
+                                        },
+                                        onNavigateSearch = { navigateToTab(NavScreen.Search.route) }
                                     )
                                 }
                                 composable(NavScreen.Search.route) {
@@ -159,7 +199,29 @@ class MainActivity : ComponentActivity() {
                                     )
                                 }
                                 composable(NavScreen.Library.route) {
-                                    LibraryScreen(authRepo = authRepo)
+                                    LibraryScreen(
+                                        authRepo = authRepo,
+                                        onNavigateSearch = { navigateToTab(NavScreen.Search.route) },
+                                        onNavigateSettings = { navigateToTab(NavScreen.Settings.route) },
+                                        onArtistClick = { name, avatarUrl, subtitle ->
+                                            activeDetail = ActiveDetailData(
+                                                id = name,
+                                                title = name,
+                                                coverUrl = avatarUrl,
+                                                subtitle = subtitle,
+                                                type = "artist"
+                                            )
+                                        },
+                                        onPlaylistClick = { id, title, coverUrl, subtitle ->
+                                            activeDetail = ActiveDetailData(
+                                                id = id,
+                                                title = title,
+                                                coverUrl = coverUrl,
+                                                subtitle = subtitle,
+                                                type = "playlist"
+                                            )
+                                        }
+                                    )
                                 }
                                 composable(NavScreen.Settings.route) {
                                     SettingsScreen(authRepo = authRepo)

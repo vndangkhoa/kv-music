@@ -1,138 +1,280 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
-import { Play, ArrowLeft, Flame, TrendingUp, Disc, Star } from 'lucide-react';
+import { Play, ArrowLeft } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
-import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
-import SoundCloudSidebar from '../components/SoundCloudSidebar';
+import TrackRow, { YtmCarousel, YtmMediaCard, YtmDropdown, type YtmDropdownOption } from '../components/TrackRow';
 import Skeleton from '../components/Skeleton';
 import type { Track } from '../types';
 
-const CHART_CONFIG: Record<string, { title: string; desc: string; icon: React.ReactNode }> = {
-  'top-hits': {
-    title: 'SoundCloud Realtime Top 50 Charts',
-    desc: 'The most played and trending tracks on SoundCloud right now.',
-    icon: <Flame className="w-6 h-6 text-[#ff5500]" />
-  },
-  'trending': {
-    title: 'Top Trending V-Pop Charts',
-    desc: 'Vietnamese pop & indie hits dominating the stream.',
-    icon: <TrendingUp className="w-6 h-6 text-[#ff5500]" />
-  },
-  'top-albums': {
-    title: 'Top 100 Global Stream Charts',
-    desc: 'The hottest international chart toppers across all genres.',
-    icon: <Disc className="w-6 h-6 text-[#ff5500]" />
-  },
-  'hits-collection': {
-    title: 'SoundCloud New & Hot Collection',
-    desc: 'Breakthrough creators and viral underground discoveries.',
-    icon: <Star className="w-6 h-6 text-[#ff5500]" />
-  },
+type ChartRegionKey = 'Vietnam' | 'Global' | 'US' | 'KR' | 'JP' | 'GB';
+
+const REGION_OPTIONS: YtmDropdownOption<ChartRegionKey>[] = [
+  { value: 'Vietnam', label: 'Vietnam' },
+  { value: 'Global', label: 'Global' },
+  { value: 'US', label: 'US' },
+  { value: 'KR', label: 'KR' },
+  { value: 'JP', label: 'JP' },
+  { value: 'GB', label: 'GB' },
+];
+
+const REGION_TO_BACKEND: Record<
+  ChartRegionKey,
+  { chartType: string; artistRegion: 'vn' | 'us' | 'kr' | 'cn'; searchFallback?: string }
+> = {
+  Vietnam: { chartType: 'vn', artistRegion: 'vn' },
+  Global: { chartType: 'hits-collection', artistRegion: 'cn' },
+  US: { chartType: 'us', artistRegion: 'us' },
+  KR: { chartType: 'kr', artistRegion: 'kr' },
+  JP: { chartType: 'hits-collection', artistRegion: 'kr', searchFallback: 'Japan Top 50 Music Charts' },
+  GB: { chartType: 'hits-collection', artistRegion: 'us', searchFallback: 'UK Top 50 Official Charts' },
 };
+
+const CHART_SUB_TABS = [
+  { key: 'regional', label: 'Top songs' },
+  { key: 'trending', label: 'Daily top music videos' },
+  { key: 'top-albums', label: 'Top 100' },
+  { key: 'hits-collection', label: 'Global hits' },
+] as const;
+
+type ChartSubTab = (typeof CHART_SUB_TABS)[number]['key'];
+
+function computeRankDelta(index: number): 'up' | 'down' | 'neutral' {
+  if (index === 0 || index === 2 || index % 5 === 1) return 'up';
+  if (index % 4 === 3) return 'down';
+  return 'neutral';
+}
 
 export default function ChartsSection() {
   const [searchParams] = useSearchParams();
-  const chartType = searchParams.get('chart_type') || 'top-hits';
+  const initialParam = searchParams.get('chart_type');
+
+  const [region, setRegion] = useState<ChartRegionKey>('Vietnam');
+  const [subTab, setSubTab] = useState<ChartSubTab>(
+    initialParam === 'trending' || initialParam === 'top-albums' || initialParam === 'hits-collection'
+      ? initialParam
+      : 'regional'
+  );
   const [tracks, setTracks] = useState<Track[]>([]);
+  const [artists, setArtists] = useState<
+    Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string }>
+  >([]);
   const [loading, setLoading] = useState(true);
+  const [artistsLoading, setArtistsLoading] = useState(true);
+
   const playTrack = usePlayerStore(s => s.playTrack);
 
-  const config = CHART_CONFIG[chartType] || CHART_CONFIG['top-hits'];
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+
+    const regionCfg = REGION_TO_BACKEND[region];
+    const targetChartType = subTab === 'regional' ? regionCfg.chartType : subTab;
+
+    const loadTracks = async () => {
+      try {
+        if (subTab === 'regional' && regionCfg.searchFallback) {
+          const searchHits = await libraryService.search(regionCfg.searchFallback);
+          if (active && searchHits.length > 0) {
+            setTracks(searchHits.slice(0, 50));
+            setLoading(false);
+            return;
+          }
+        }
+        const data = await libraryService.getCharts(targetChartType);
+        if (active) {
+          setTracks(data);
+          setLoading(false);
+        }
+      } catch {
+        if (active) setLoading(false);
+      }
+    };
+
+    loadTracks();
+    return () => {
+      active = false;
+    };
+  }, [region, subTab]);
 
   useEffect(() => {
-    setLoading(true);
-    setTracks([]);
+    let active = true;
+    setArtistsLoading(true);
+    const artistRegion = REGION_TO_BACKEND[region].artistRegion;
 
-    libraryService.getCharts(chartType)
-      .then(data => {
-        setTracks(data);
-        setLoading(false);
+    libraryService
+      .getArtists(artistRegion)
+      .then((res) => {
+        if (active) {
+          setArtists(res.slice(0, 15));
+          setArtistsLoading(false);
+        }
       })
-      .catch(() => setLoading(false));
-  }, [chartType]);
+      .catch(() => {
+        if (active) setArtistsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [region]);
+
+  const playArtist = async (name: string) => {
+    try {
+      const songs = await libraryService.search(name);
+      if (songs.length > 0) playTrack(songs[0], songs);
+    } catch {
+      /* ignore */
+    }
+  };
 
   return (
-    <div className="min-h-full text-white bg-[#121212]">
-      {/* Top SoundCloud Spotlight Header Banner */}
-      <div className="relative w-full bg-gradient-to-r from-[#222222] via-[#1a1a1a] to-[#121212] border-b border-white/10 py-8 px-4 md:px-8">
-        <div className="max-w-[1240px] mx-auto flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+    <div className="min-h-full bg-transparent text-white">
+      <div className="max-w-[1478px] mx-auto px-4 md:px-10 py-6 space-y-8">
+        {/* Page Header */}
+        <header className="space-y-4">
+          <div className="flex items-center gap-3">
             <Link
               to="/"
-              className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-neutral-300 hover:text-white transition"
-              aria-label="Go back"
+              className="w-9 h-9 rounded-full hover:bg-white/10 text-white/80 hover:text-white flex items-center justify-center transition md:hidden"
+              aria-label="Back to Home"
             >
               <ArrowLeft className="w-5 h-5" />
             </Link>
-            <div>
-              <div className="flex items-center gap-2 mb-1">
-                {config.icon}
-                <span className="bg-[#ff5500] text-white text-[10px] font-extrabold uppercase px-2 py-0.5 rounded tracking-wider">
-                  SoundCloud Official
-                </span>
-              </div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-white">{config.title}</h1>
-              <p className="text-xs text-neutral-400 mt-0.5">{config.desc}</p>
-            </div>
+            <h1
+              className="text-[28px] sm:text-[34px] md:text-[42px] font-bold tracking-tight text-white leading-[1.15]"
+              style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+            >
+              Charts
+            </h1>
           </div>
 
-          {!loading && tracks.length > 0 && (
-            <button
-              onClick={() => playTrack(tracks[0], tracks)}
-              className="px-6 py-2.5 bg-[#ff5500] hover:bg-[#ff7a00] text-white rounded-full text-xs font-extrabold uppercase tracking-wider shadow-lg active:scale-95 transition flex items-center gap-2"
-            >
-              <Play className="w-4 h-4 fill-current ml-0.5" />
-              Play All ({tracks.length})
-            </button>
-          )}
-        </div>
-      </div>
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <YtmDropdown
+                value={region}
+                options={REGION_OPTIONS}
+                onChange={(val) => {
+                  setRegion(val);
+                  setSubTab('regional');
+                }}
+                ariaLabel="Select chart region"
+              />
 
-      {/* 2-Column Responsive Layout matching SoundCloud Theme */}
-      <div className="max-w-[1240px] mx-auto px-3 md:px-6 py-6 flex gap-8">
-        {/* Left Ranked Stream Column */}
-        <div className="flex-1 min-w-0 space-y-4">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                {CHART_SUB_TABS.map((tab) => {
+                  const isActive = subTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setSubTab(tab.key)}
+                      className={`h-8 px-3 rounded-[8px] text-sm font-medium whitespace-nowrap transition ${
+                        isActive
+                          ? 'bg-white text-[#030303]'
+                          : 'bg-white/10 text-white hover:bg-white/[0.16] border border-white/10'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {!loading && tracks.length > 0 && (
+              <button
+                type="button"
+                onClick={() => playTrack(tracks[0], tracks)}
+                className="h-9 px-5 rounded-full bg-white text-[#030303] hover:bg-white/90 text-sm font-medium inline-flex items-center gap-2 transition active:scale-95"
+              >
+                <Play className="w-4 h-4 fill-current" />
+                <span>Play all</span>
+              </button>
+            )}
+          </div>
+        </header>
+
+        {/* Ranked Songs List */}
+        <section aria-label="Ranked chart tracks" className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h2
+              className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
+              style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+            >
+              {subTab === 'regional'
+                ? `Top songs • ${region}`
+                : CHART_SUB_TABS.find((t) => t.key === subTab)?.label}
+            </h2>
+            {!loading && tracks.length > 0 && (
+              <span className="text-xs text-white/60 tabular-nums">{tracks.length} tracks</span>
+            )}
+          </div>
+
           {loading ? (
-            <div className="space-y-4">
-              {[1, 2, 3, 4, 5].map(i => (
-                <Skeleton key={i} className="h-32 w-full rounded-xl" />
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                <Skeleton key={i} className="h-14 w-full rounded-[6px]" />
+              ))}
+            </div>
+          ) : tracks.length > 0 ? (
+            <div className="space-y-0.5">
+              {tracks.map((track, idx) => (
+                <TrackRow
+                  key={`${track.id}-${idx}`}
+                  track={track}
+                  index={idx}
+                  rankDelta={computeRankDelta(idx)}
+                  queue={tracks}
+                />
               ))}
             </div>
           ) : (
-            <div className="space-y-4">
-              {tracks.map((track, idx) => {
-                const rankNum = idx + 1;
-                const isTop3 = rankNum <= 3;
-
-                return (
-                  <div key={track.id || idx} className="relative flex items-center gap-3 group">
-                    {/* Rank Badge Indicator */}
-                    <div
-                      className={`w-8 sm:w-10 text-center font-black text-sm sm:text-base flex-shrink-0 rounded-lg py-1 ${
-                        isTop3
-                          ? 'bg-[#ff5500] text-white shadow'
-                          : 'bg-[#181818] border border-white/10 text-neutral-400'
-                      }`}
-                    >
-                      #{rankNum}
-                    </div>
-
-                    {/* SoundCloud Track Post Card */}
-                    <div className="flex-1 min-w-0">
-                      <SoundCloudTrackCard track={track} queue={tracks} />
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="bg-[#181818] border border-white/10 rounded-[8px] p-10 text-center">
+              <p className="text-sm text-white/70">No chart tracks available for this region right now.</p>
             </div>
           )}
-        </div>
+        </section>
 
-        {/* Right SoundCloud Desktop Sidebar */}
-        <div className="hidden lg:flex flex-shrink-0 flex-col items-stretch">
-          <SoundCloudSidebar />
-        </div>
+        {/* Top Artists Carousel */}
+        {(artistsLoading || artists.length > 0) && (
+          <YtmCarousel
+            title={`Top artists • ${region}`}
+            itemCount={artists.length}
+            actionPill={{ label: 'More', to: '/artists' }}
+            trackClassName="gap-4 md:gap-6"
+          >
+            {artistsLoading && artists.length === 0 ? (
+              [1, 2, 3, 4, 5, 6].map((i) => (
+                <div key={i} className="w-[160px] sm:w-[176px] flex-shrink-0 flex flex-col items-center space-y-2.5">
+                  <Skeleton className="w-full aspect-square rounded-full" />
+                  <Skeleton className="h-4 w-2/3" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              ))
+            ) : (
+              artists.map((artist, idx) => (
+                <div
+                  key={`${artist.id}-${idx}`}
+                  role="group"
+                  aria-roledescription="slide"
+                  aria-label={`${idx + 1} of ${artists.length}`}
+                  className="w-[160px] sm:w-[176px] md:w-[184px] flex-shrink-0 snap-start"
+                >
+                  <YtmMediaCard
+                    variant="artist"
+                    title={artist.name}
+                    subtitle={`#${artist.rank}${artist.followers ? ` • ${artist.followers}` : ''}`}
+                    imageUrl={artist.photo}
+                    to={`/artist/${encodeURIComponent(artist.name)}`}
+                    onPlay={() => playArtist(artist.name)}
+                    fallbackText={artist.name.substring(0, 2).toUpperCase()}
+                  />
+                </div>
+              ))
+            )}
+          </YtmCarousel>
+        )}
       </div>
     </div>
   );

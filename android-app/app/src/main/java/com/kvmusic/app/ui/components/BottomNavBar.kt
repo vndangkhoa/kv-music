@@ -1,22 +1,72 @@
 package com.kvmusic.app.ui.components
 
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LibraryMusic
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.*
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.kvmusic.app.ui.theme.*
+import com.kvmusic.app.ui.theme.YtmCaption03
+import com.kvmusic.app.ui.theme.YtmGrey12
+import com.kvmusic.app.ui.theme.YtmWhite
+import com.kvmusic.app.ui.theme.YtmWhite08
+import com.kvmusic.app.ui.theme.YtmWhite20
+import com.kvmusic.app.ui.theme.YtmWhite67
 
-sealed class NavScreen(val route: String, val title: String, val icon: ImageVector) {
-    object Home : NavScreen("home", "Discover", Icons.Default.Home)
-    object Search : NavScreen("search", "Search", Icons.Default.Search)
-    object Library : NavScreen("library", "Library", Icons.Default.LibraryMusic)
-    object Settings : NavScreen("settings", "Settings", Icons.Default.Settings)
+sealed class NavScreen(
+    val route: String,
+    val title: String,
+    val icon: ImageVector,
+    val unselectedIcon: ImageVector = icon
+) {
+    object Home : NavScreen(
+        route = "home",
+        title = "Home",
+        icon = YtmIcons.HomeFilled,
+        unselectedIcon = YtmIcons.HomeOutline
+    )
+
+    object Search : NavScreen(
+        route = "search",
+        title = "Explore",
+        icon = YtmIcons.ExploreFilled,
+        unselectedIcon = YtmIcons.ExploreOutline
+    )
+
+    object Library : NavScreen(
+        route = "library",
+        title = "Library",
+        icon = YtmIcons.LibraryFilled,
+        unselectedIcon = YtmIcons.LibraryOutline
+    )
+
+    object Settings : NavScreen(
+        route = "settings",
+        title = "Settings",
+        icon = YtmIcons.SettingsGear24,
+        unselectedIcon = YtmIcons.SettingsGear24
+    )
 }
 
 @Composable
@@ -32,31 +82,65 @@ fun BottomNavBar(
         NavScreen.Settings
     )
 
-    NavigationBar(
-        modifier = modifier,
-        containerColor = GlassSurfaceDark,
-        tonalElevation = 12.dp
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(56.dp),
+        color = YtmGrey12,
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
     ) {
-        items.forEach { screen ->
-            val isSelected = currentRoute == screen.route
-            NavigationBarItem(
-                selected = isSelected,
-                onClick = { onNavigate(screen.route) },
-                icon = {
-                    Icon(
-                        imageVector = screen.icon,
-                        contentDescription = screen.title
-                    )
-                },
-                label = { Text(text = screen.title) },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = SoundCloudNeonOrange,
-                    selectedTextColor = SoundCloudNeonOrange,
-                    unselectedIconColor = TextDarkMuted,
-                    unselectedTextColor = TextDarkMuted,
-                    indicatorColor = GlassSurfaceDark
-                )
+        Column(modifier = Modifier.fillMaxSize()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(YtmWhite08)
             )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                verticalAlignment = Alignment.Top
+            ) {
+                items.forEach { screen ->
+                    val isSelected = currentRoute == screen.route
+                    val tint = if (isSelected) YtmWhite else YtmWhite67
+                    val tabIcon = if (isSelected) screen.icon else screen.unselectedIcon
+                    val interactionSource = remember { MutableInteractionSource() }
+
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .defaultMinSize(minWidth = 48.dp)
+                            .selectable(
+                                selected = isSelected,
+                                interactionSource = interactionSource,
+                                indication = rememberRipple(bounded = false, color = YtmWhite20),
+                                role = Role.Tab,
+                                onClick = { onNavigate(screen.route) }
+                            )
+                            .padding(top = 6.dp, start = 4.dp, end = 4.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(
+                            imageVector = tabIcon,
+                            contentDescription = screen.title,
+                            tint = tint,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = screen.title,
+                            style = YtmCaption03.copy(color = tint),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
         }
     }
 }

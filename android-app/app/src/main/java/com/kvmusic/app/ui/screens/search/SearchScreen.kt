@@ -1,5 +1,13 @@
 package com.kvmusic.app.ui.screens.search
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,65 +15,81 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.kvmusic.app.data.model.*
+import com.kvmusic.app.data.model.AlbumHit
+import com.kvmusic.app.data.model.ArtistHit
+import com.kvmusic.app.data.model.PlaylistHit
+import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
 import com.kvmusic.app.player.PlayerManager
-import com.kvmusic.app.ui.components.SoundCloudTrackCard
+import com.kvmusic.app.ui.components.TrackCardSquare
+import com.kvmusic.app.ui.components.TrackListItem
+import com.kvmusic.app.ui.components.YtmIcons
 import com.kvmusic.app.ui.theme.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-typealias SearchTabType = String // "everything", "tracks", "people", "albums", "playlists"
-
-data class MonogramTile(
+private data class ExploreMoodTile(
     val label: String,
-    val monogram: String,
-    val query: String
+    val query: String,
+    val stripeColor: Color
 )
 
-val monogramTiles = listOf(
-    MonogramTile("Hip-Hop & Rap", "HH", "Hip Hop"),
-    MonogramTile("Chill & Lofi", "LF", "Lofi Chill"),
-    MonogramTile("V-Pop", "VP", "V-Pop"),
-    MonogramTile("Dance & EDM", "EDM", "EDM Dance"),
-    MonogramTile("Rock", "RK", "Rock"),
-    MonogramTile("R&B", "RB", "R&B")
+private val exploreMoodTiles = listOf(
+    ExploreMoodTile("Energize", "Energize music", Color(0xFFFF0034)),
+    ExploreMoodTile("Relax", "Relax chill music", Color(0xFF3EA6FF)),
+    ExploreMoodTile("Workout", "Workout gym hits", Color(0xFF3A923F)),
+    ExploreMoodTile("Commute", "Commute drive mix", Color(0xFFFFB300)),
+    ExploreMoodTile("Focus", "Focus study lofi", Color(0xFFAB47BC)),
+    ExploreMoodTile("V-Pop", "V-Pop Hits", Color(0xFFFF4E45)),
+    ExploreMoodTile("Hip-Hop", "Hip Hop Rap", Color(0xFFFF7043)),
+    ExploreMoodTile("Dance & EDM", "EDM Dance", Color(0xFF26A69A)),
+    ExploreMoodTile("R&B", "R&B Soul", Color(0xFFEC407A)),
+    ExploreMoodTile("Romance", "Romantic love songs", Color(0xFF5C6BC0))
 )
 
-data class RegionOption(
+private data class ExploreRegionOption(
     val code: String,
-    val label: String,
     val queryPrefix: String
 )
 
-val regionOptions = listOf(
-    RegionOption("VN", "🇻🇳 Vietnam", "V-Pop Top Hits"),
-    RegionOption("US", "🇺🇸 USA Global", "Billboard Top Hits"),
-    RegionOption("KR", "🇰🇷 Korea K-Pop", "K-Pop Top Hits"),
-    RegionOption("JP", "🇯🇵 Japan J-Pop", "J-Pop Anime Hits"),
-    RegionOption("GB", "🇬🇧 UK UK-Pop", "UK Top Charts")
+private val exploreRegions = listOf(
+    ExploreRegionOption("VN", "V-Pop Top Hits"),
+    ExploreRegionOption("US", "Billboard Top Hits"),
+    ExploreRegionOption("KR", "K-Pop Top Hits"),
+    ExploreRegionOption("JP", "J-Pop Anime Hits"),
+    ExploreRegionOption("GB", "UK Top Charts")
 )
+
+private val searchFilterTabs = listOf("All", "Songs", "Videos", "Albums", "Artists", "Playlists")
 
 @Composable
 fun SearchScreen(
@@ -75,48 +99,51 @@ fun SearchScreen(
     onPlaylistClick: (id: String, title: String, coverUrl: String, subtitle: String) -> Unit = { _, _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val focusRequester = remember { FocusRequester() }
+    val coroutineScope = rememberCoroutineScope()
+    val exploreListState = rememberLazyListState()
+
+    var isSearchActive by remember { mutableStateOf(false) }
     var query by remember { mutableStateOf("") }
-    var activeTab by remember { mutableStateOf<SearchTabType>("everything") }
-    var selectedRegion by remember { mutableStateOf(regionOptions.first()) }
+    var activeFilterTab by remember { mutableStateOf("All") }
+    var selectedRegion by remember { mutableStateOf(exploreRegions.first()) }
 
     var songs by remember { mutableStateOf<List<Track>>(emptyList()) }
     var albums by remember { mutableStateOf<List<AlbumHit>>(emptyList()) }
     var playlists by remember { mutableStateOf<List<PlaylistHit>>(emptyList()) }
     var artists by remember { mutableStateOf<List<ArtistHit>>(emptyList()) }
 
-    // Pre-search Explore Featured items (Refreshed by YouTube Music API per region)
     var preSearchSongs by remember { mutableStateOf<List<Track>>(emptyList()) }
     var preSearchAlbums by remember { mutableStateOf<List<AlbumHit>>(emptyList()) }
-    var preSearchPlaylists by remember { mutableStateOf<List<PlaylistHit>>(emptyList()) }
+    var preSearchNewReleases by remember { mutableStateOf<List<Track>>(emptyList()) }
 
     var recentSearches by remember { mutableStateOf(listOf("Lofi Chill", "V-Pop 2026", "HNGLE", "EDM Dance")) }
     var isLoading by remember { mutableStateOf(false) }
     var isExploreLoading by remember { mutableStateOf(false) }
-
-    val focusManager = LocalFocusManager.current
-    val coroutineScope = rememberCoroutineScope()
     var searchJob by remember { mutableStateOf<Job?>(null) }
 
-    fun loadExploreContentForRegion(region: RegionOption) {
+    val likedIds by PlayerManager.likedTrackIds.collectAsState()
+
+    fun loadExploreContentForRegion(region: ExploreRegionOption) {
         coroutineScope.launch {
             isExploreLoading = true
-
-            // Fetch live region charts from YouTube Music browse API
             val chartsRes = musicRepo.getCharts(region.code, "trending")
             if (chartsRes.isSuccess) {
                 preSearchSongs = chartsRes.getOrDefault(emptyList())
             }
-
-            // Fetch live region albums and playlists from YouTube Music search API
+            val newRelRes = musicRepo.getNewReleases(region.code)
+            if (newRelRes.isSuccess) {
+                preSearchNewReleases = newRelRes.getOrDefault(emptyList())
+            }
             val exploreRes = musicRepo.universalSearch(region.queryPrefix)
             if (exploreRes.isSuccess) {
                 val data = exploreRes.getOrNull()
                 if (data != null) {
                     preSearchAlbums = data.albums
-                    preSearchPlaylists = data.playlists
                 }
             }
-
             isExploreLoading = false
         }
     }
@@ -125,8 +152,19 @@ fun SearchScreen(
         loadExploreContentForRegion(selectedRegion)
     }
 
-    fun performSearch(q: String, dismissKeyboard: Boolean = true, saveRecent: Boolean = true, debounceMs: Long = 0L) {
-        val trimmed = q.trim()
+    LaunchedEffect(isSearchActive) {
+        if (isSearchActive && query.isEmpty()) {
+            runCatching { focusRequester.requestFocus() }
+        }
+    }
+
+    fun performSearch(
+        rawQuery: String,
+        dismissKeyboard: Boolean = true,
+        saveRecent: Boolean = true,
+        debounceMs: Long = 0L
+    ) {
+        val trimmed = rawQuery.trim()
         if (trimmed.isEmpty()) {
             searchJob?.cancel()
             isLoading = false
@@ -159,8 +197,8 @@ fun SearchScreen(
                         songs = trackRes.getOrDefault(emptyList())
                     }
                 }
-                if (saveRecent && !recentSearches.contains(trimmed)) {
-                    recentSearches = (listOf(trimmed) + recentSearches).take(8)
+                if (saveRecent) {
+                    recentSearches = (listOf(trimmed) + recentSearches.filterNot { it.equals(trimmed, ignoreCase = true) }).take(8)
                 }
             } finally {
                 isLoading = false
@@ -168,904 +206,900 @@ fun SearchScreen(
         }
     }
 
-    fun handleAlbumTap(album: AlbumHit) {
-        onAlbumClick(album.id, album.title, album.coverUrl, album.artist)
-        coroutineScope.launch {
-            val res = musicRepo.search(album.title)
-            if (res.isSuccess) {
-                val list = res.getOrDefault(emptyList())
-                val track = list.firstOrNull()
-                if (track != null) {
-                    PlayerManager.playTrack(track, list)
-                }
+    val voiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+                ?.trim()
+            if (!spoken.isNullOrEmpty()) {
+                isSearchActive = true
+                query = spoken
+                performSearch(spoken, dismissKeyboard = true, saveRecent = true)
             }
         }
     }
 
-    fun handlePlaylistTap(playlist: PlaylistHit) {
-        onPlaylistClick(playlist.id, playlist.title, playlist.coverUrl, "Playlist")
-        coroutineScope.launch {
-            val res = musicRepo.search(playlist.title)
-            if (res.isSuccess) {
-                val list = res.getOrDefault(emptyList())
-                val track = list.firstOrNull()
-                if (track != null) {
-                    PlayerManager.playTrack(track, list)
-                }
-            }
+    fun startVoiceSearch() {
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_PROMPT, "Search songs, artists, podcasts")
+        }
+        try {
+            voiceLauncher.launch(intent)
+        } catch (_: ActivityNotFoundException) {
+            Toast.makeText(context, "Voice search unavailable on this device", Toast.LENGTH_SHORT).show()
         }
     }
 
-    Box(
+    fun exitActiveSearch() {
+        searchJob?.cancel()
+        focusManager.clearFocus()
+        isLoading = false
+        isSearchActive = false
+        query = ""
+        songs = emptyList()
+        albums = emptyList()
+        playlists = emptyList()
+        artists = emptyList()
+    }
+
+    val showingSearchMode = isSearchActive || query.isNotEmpty()
+
+    Column(
         modifier = modifier
             .fillMaxSize()
-            .background(MidnightBlack)
+            .background(YtmPureBlack)
     ) {
-        Column(
-            modifier = Modifier.fillMaxSize()
-        ) {
-            // Search Input Header Bar
-            Surface(
-                color = GlassCardDark,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, GlassCardBorder)
+        if (!showingSearchMode) {
+            // EXPLORE / BROWSE STATE
+            LazyColumn(
+                state = exploreListState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(bottom = 28.dp)
             ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text(
-                        text = if (query.isNotEmpty()) "Search results for \"$query\"" else "Search SoundCloud",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Black,
-                            fontSize = 20.sp
-                        ),
-                        color = TextElectricWhite
-                    )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    OutlinedTextField(
-                        value = query,
-                        onValueChange = {
-                            query = it
-                            val trimmed = it.trim()
-                            if (trimmed.length >= 2) {
-                                performSearch(it, dismissKeyboard = false, saveRecent = false, debounceMs = 400L)
-                            } else {
-                                searchJob?.cancel()
-                                isLoading = false
-                                if (trimmed.isEmpty()) {
-                                    songs = emptyList()
-                                    albums = emptyList()
-                                    playlists = emptyList()
-                                    artists = emptyList()
-                                }
-                            }
-                        },
-                        placeholder = {
-                            Text("Search tracks, artists, podcasts...", color = TextLightGray, fontSize = 13.sp)
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Search,
-                                contentDescription = "Search",
-                                tint = SoundCloudNeonOrange
+                // 0: Explore Top Header + Rounded Search Trigger
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    ) {
+                        Text(
+                            text = "Explore",
+                            style = TextStyle(
+                                fontFamily = YouTubeSansFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 24.sp,
+                                letterSpacing = (-0.04).em,
+                                color = YtmWhite
                             )
-                        },
-                        trailingIcon = {
-                            if (query.isNotEmpty()) {
-                                IconButton(onClick = {
-                                    searchJob?.cancel()
-                                    isLoading = false
-                                    query = ""
-                                    songs = emptyList()
-                                    albums = emptyList()
-                                    playlists = emptyList()
-                                    artists = emptyList()
-                                }) {
-                                    Icon(
-                                        imageVector = Icons.Default.Clear,
-                                        contentDescription = "Clear",
-                                        tint = TextLightGray
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        // Rounded search bar trigger (height = 44.dp, RoundedCornerShape(22.dp), YtmGrey10)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .clip(RoundedCornerShape(22.dp))
+                                .background(YtmGrey10)
+                                .border(1.dp, YtmWhite08, RoundedCornerShape(22.dp))
+                                .clickable { isSearchActive = true }
+                                .padding(horizontal = 14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = YtmIcons.SearchOutline,
+                                contentDescription = "Search",
+                                tint = YtmWhite,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Search songs, artists, podcasts",
+                                fontSize = 14.sp,
+                                color = YtmWhite67,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { startVoiceSearch() },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(
+                                    imageVector = YtmIcons.Mic24,
+                                    contentDescription = "Voice search",
+                                    tint = YtmWhite,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 1: Top 3 YTM navigation buttons (music_navigation_button, height = 56.dp, RoundedCornerShape(6.dp), YtmGrey10)
+                item {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        YtmExploreNavButton(
+                            label = "New releases",
+                            icon = YtmIcons.Album24,
+                            onClick = {
+                                coroutineScope.launch {
+                                    exploreListState.animateScrollToItem(4)
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        YtmExploreNavButton(
+                            label = "Charts",
+                            icon = YtmIcons.Spark24,
+                            onClick = {
+                                coroutineScope.launch {
+                                    exploreListState.animateScrollToItem(
+                                        if (preSearchSongs.isNotEmpty()) 6 else 5
                                     )
                                 }
-                            }
-                        },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                        keyboardActions = KeyboardActions(onSearch = { performSearch(query, dismissKeyboard = true, saveRecent = true) }),
-                        shape = RoundedCornerShape(24.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = SoundCloudNeonOrange,
-                            unfocusedBorderColor = GlassCardBorder,
-                            focusedContainerColor = MidnightBlack,
-                            unfocusedContainerColor = MidnightBlack,
-                            focusedTextColor = TextElectricWhite,
-                            unfocusedTextColor = TextElectricWhite
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    )
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                        YtmExploreNavButton(
+                            label = "Moods & genres",
+                            icon = YtmIcons.Mix24,
+                            onClick = {
+                                coroutineScope.launch {
+                                    exploreListState.animateScrollToItem(5)
+                                }
+                            },
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                }
 
-                    if (query.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(12.dp))
-                        LazyRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                // 2: Region filter chips (VN, US, KR, JP, GB)
+                item {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        items(exploreRegions) { region ->
+                            SearchFilterChip(
+                                label = region.code,
+                                isSelected = selectedRegion.code == region.code,
+                                onClick = { selectedRegion = region }
+                            )
+                        }
+                    }
+                }
+
+                // 3: Recent searches list (with CloseX24 and "Clear")
+                item {
+                    if (recentSearches.isNotEmpty()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 6.dp)
                         ) {
-                            val tabs = listOf(
-                                "everything" to "Everything",
-                                "tracks" to "Tracks",
-                                "people" to "People",
-                                "albums" to "Albums",
-                                "playlists" to "Playlists"
-                            )
-                            items(tabs) { (key, label) ->
-                                Surface(
-                                    onClick = { activeTab = key },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = if (activeTab == key) SoundCloudNeonOrange else Color(0xFF222222),
-                                    modifier = Modifier.height(30.dp)
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.padding(horizontal = 14.dp)
-                                    ) {
-                                        Text(
-                                            text = label,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = SoundCloudNeonOrange)
-                }
-            } else if (query.isNotEmpty()) {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 120.dp)
-                ) {
-                    // 1. People Section
-                    if ((activeTab == "everything" || activeTab == "people") && artists.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.People,
-                                    contentDescription = "People",
-                                    tint = SoundCloudNeonOrange,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "PEOPLE",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 13.sp,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    color = TextElectricWhite
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(artists) { artist ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(110.dp)
-                                            .border(1.dp, GlassCardBorder, RoundedCornerShape(10.dp))
-                                            .clickable { onArtistClick(artist.name, artist.displayPhoto, "Creator") },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = GlassCardDark)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(10.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
-                                        ) {
-                                            AsyncImage(
-                                                model = artist.displayPhoto,
-                                                contentDescription = artist.name,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(64.dp)
-                                                    .clip(CircleShape)
-                                                    .border(2.dp, SoundCloudNeonOrange, CircleShape)
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = artist.name,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
-                                                ),
-                                                color = TextElectricWhite,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "Creator",
-                                                fontSize = 10.sp,
-                                                color = TextLightGray
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. Tracks Stream Section
-                    if ((activeTab == "everything" || activeTab == "tracks") && songs.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MusicNote,
-                                    contentDescription = "Tracks",
-                                    tint = SoundCloudNeonOrange,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "TRACKS",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 13.sp,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    color = TextElectricWhite
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
-
-                        items(songs) { track ->
-                            SoundCloudTrackCard(
-                                track = track,
-                                queue = songs
-                            )
-                        }
-                    }
-
-                    // 3. Albums Section
-                    if ((activeTab == "everything" || activeTab == "albums") && albums.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Album,
-                                    contentDescription = "Albums",
-                                    tint = SoundCloudNeonOrange,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "ALBUMS",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 13.sp,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    color = TextElectricWhite
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(albums) { album ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(135.dp)
-                                            .border(1.dp, GlassCardBorder, RoundedCornerShape(10.dp))
-                                            .clickable { handleAlbumTap(album) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = GlassCardDark)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                AsyncImage(
-                                                    model = album.coverUrl,
-                                                    contentDescription = album.title,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(115.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                )
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(115.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(Color.Black.copy(alpha = 0.25f)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Surface(
-                                                        shape = CircleShape,
-                                                        color = SoundCloudNeonOrange,
-                                                        modifier = Modifier.size(36.dp)
-                                                    ) {
-                                                        Box(contentAlignment = Alignment.Center) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.PlayArrow,
-                                                                contentDescription = "Play",
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(20.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = album.title,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
-                                                ),
-                                                color = TextElectricWhite,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = album.artist,
-                                                fontSize = 10.sp,
-                                                color = TextLightGray,
-                                                maxLines = 1
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 4. Playlists Section
-                    if ((activeTab == "everything" || activeTab == "playlists") && playlists.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.List,
-                                    contentDescription = "Playlists",
-                                    tint = SoundCloudNeonOrange,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "PLAYLISTS",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 13.sp,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    color = TextElectricWhite
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(playlists) { playlist ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(135.dp)
-                                            .border(1.dp, GlassCardBorder, RoundedCornerShape(10.dp))
-                                            .clickable { handlePlaylistTap(playlist) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = GlassCardDark)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                AsyncImage(
-                                                    model = playlist.coverUrl,
-                                                    contentDescription = playlist.title,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(115.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                )
-                                                Box(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .height(115.dp)
-                                                        .clip(RoundedCornerShape(8.dp))
-                                                        .background(Color.Black.copy(alpha = 0.25f)),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Surface(
-                                                        shape = CircleShape,
-                                                        color = SoundCloudNeonOrange,
-                                                        modifier = Modifier.size(36.dp)
-                                                    ) {
-                                                        Box(contentAlignment = Alignment.Center) {
-                                                            Icon(
-                                                                imageVector = Icons.Default.PlayArrow,
-                                                                contentDescription = "Play",
-                                                                tint = Color.White,
-                                                                modifier = Modifier.size(20.dp)
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = playlist.title,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
-                                                ),
-                                                color = TextElectricWhite,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "Playlist",
-                                                fontSize = 10.sp,
-                                                color = SoundCloudNeonOrange
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            } else {
-                // Pre-Search Explore View (Refreshed by Region Selector directly linked to YouTube Music API!)
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(bottom = 120.dp)
-                ) {
-                    // Region Selector Bar
-                    item {
-                        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Public,
-                                        contentDescription = "Region",
-                                        tint = SoundCloudNeonOrange,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "EXPLORE REGION",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 12.sp,
-                                            letterSpacing = 1.sp
-                                        ),
-                                        color = TextElectricWhite
-                                    )
-                                }
-
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.clickable {
-                                        loadExploreContentForRegion(selectedRegion)
-                                    }
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = "Refresh",
-                                        tint = SoundCloudNeonOrange,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = "Live Refresh",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = SoundCloudNeonOrange
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(regionOptions) { region ->
-                                    Surface(
-                                        onClick = { selectedRegion = region },
-                                        shape = RoundedCornerShape(16.dp),
-                                        color = if (selectedRegion.code == region.code) SoundCloudNeonOrange else Color(0xFF222222),
-                                        border = androidx.compose.foundation.BorderStroke(1.dp, GlassCardBorder),
-                                        modifier = Modifier.height(32.dp)
-                                    ) {
-                                        Box(
-                                            contentAlignment = Alignment.Center,
-                                            modifier = Modifier.padding(horizontal = 12.dp)
-                                        ) {
-                                            Text(
-                                                text = region.label,
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color.White
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 1. Recent Searches
-                    if (recentSearches.isNotEmpty()) {
-                        item {
-                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(bottom = 10.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.History,
-                                        contentDescription = "Recent Searches",
-                                        tint = TextLightGray,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = "RECENT SEARCHES",
-                                        style = MaterialTheme.typography.titleMedium.copy(
-                                            fontWeight = FontWeight.Black,
-                                            fontSize = 11.sp,
-                                            letterSpacing = 1.sp
-                                        ),
-                                        color = TextLightGray
-                                    )
-                                }
-
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    items(recentSearches) { q ->
-                                        Surface(
-                                            onClick = {
-                                                query = q
-                                                performSearch(q, dismissKeyboard = true, saveRecent = true)
-                                            },
-                                            shape = RoundedCornerShape(16.dp),
-                                            color = Color(0xFF1B1B1B),
-                                            border = androidx.compose.foundation.BorderStroke(1.dp, GlassCardBorder),
-                                            modifier = Modifier.height(30.dp)
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(horizontal = 12.dp)
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Search,
-                                                    contentDescription = null,
-                                                    tint = TextLightGray,
-                                                    modifier = Modifier.size(12.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(6.dp))
-                                                Text(
-                                                    text = q,
-                                                    fontSize = 11.sp,
-                                                    color = TextElectricWhite
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 2. Browse Genres Monogram Grid
-                    item {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Explore,
-                                contentDescription = "Browse",
-                                tint = SoundCloudNeonOrange,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = "BROWSE GENRES",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Black,
+                                Text(
+                                    text = "Recent searches",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = YtmWhite67
+                                )
+                                Text(
+                                    text = "Clear",
                                     fontSize = 13.sp,
-                                    letterSpacing = 1.sp
-                                ),
-                                color = TextElectricWhite
-                            )
-                        }
-
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            items(monogramTiles) { tile ->
-                                Card(
+                                    fontWeight = FontWeight.Medium,
+                                    color = YtmWhite,
                                     modifier = Modifier
-                                        .width(120.dp)
-                                        .height(72.dp)
-                                        .border(1.dp, GlassCardBorder, RoundedCornerShape(8.dp))
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .clickable { recentSearches = emptyList() }
+                                        .padding(horizontal = 6.dp, vertical = 4.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(4.dp))
+
+                            recentSearches.forEach { itemQuery ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(44.dp)
+                                        .clip(RoundedCornerShape(6.dp))
                                         .clickable {
-                                            query = tile.query
-                                            performSearch(tile.query, dismissKeyboard = true, saveRecent = true)
-                                        },
-                                    shape = RoundedCornerShape(8.dp),
-                                    colors = CardDefaults.cardColors(containerColor = GlassCardDark)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Surface(
-                                            color = GlassSurfaceDark,
-                                            shape = RoundedCornerShape(4.dp),
-                                            modifier = Modifier.border(1.dp, GlassCardBorder, RoundedCornerShape(4.dp))
-                                        ) {
-                                            Text(
-                                                text = tile.monogram,
-                                                color = SoundCloudNeonOrange,
-                                                fontWeight = FontWeight.Black,
-                                                fontSize = 11.sp,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                            )
+                                            isSearchActive = true
+                                            query = itemQuery
+                                            performSearch(itemQuery, dismissKeyboard = true, saveRecent = true)
                                         }
-                                        Text(
-                                            text = tile.label,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 12.sp
-                                            ),
-                                            color = TextElectricWhite,
-                                            maxLines = 1
+                                        .padding(horizontal = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = YtmIcons.SearchOutline,
+                                        contentDescription = null,
+                                        tint = YtmWhite67,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Text(
+                                        text = itemQuery,
+                                        fontSize = 14.sp,
+                                        color = YtmWhite,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    IconButton(
+                                        onClick = { recentSearches = recentSearches - itemQuery },
+                                        modifier = Modifier.size(36.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = YtmIcons.CloseX24,
+                                            contentDescription = "Remove search",
+                                            tint = YtmWhite67,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
                                 }
                             }
                         }
                     }
+                }
 
-                    // 3. Top Featured Albums (Refreshed from YT Music Browse API)
-                    item {
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 16.dp)
+                // 4: "New albums & singles" horizontal LazyRow of TrackCardSquare
+                item {
+                    Spacer(modifier = Modifier.height(14.dp))
+                    Text(
+                        text = "New albums & singles",
+                        style = YtmDisplay02,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
+
+                    if (isExploreLoading && preSearchAlbums.isEmpty() && preSearchNewReleases.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                            contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Album,
-                                contentDescription = "Albums",
-                                tint = SoundCloudNeonOrange,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Top Featured Albums (${selectedRegion.label})",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 16.sp
-                                ),
-                                color = TextElectricWhite
+                            CircularProgressIndicator(
+                                color = YtmWhite,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
-                        Spacer(modifier = Modifier.height(10.dp))
-
-                        if (isExploreLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(140.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = SoundCloudNeonOrange, modifier = Modifier.size(28.dp))
-                            }
-                        } else if (preSearchAlbums.isNotEmpty()) {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(preSearchAlbums) { album ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(135.dp)
-                                            .border(1.dp, GlassCardBorder, RoundedCornerShape(10.dp))
-                                            .clickable { handleAlbumTap(album) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = GlassCardDark)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            AsyncImage(
-                                                model = album.coverUrl,
-                                                contentDescription = album.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(115.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = album.title,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
-                                                ),
-                                                color = TextElectricWhite,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = album.artist,
-                                                fontSize = 10.sp,
-                                                color = TextLightGray,
-                                                maxLines = 1
-                                            )
-                                        }
+                    } else if (preSearchAlbums.isNotEmpty()) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(preSearchAlbums) { album ->
+                                TrackCardSquare(
+                                    track = Track(
+                                        id = album.id,
+                                        title = album.title,
+                                        artist = if (album.year.isNotBlank()) "Album • ${album.artist}" else album.artist,
+                                        coverUrl = album.coverUrl
+                                    ),
+                                    onClick = {
+                                        onAlbumClick(album.id, album.title, album.coverUrl, album.artist)
                                     }
-                                }
+                                )
+                            }
+                        }
+                    } else if (preSearchNewReleases.isNotEmpty()) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(preSearchNewReleases) { track ->
+                                TrackCardSquare(
+                                    track = track,
+                                    onClick = { PlayerManager.playTrack(track, preSearchNewReleases) }
+                                )
                             }
                         }
                     }
+                }
 
-                    // 4. Popular SoundCloud Playlists (Refreshed from YT Music Browse API)
-                    item {
-                        Spacer(modifier = Modifier.height(20.dp))
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 16.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.List,
-                                contentDescription = "Playlists",
-                                tint = SoundCloudNeonOrange,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Popular SoundCloud Playlists (${selectedRegion.label})",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 16.sp
-                                ),
-                                color = TextElectricWhite
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(10.dp))
+                // 5: "Moods & genres" 2-column grid of 48.dp-tall YtmGrey10 cards with 6.dp colored left stripe
+                item {
+                    Spacer(modifier = Modifier.height(22.dp))
+                    Text(
+                        text = "Moods & genres",
+                        style = YtmDisplay02,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                    )
 
-                        if (isExploreLoading) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(140.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator(color = SoundCloudNeonOrange, modifier = Modifier.size(28.dp))
-                            }
-                        } else if (preSearchPlaylists.isNotEmpty()) {
-                            LazyRow(
-                                contentPadding = PaddingValues(horizontal = 16.dp),
-                                horizontalArrangement = Arrangement.spacedBy(14.dp)
-                            ) {
-                                items(preSearchPlaylists) { playlist ->
-                                    Card(
-                                        modifier = Modifier
-                                            .width(135.dp)
-                                            .border(1.dp, GlassCardBorder, RoundedCornerShape(10.dp))
-                                            .clickable { handlePlaylistTap(playlist) },
-                                        shape = RoundedCornerShape(10.dp),
-                                        colors = CardDefaults.cardColors(containerColor = GlassCardDark)
-                                    ) {
-                                        Column(modifier = Modifier.padding(10.dp)) {
-                                            AsyncImage(
-                                                model = playlist.coverUrl,
-                                                contentDescription = playlist.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .height(115.dp)
-                                                    .clip(RoundedCornerShape(8.dp))
-                                            )
-                                            Spacer(modifier = Modifier.height(6.dp))
-                                            Text(
-                                                text = playlist.title,
-                                                style = MaterialTheme.typography.bodyMedium.copy(
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 12.sp
-                                                ),
-                                                color = TextElectricWhite,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = "Playlist",
-                                                fontSize = 10.sp,
-                                                color = SoundCloudNeonOrange
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    // 5. Pre-Search Featured Top Tracks Stream (Live YouTube Music Charts)
-                    if (preSearchSongs.isNotEmpty()) {
-                        item {
-                            Spacer(modifier = Modifier.height(20.dp))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        exploreMoodTiles.chunked(2).forEach { pair ->
                             Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 16.dp)
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                pair.forEach { tile ->
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .height(48.dp)
+                                            .clip(RoundedCornerShape(4.dp))
+                                            .background(YtmGrey10)
+                                            .clickable {
+                                                isSearchActive = true
+                                                query = tile.label
+                                                activeFilterTab = "All"
+                                                performSearch(tile.query, dismissKeyboard = true, saveRecent = true)
+                                            },
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .width(6.dp)
+                                                .fillMaxHeight()
+                                                .background(tile.stripeColor)
+                                        )
+                                        Text(
+                                            text = tile.label,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = YtmWhite,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(horizontal = 12.dp)
+                                        )
+                                    }
+                                }
+                                if (pair.size == 1) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // 6: "Trending in ${region}" ranked TrackListItem rows
+                if (preSearchSongs.isNotEmpty()) {
+                    item {
+                        Spacer(modifier = Modifier.height(24.dp))
+                        Text(
+                            text = "Trending in ${selectedRegion.code}",
+                            style = YtmDisplay02,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
+
+                    val trendingSlice = preSearchSongs.take(15)
+                    itemsIndexed(trendingSlice) { index, track ->
+                        TrackListItem(
+                            track = track,
+                            rankNumber = index + 1,
+                            onTrackClick = { PlayerManager.playTrack(track, trendingSlice) },
+                            isLiked = likedIds.contains(track.id),
+                            onLikeClick = { PlayerManager.toggleLike(track.id) }
+                        )
+                    }
+                }
+            }
+        } else {
+            // ACTIVE SEARCH STATE (search_toolbar_view_v2)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(YtmGrey12)
+                    .statusBarsPadding()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp)
+                        .padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = { exitActiveSearch() },
+                        modifier = Modifier.size(48.dp)
+                    ) {
+                        Icon(
+                            imageVector = YtmIcons.ArrowLeft24,
+                            contentDescription = "Back",
+                            tint = YtmWhite,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 4.dp),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "Search songs, artists, podcasts",
+                                fontSize = 18.sp,
+                                color = YtmWhite67,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = query,
+                            onValueChange = { next ->
+                                query = next
+                                val trimmed = next.trim()
+                                if (trimmed.length >= 2) {
+                                    performSearch(next, dismissKeyboard = false, saveRecent = false, debounceMs = 350L)
+                                } else {
+                                    searchJob?.cancel()
+                                    isLoading = false
+                                    if (trimmed.isEmpty()) {
+                                        songs = emptyList()
+                                        albums = emptyList()
+                                        playlists = emptyList()
+                                        artists = emptyList()
+                                    }
+                                }
+                            },
+                            singleLine = true,
+                            textStyle = TextStyle(
+                                fontSize = 18.sp,
+                                color = YtmWhite
+                            ),
+                            cursorBrush = SolidColor(YtmWhite),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(
+                                onSearch = { performSearch(query, dismissKeyboard = true, saveRecent = true) }
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(focusRequester)
+                        )
+                    }
+
+                    if (query.isNotEmpty()) {
+                        IconButton(
+                            onClick = {
+                                searchJob?.cancel()
+                                isLoading = false
+                                query = ""
+                                songs = emptyList()
+                                albums = emptyList()
+                                playlists = emptyList()
+                                artists = emptyList()
+                            },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = YtmIcons.CloseX24,
+                                contentDescription = "Clear search",
+                                tint = YtmWhite,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = { startVoiceSearch() },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = YtmIcons.Mic24,
+                            contentDescription = "Voice search",
+                            tint = YtmWhite,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
+
+                HorizontalDivider(thickness = 1.dp, color = YtmWhite10)
+            }
+
+            if (query.isNotEmpty()) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(searchFilterTabs) { tab ->
+                        SearchFilterChip(
+                            label = tab,
+                            isSelected = activeFilterTab == tab,
+                            onClick = { activeFilterTab = tab }
+                        )
+                    }
+                }
+            }
+
+            if (query.isEmpty()) {
+                // Active empty-query suggestions / recent search list
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(recentSearches) { itemQuery ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .clickable {
+                                    query = itemQuery
+                                    performSearch(itemQuery, dismissKeyboard = true, saveRecent = true)
+                                }
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = YtmIcons.SearchOutline,
+                                contentDescription = null,
+                                tint = YtmWhite67,
+                                modifier = Modifier.size(20.dp)
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(
+                                text = itemQuery,
+                                fontSize = 15.sp,
+                                color = YtmWhite,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            IconButton(
+                                onClick = { recentSearches = recentSearches - itemQuery },
+                                modifier = Modifier.size(36.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.LocalFireDepartment,
-                                    contentDescription = "Trending",
-                                    tint = SoundCloudNeonOrange,
-                                    modifier = Modifier.size(16.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "LIVE TRENDING CHARTS (${selectedRegion.code})",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Black,
-                                        fontSize = 13.sp,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    color = TextElectricWhite
+                                    imageVector = YtmIcons.CloseX24,
+                                    contentDescription = "Remove",
+                                    tint = YtmWhite67,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+            } else if (isLoading) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(
+                        color = YtmWhite,
+                        strokeWidth = 2.5.dp,
+                        modifier = Modifier.size(32.dp)
+                    )
+                }
+            } else {
+                val showArtists = (activeFilterTab == "All" || activeFilterTab == "Artists") && artists.isNotEmpty()
+                val showSongs = (activeFilterTab == "All" || activeFilterTab == "Songs" || activeFilterTab == "Videos") && songs.isNotEmpty()
+                val showAlbums = (activeFilterTab == "All" || activeFilterTab == "Albums") && albums.isNotEmpty()
+                val showPlaylists = (activeFilterTab == "All" || activeFilterTab == "Playlists") && playlists.isNotEmpty()
+
+                if (!showArtists && !showSongs && !showAlbums && !showPlaylists) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "No results found for \"$query\"",
+                            style = YtmSubtitle01
+                        )
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 28.dp)
+                    ) {
+                        // Circular artist rows
+                        if (showArtists) {
+                            item {
+                                Text(
+                                    text = "Artists",
+                                    style = YtmDisplay02,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                )
+                            }
+                            items(if (activeFilterTab == "All") artists.take(3) else artists) { artist ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            onArtistClick(artist.name, artist.displayPhoto, artist.displayFollowers)
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    AsyncImage(
+                                        model = artist.displayPhoto,
+                                        contentDescription = artist.name,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier
+                                            .size(52.dp)
+                                            .clip(CircleShape)
+                                            .background(YtmGrey10)
+                                    )
+                                    Spacer(modifier = Modifier.width(14.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = artist.name,
+                                            style = YtmTitle02,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "Artist • ${artist.displayFollowers}",
+                                            style = YtmSubtitle01,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Icon(
+                                        imageVector = YtmIcons.ChevronRight24,
+                                        contentDescription = null,
+                                        tint = YtmWhite67,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
                         }
 
-                        items(preSearchSongs) { track ->
-                            SoundCloudTrackCard(
-                                track = track,
-                                queue = preSearchSongs
-                            )
+                        // Songs / Videos using YTM TrackListItem (music_two_column_item)
+                        if (showSongs) {
+                            item {
+                                Text(
+                                    text = if (activeFilterTab == "Videos") "Videos" else "Songs",
+                                    style = YtmDisplay02,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                )
+                            }
+                            items(songs) { track ->
+                                TrackListItem(
+                                    track = track,
+                                    onTrackClick = { PlayerManager.playTrack(track, songs) },
+                                    isLiked = likedIds.contains(track.id),
+                                    onLikeClick = { PlayerManager.toggleLike(track.id) }
+                                )
+                            }
+                        }
+
+                        // Albums
+                        if (showAlbums) {
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Albums",
+                                    style = YtmDisplay02,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                )
+                            }
+                            if (activeFilterTab == "Albums") {
+                                items(albums) { album ->
+                                    ExploreMediaListRow(
+                                        title = album.title,
+                                        subtitle = if (album.year.isNotBlank()) "Album • ${album.artist} • ${album.year}" else "Album • ${album.artist}",
+                                        coverUrl = album.coverUrl,
+                                        onClick = {
+                                            onAlbumClick(album.id, album.title, album.coverUrl, album.artist)
+                                        }
+                                    )
+                                }
+                            } else {
+                                item {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(albums) { album ->
+                                            TrackCardSquare(
+                                                track = Track(
+                                                    id = album.id,
+                                                    title = album.title,
+                                                    artist = album.artist,
+                                                    coverUrl = album.coverUrl
+                                                ),
+                                                onClick = {
+                                                    onAlbumClick(album.id, album.title, album.coverUrl, album.artist)
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Playlists
+                        if (showPlaylists) {
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = "Playlists",
+                                    style = YtmDisplay02,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                                )
+                            }
+                            if (activeFilterTab == "Playlists") {
+                                items(playlists) { playlist ->
+                                    ExploreMediaListRow(
+                                        title = playlist.title,
+                                        subtitle = if (playlist.author.isNotBlank()) "Playlist • ${playlist.author}" else "Playlist",
+                                        coverUrl = playlist.coverUrl,
+                                        onClick = {
+                                            onPlaylistClick(
+                                                playlist.id,
+                                                playlist.title,
+                                                playlist.coverUrl,
+                                                playlist.author.ifBlank { "Playlist" }
+                                            )
+                                        }
+                                    )
+                                }
+                            } else {
+                                item {
+                                    LazyRow(
+                                        contentPadding = PaddingValues(horizontal = 16.dp),
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        items(playlists) { playlist ->
+                                            TrackCardSquare(
+                                                track = Track(
+                                                    id = playlist.id,
+                                                    title = playlist.title,
+                                                    artist = playlist.author.ifBlank { "Playlist" },
+                                                    coverUrl = playlist.coverUrl
+                                                ),
+                                                onClick = {
+                                                    onPlaylistClick(
+                                                        playlist.id,
+                                                        playlist.title,
+                                                        playlist.coverUrl,
+                                                        playlist.author.ifBlank { "Playlist" }
+                                                    )
+                                                }
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ExploreMediaListRow(
+    title: String,
+    subtitle: String,
+    coverUrl: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        AsyncImage(
+            model = coverUrl,
+            contentDescription = title,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(YtmGrey10)
+        )
+        Spacer(modifier = Modifier.width(14.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = YtmTitle02,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                style = YtmSubtitle01,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+        Icon(
+            imageVector = YtmIcons.ChevronRight24,
+            contentDescription = null,
+            tint = YtmWhite67,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+@Composable
+private fun YtmExploreNavButton(
+    label: String,
+    icon: ImageVector,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(6.dp),
+        color = YtmGrey10,
+        modifier = modifier.height(56.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = YtmWhite,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = label,
+                fontSize = 12.sp,
+                lineHeight = 15.sp,
+                fontWeight = FontWeight.Medium,
+                color = YtmWhite,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchFilterChip(
+    label: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(8.dp),
+        color = if (isSelected) YtmWhite else YtmWhite10,
+        border = if (isSelected) null else BorderStroke(1.dp, YtmWhite08),
+        modifier = Modifier.height(32.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 12.dp)
+        ) {
+            Text(
+                text = label,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = if (isSelected) YtmPureBlack else YtmWhite,
+                maxLines = 1
+            )
         }
     }
 }

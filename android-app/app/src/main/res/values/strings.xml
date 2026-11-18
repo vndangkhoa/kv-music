@@ -1,4 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">KV Music</string>
-    <string name="soundcloud_tagline">SoundCloud Inspired Audio Experience</string>
+    <string name="app_tagline">Music &amp; Audio Streaming</string>
+    <string name="search_hint">Search songs, artists, podcasts</string>
+    <string name="search_ask_button_label">Ask</string>
+    <string name="audio_video_switcher_song">Song</string>
+    <string name="audio_video_switcher_video">Video</string>
+    <string name="default_playback_rate">1x</string>
+    <string name="live_label">LIVE</string>
+    <string name="live_badge_text">Live</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_samples">Samples</string>
+    <string name="nav_explore">Explore</string>
+    <string name="nav_library">Library</string>
+    <string name="accessibility_collapse">Minimize</string>
+    <string name="accessibility_context_menu">Menu</string>
+    <string name="accessibility_music_shuffle">Shuffle</string>
+    <string name="accessibility_music_repeat">Repeat</string>
+    <string name="accessibility_previous_track">Previous track</string>
+    <string name="accessibility_next_track">Next track</string>
+    <string name="accessibility_play">Play</string>
+    <string name="accessibility_pause">Pause</string>
+    <string name="accessibility_rewind">Rewind 10 seconds</string>
+    <string name="accessibility_fast_forward">Fast forward 30 seconds</string>
+    <string name="accessibility_playback_rate">Set Playback Speed</string>
+    <string name="drag_handle_content_description">Drag to move</string>
 </resources>

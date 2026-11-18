@@ -14,11 +14,13 @@ pub struct YtmBridge {
 
 impl YtmBridge {
     pub fn new() -> Self {
-        let http = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .timeout(Duration::from_secs(5))
-            .build()
-            .unwrap_or_default();
+        let http = crate::spotdl::SpotdlService::apply_outbound_proxy(
+            reqwest::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .timeout(Duration::from_secs(5)),
+        )
+        .build()
+        .unwrap_or_default();
         Self {
             cache: Arc::new(RwLock::new(HashMap::new())),
             cache_ttl: Duration::from_secs(30 * 60),
@@ -139,11 +141,17 @@ impl YtmBridge {
         }
 
         let script = Self::script_path();
+        let proxy = crate::spotdl::SpotdlService::outbound_proxy();
         let output = tokio::task::spawn_blocking(move || {
-            Command::new("python3")
-                .arg(&script)
-                .args(&args)
-                .output()
+            let mut cmd = Command::new("python3");
+            cmd.arg(&script).args(&args);
+            if let Some(ref p) = proxy {
+                cmd.env("HTTP_PROXY", p)
+                    .env("HTTPS_PROXY", p)
+                    .env("http_proxy", p)
+                    .env("https_proxy", p);
+            }
+            cmd.output()
         })
         .await;
 

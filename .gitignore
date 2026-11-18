@@ -49,3 +49,5 @@ cookies.txt
 # Android machine-local config & build cache
 android-app/local.properties
 .gradle/
+ref/
+*.apkm

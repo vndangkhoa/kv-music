@@ -19,3 +19,6 @@ ios-app/
 *.apk
 *.spk
 *.zip
+ref/
+*.apkm
+docs/

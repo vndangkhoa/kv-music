@@ -1,4 +1,58 @@
 services:
+  # 0. Userspace Cloudflare WARP MASQUE (HTTP/3 QUIC over UDP 443) HTTP Proxy
+  # Avoids residential IPv4 YouTube blocks and ISP WireGuard DPI throttling
+  # without requiring kernel modules or NET_ADMIN.
+  warp:
+    image: alpine:3.21
+    container_name: kvmusic-warp
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      - TZ=${TZ:-Asia/Ho_Chi_Minh}
+    command:
+      - /bin/sh
+      - -eu
+      - -c
+      - |
+        mkdir -p /warp/bin
+        cd /warp
+        if [ ! -x /warp/bin/usque ]; then
+          apk add --no-cache ca-certificates curl unzip
+          ARCH="$$(uname -m)"
+          case "$$ARCH" in
+            x86_64) USQUE_ARCH="amd64" ;;
+            aarch64|arm64) USQUE_ARCH="arm64" ;;
+            *) USQUE_ARCH="amd64" ;;
+          esac
+          curl -fsSL "https://github.com/Diniboy1123/usque/releases/download/v4.2.1/usque_4.2.1_linux_$${USQUE_ARCH}.zip" -o /tmp/usque.zip
+          unzip -o /tmp/usque.zip usque -d /warp/bin
+          rm -f /tmp/usque.zip
+          chmod 0755 /warp/bin/usque
+        fi
+        if [ ! -s /warp/config.json ]; then
+          /warp/bin/usque register --accept-tos -c /warp/config.json
+        fi
+        chmod 0600 /warp/config.json
+        exec /warp/bin/usque -c /warp/config.json http-proxy \
+          --always-reconnect \
+          -b 127.0.0.1 \
+          -p 29083 \
+          -d 1.1.1.1 \
+          -d 2606:4700:4700::1111
+    volumes:
+      - ./warp:/warp
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD-SHELL", "http_proxy=http://127.0.0.1:29083 wget -q -T 6 -O /dev/null http://cp.cloudflare.com/generate_204"]
+      interval: 20s
+      timeout: 8s
+      retries: 6
+      start_period: 10s
+
   kv-music:
     # Pull from any of these registries:
     # docker.io/vndangkhoa/kv-music:latest
@@ -10,7 +64,8 @@ services:
     mem_limit: 500m
     cpus: 1.5
     # Host networking gives yt-dlp direct access to the host's native routed IPv6
-    # on Linux/Synology without Docker bridge NAT66 issues.
+    # and the local usque WARP MASQUE proxy (127.0.0.1:29083) on Linux/Synology
+    # without Docker bridge NAT66 issues.
     # If you prefer bridge networking (e.g. Docker Desktop on macOS/Windows),
     # comment out `network_mode: host`, set `PORT=8080`, and uncomment `ports`:
     network_mode: host
@@ -21,7 +76,14 @@ services:
       - RUST_LOG=info
       - PYTHONUNBUFFERED=1
       - COOKIE_FILE=/app/cookies.txt
+      - YTDLP_PROXY=http://127.0.0.1:29083
+      - HTTP_PROXY=http://127.0.0.1:29083
+      - HTTPS_PROXY=http://127.0.0.1:29083
+      - NO_PROXY=localhost,127.0.0.1,0.0.0.0,companion,host.docker.internal
       # - FORCE_IPV6=0   # uncomment to force IPv4 for yt-dlp
+    depends_on:
+      warp:
+        condition: service_healthy
     dns:
       - 8.8.8.8
       - 1.1.1.1

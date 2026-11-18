@@ -10,16 +10,20 @@ import coil.imageLoader
 import coil.request.ImageRequest
 import coil.request.SuccessResult
 import java.io.ByteArrayOutputStream
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.kvmusic.app.KVMusicApp
+import com.kvmusic.app.data.api.InnerTubeMusicClient
 import com.kvmusic.app.data.api.RetrofitClient
 import com.kvmusic.app.data.model.Track
 import kotlinx.coroutines.*
@@ -31,6 +35,10 @@ object PlayerManager {
 
     private var exoPlayer: ExoPlayer? = null
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+    private var activePlayJob: Job? = null
+    @Volatile
+    private var currentPlayUsedDirectInnerTube: Boolean = false
+    private val failoverAttemptedTrackIds = java.util.Collections.synchronizedSet(mutableSetOf<String>())
 
     private val _currentTrack = MutableStateFlow<Track?>(null)
     val currentTrack: StateFlow<Track?> = _currentTrack
@@ -72,6 +80,7 @@ object PlayerManager {
         startProgressTracker()
     }
 
+    @OptIn(UnstableApi::class)
     fun getExoPlayer(context: Context): ExoPlayer {
         if (exoPlayer == null) {
             val audioAttributes = AudioAttributes.Builder()
@@ -79,12 +88,10 @@ object PlayerManager {
                 .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
                 .build()
 
-            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
-                .setAllowCrossProtocolRedirects(true)
-                .setUserAgent("KVMusic-Android/1.0")
+            val okHttpDataSourceFactory = OkHttpDataSource.Factory(RetrofitClient.mediaCallFactory)
 
             val mediaSourceFactory = DefaultMediaSourceFactory(context.applicationContext)
-                .setDataSourceFactory(httpDataSourceFactory)
+                .setDataSourceFactory(okHttpDataSourceFactory)
 
             exoPlayer = ExoPlayer.Builder(context.applicationContext)
                 .setMediaSourceFactory(mediaSourceFactory)
@@ -102,6 +109,31 @@ object PlayerManager {
                                 _duration.value = duration.coerceAtLeast(0L)
                             } else if (state == Player.STATE_ENDED) {
                                 playNext()
+                            }
+                        }
+
+                        override fun onPlayerError(error: PlaybackException) {
+                            val track = _currentTrack.value ?: return
+                            if (!failoverAttemptedTrackIds.add(track.id)) return
+
+                            if (currentPlayUsedDirectInnerTube) {
+                                // Direct InnerTube URL failed (e.g. 403/IP mismatch) -> fall back to server WARP proxy stream
+                                InnerTubeMusicClient.invalidate(track.id)
+                                val fallbackUrl = buildServerStreamUrl(track)
+                                startMediaItem(track, fallbackUrl, MimeTypes.AUDIO_AAC, usedDirectInnerTube = false)
+                            } else if (RetrofitClient.isWarpBypassEnabled()) {
+                                // Server /api/stream failed (e.g. NAS IP blocked) -> fail over to on-device InnerTube
+                                activePlayJob?.cancel()
+                                activePlayJob = scope.launch {
+                                    val resolved = InnerTubeMusicClient.resolveAudioStream(
+                                        trackId = track.id,
+                                        preferM4a = true,
+                                        bypassCache = true
+                                    )
+                                    if (resolved != null && _currentTrack.value?.id == track.id) {
+                                        startMediaItem(track, resolved.url, resolved.mimeType, usedDirectInnerTube = true)
+                                    }
+                                }
                             }
                         }
 
@@ -127,8 +159,16 @@ object PlayerManager {
         return exoPlayer!!
     }
 
+    private fun buildServerStreamUrl(track: Track): String {
+        val rawUrl = if (track.url.startsWith("http")) track.url else RetrofitClient.getStreamUrl(track.id)
+        return if (rawUrl.contains("?")) "$rawUrl&fmt=m4a" else "$rawUrl?fmt=m4a"
+    }
+
     fun playTrack(track: Track, newQueue: List<Track> = listOf(track)) {
-        val player = exoPlayer ?: getExoPlayer(KVMusicApp.instance)
+        getExoPlayer(KVMusicApp.instance)
+        activePlayJob?.cancel()
+        failoverAttemptedTrackIds.remove(track.id)
+
         _currentTrack.value = track
         _queue.value = newQueue
         _queueIndex.value = newQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
@@ -139,15 +179,39 @@ object PlayerManager {
         currentHistory.add(0, track)
         _recentlyPlayedHistory.value = currentHistory.take(50)
 
-        // Generate synthetic SoundCloud waveform peaks deterministically based on track ID
+        // Generate waveform peaks deterministically based on track ID
         generateWaveform(track.id)
 
-        val rawUrl = if (track.url.startsWith("http")) track.url else RetrofitClient.getStreamUrl(track.id)
-        val streamUrl = if (rawUrl.contains("?")) "$rawUrl&fmt=m4a" else "$rawUrl?fmt=m4a"
+        val serverStreamUrl = buildServerStreamUrl(track)
+        val hasValidYtId = InnerTubeMusicClient.extractVideoId(track.id).matches(Regex("[A-Za-z0-9_-]{11}"))
+
+        if (RetrofitClient.isWarpBypassEnabled() && hasValidYtId && !track.url.startsWith("http://") && !track.url.startsWith("https://")) {
+            activePlayJob = scope.launch {
+                val resolved = InnerTubeMusicClient.resolveAudioStream(trackId = track.id, preferM4a = true)
+                if (_currentTrack.value?.id != track.id) return@launch
+                if (resolved != null) {
+                    startMediaItem(track, resolved.url, resolved.mimeType, usedDirectInnerTube = true)
+                } else {
+                    startMediaItem(track, serverStreamUrl, MimeTypes.AUDIO_AAC, usedDirectInnerTube = false)
+                }
+            }
+        } else {
+            startMediaItem(track, serverStreamUrl, MimeTypes.AUDIO_AAC, usedDirectInnerTube = false)
+        }
+    }
+
+    private fun startMediaItem(
+        track: Track,
+        streamUrl: String,
+        mimeType: String,
+        usedDirectInnerTube: Boolean
+    ) {
+        val player = exoPlayer ?: getExoPlayer(KVMusicApp.instance)
+        currentPlayUsedDirectInnerTube = usedDirectInnerTube
 
         val mediaItem = MediaItem.Builder()
             .setUri(Uri.parse(streamUrl))
-            .setMimeType(MimeTypes.AUDIO_AAC)
+            .setMimeType(mimeType)
             .setMediaMetadata(
                 MediaMetadata.Builder()
                     .setTitle(track.title)

@@ -1,10 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Settings, LogOut, X } from 'lucide-react';
+import { Search, Settings, LogOut, X, Menu, ArrowLeft } from 'lucide-react';
 import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-dom';
 import Logo from './Logo';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
 import LoginModal from './LoginModal';
+
+export interface HeaderProps {
+  onToggleGuide?: () => void;
+  isGuideCollapsed?: boolean;
+  scrolled?: boolean;
+}
 
 interface GradientColor {
   from: string;
@@ -16,11 +22,11 @@ function getAvatarGradient(avatarColor: string): string {
     const parsed: GradientColor = JSON.parse(avatarColor);
     return `linear-gradient(135deg, ${parsed.from}, ${parsed.to})`;
   } catch {
-    return 'linear-gradient(135deg, #ff5500, #ff7a00)';
+    return 'linear-gradient(135deg, #FF0033, #FF2791)';
   }
 }
 
-export default function Header() {
+export default function Header({ onToggleGuide, isGuideCollapsed, scrolled }: HeaderProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const [searchParams] = useSearchParams();
@@ -29,6 +35,7 @@ export default function Header() {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
+  const [internalScrolled, setInternalScrolled] = useState(false);
   const setIsSettingsOpen = usePlayerStore(s => s.setIsSettingsOpen);
   const addRecentSearch = usePlayerStore(s => s.addRecentSearch);
   const user = useAuthStore(s => s.user);
@@ -42,6 +49,13 @@ export default function Header() {
   const suggestAbortRef = useRef<AbortController | null>(null);
   const isFocusedRef = useRef(false);
   const isComposingRef = useRef(false);
+
+  useEffect(() => {
+    if (scrolled !== undefined) return;
+    const onScroll = () => setInternalScrolled(window.scrollY > 4);
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, [scrolled]);
 
   useEffect(() => {
     if (!isFocusedRef.current && !isComposingRef.current) {
@@ -131,102 +145,125 @@ export default function Header() {
     const trimmed = query.trim();
     if (trimmed) {
       setShowSuggestions(false);
+      setIsMobileSearchOpen(false);
       addRecentSearch(trimmed);
       navigate(`/search?q=${encodeURIComponent(trimmed)}`);
     }
   };
 
-  const displayLetter = user ? user.name.trim()[0].toUpperCase() : '?';
-  const avatarGradient = user ? getAvatarGradient(user.avatarColor) : 'linear-gradient(135deg, #ff5500, #ff7a00)';
+  const handleSuggestionSelect = (s: string) => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    if (suggestTimerRef.current) clearTimeout(suggestTimerRef.current);
+    suggestAbortRef.current?.abort();
+    setQuery(s);
+    setShowSuggestions(false);
+    setIsMobileSearchOpen(false);
+    addRecentSearch(s);
+    navigate(`/search?q=${encodeURIComponent(s)}`);
+  };
 
-  const navItems = [
-    { to: '/', label: 'Home' },
-    { to: '/feed', label: 'Feed' },
-    { to: '/library', label: 'Library' },
-  ];
+  const isScrolled = scrolled ?? internalScrolled;
+  const hasDropdown = showSuggestions && suggestions.length > 0 && Boolean(query.trim());
+  const displayLetter = user ? user.name.trim()[0]?.toUpperCase() || '?' : '?';
+  const avatarGradient = user ? getAvatarGradient(user.avatarColor) : 'linear-gradient(135deg, #FF0033, #FF2791)';
 
   return (
     <>
-      <header className="sticky top-0 z-[60] bg-[#121212] border-b border-white/10 select-none">
-        <div className="max-w-[1280px] mx-auto h-12 md:h-14 px-3 md:px-6 flex items-center justify-between gap-2 md:gap-6">
-          {/* Logo & Main Nav */}
-          <div className="flex items-center gap-4 flex-shrink-0">
-            <Link to="/" className="hover:opacity-90 active:scale-95 transition flex-shrink-0 flex items-center gap-2">
-              <Logo />
-            </Link>
+      <header
+        className={`sticky top-0 z-[60] h-16 shrink-0 bg-[#030303]/95 backdrop-blur-md border-b transition-colors duration-200 select-none ${
+          isScrolled ? 'border-white/10' : 'border-transparent'
+        }`}
+      >
+        <div className="h-full px-4 md:px-6 flex items-center justify-between gap-3 md:gap-6">
+          {/* Left: Guide Toggle + Brand Logo */}
+          <div className="flex items-center gap-3 flex-shrink-0">
+            <button
+              type="button"
+              onClick={() => onToggleGuide?.()}
+              aria-label="Toggle navigation guide"
+              aria-expanded={isGuideCollapsed !== undefined ? !isGuideCollapsed : undefined}
+              className="hidden md:inline-flex w-10 h-10 rounded-full items-center justify-center text-white hover:bg-white/10 transition"
+            >
+              <Menu className="w-6 h-6" />
+            </button>
 
-            <nav className="hidden md:flex items-center gap-1">
-              {navItems.map(({ to, label }) => {
-                const active = location.pathname === to;
-                return (
-                  <Link
-                    key={to}
-                    to={to}
-                    className={`px-3 py-1.5 text-xs md:text-sm transition uppercase tracking-wider font-bold ${
-                      active
-                        ? 'text-[#ff5500] border-b-2 border-[#ff5500]'
-                        : 'text-neutral-400 hover:text-white'
-                    }`}
-                  >
-                    {label}
-                  </Link>
-                );
-              })}
-            </nav>
+            <Link
+              to="/"
+              className="hover:opacity-90 active:scale-95 transition flex-shrink-0 flex items-center"
+              aria-label="KV Music Home"
+            >
+              <Logo size={28} showBadge={false} showSubtitle={false} />
+            </Link>
           </div>
 
-          {/* Search Bar (Centered) */}
-          <form onSubmit={handleFormSubmit} className="hidden md:block flex-1 max-w-[500px] relative">
-            <div className="relative flex items-center w-full bg-[#242424] hover:bg-[#2a2a2a] focus-within:bg-[#2a2a2a] rounded border border-white/10 focus-within:border-[#ff5500] transition duration-200">
+          {/* Center: Desktop/Tablet YTM Search Box */}
+          <form onSubmit={handleFormSubmit} className="hidden md:block flex-1 max-w-[480px] relative">
+            <div
+              className={`relative flex items-center w-full h-10 bg-[#212121] focus-within:bg-[#030303] border border-white/15 focus-within:border-white/30 transition-colors ${
+                hasDropdown ? 'rounded-t-[8px]' : 'rounded-[8px]'
+              }`}
+            >
+              <button
+                type="submit"
+                className="w-10 h-10 flex items-center justify-center text-white/60 hover:text-white transition flex-shrink-0"
+                aria-label="Search"
+              >
+                <Search className="w-[18px] h-[18px]" />
+              </button>
+
               <input
                 type="text"
                 value={query}
-                onChange={(e) => { handleSearch(e.target.value); setShowSuggestions(true); }}
-                onCompositionStart={() => { isComposingRef.current = true; }}
+                onChange={(e) => {
+                  handleSearch(e.target.value);
+                  setShowSuggestions(true);
+                }}
+                onCompositionStart={() => {
+                  isComposingRef.current = true;
+                }}
                 onCompositionEnd={(e) => {
                   isComposingRef.current = false;
                   scheduleSearchAndSuggestions((e.target as HTMLInputElement).value);
                 }}
-                onFocus={() => { isFocusedRef.current = true; setShowSuggestions(true); }}
+                onFocus={() => {
+                  isFocusedRef.current = true;
+                  setShowSuggestions(true);
+                }}
                 onBlur={() => {
                   isFocusedRef.current = false;
                   setTimeout(() => setShowSuggestions(false), 150);
                 }}
-                placeholder="Search for artists, tracks, podcasts"
-                className={`w-full pl-3 ${query ? 'pr-14' : 'pr-8'} py-1.5 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none`}
+                placeholder="Search songs, albums, artists, podcasts"
+                className="flex-1 min-w-0 bg-transparent text-white placeholder:text-white/50 text-[15px] leading-[22px] font-normal focus:outline-none pr-2"
               />
+
               {query && (
                 <button
                   type="button"
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={handleClearSearch}
-                  className="absolute right-8 text-neutral-500 hover:text-white transition"
+                  className="w-9 h-9 mr-0.5 rounded-full flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition flex-shrink-0"
                   aria-label="Clear search"
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <X className="w-4 h-4" />
                 </button>
               )}
-              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white transition" aria-label="Search">
-                <Search className="w-4 h-4" />
-              </button>
             </div>
 
-            {/* Live Autocomplete Dropdown */}
-            {showSuggestions && suggestions.length > 0 && query.trim() && (
-              <div className="absolute top-full left-0 right-0 mt-1 bg-[#1c1c1c] border border-white/10 rounded shadow-2xl overflow-hidden z-[70]">
+            {/* Live Autocomplete Dropdown (ytmusic-search-suggestions-section) */}
+            {hasDropdown && (
+              <div className="absolute top-full left-0 right-0 bg-[#212121] border-x border-b border-white/15 rounded-b-[8px] shadow-2xl py-2 overflow-hidden z-[70]">
                 {suggestions.map((s, i) => (
                   <button
-                    key={i}
+                    key={`${s}-${i}`}
                     type="button"
-                    onMouseDown={() => {
-                      setQuery(s);
-                      setShowSuggestions(false);
-                      addRecentSearch(s);
-                      navigate(`/search?q=${encodeURIComponent(s)}`);
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      handleSuggestionSelect(s);
                     }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-xs text-neutral-200 hover:bg-white/5 transition text-left"
+                    className="w-full flex items-center gap-3.5 px-4 py-2 text-[14px] text-white/90 hover:bg-white/10 transition text-left"
                   >
-                    <Search className="w-3.5 h-3.5 text-neutral-500" />
+                    <Search className="w-4 h-4 text-white/50 flex-shrink-0" />
                     <span className="truncate">{s}</span>
                   </button>
                 ))}
@@ -234,49 +271,75 @@ export default function Header() {
             )}
           </form>
 
-          {/* Right Action Items */}
-          <div className="flex items-center gap-3 flex-shrink-0">
+          {/* Right: Mobile Search Trigger, Settings, Account */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button
-              onClick={() => setIsSettingsOpen(true)}
-              className="hidden md:flex p-1.5 text-neutral-400 hover:text-white transition"
-              aria-label="Settings"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
-            <button
+              type="button"
               onClick={() => setIsMobileSearchOpen(v => !v)}
-              className="md:hidden p-1.5 text-neutral-400 hover:text-white transition"
+              className="md:hidden w-10 h-10 rounded-full inline-flex items-center justify-center text-white hover:bg-white/10 transition"
               aria-label="Search"
             >
-              {isMobileSearchOpen ? <X className="w-5 h-5" /> : <Search className="w-5 h-5" />}
+              <Search className="w-5 h-5" />
             </button>
 
-            {/* Account Menu */}
+            <button
+              type="button"
+              onClick={() => setIsSettingsOpen(true)}
+              className="w-10 h-10 rounded-full inline-flex items-center justify-center text-white/80 hover:text-white hover:bg-white/10 transition"
+              aria-label="Settings"
+              title="Settings"
+            >
+              <Settings className="w-5 h-5" />
+            </button>
+
             <div className="relative" ref={dropdownRef}>
-              <button
-                onClick={() => { if (!isLoggedIn) setIsLoginOpen(true); else setIsDropdownOpen(v => !v); }}
-                className="w-7 h-7 rounded-full text-white font-extrabold flex items-center justify-center text-xs cursor-pointer border border-[#ff5500]/60 hover:scale-105 active:scale-95 transition select-none"
-                style={{ background: avatarGradient }}
-                aria-label="Account"
-              >
-                {isLoggedIn ? displayLetter : '?'}
-              </button>
+              {isLoggedIn ? (
+                <button
+                  type="button"
+                  onClick={() => setIsDropdownOpen(v => !v)}
+                  className="w-8 h-8 rounded-full text-white font-bold flex items-center justify-center text-xs cursor-pointer border border-white/20 hover:opacity-90 active:scale-95 transition select-none"
+                  style={{ background: avatarGradient }}
+                  aria-label="Account menu"
+                  aria-expanded={isDropdownOpen}
+                >
+                  {displayLetter}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsLoginOpen(true)}
+                  className="h-8 px-4 rounded-full bg-white text-[#030303] hover:bg-white/90 text-[14px] font-medium transition active:scale-95 whitespace-nowrap"
+                >
+                  Sign in
+                </button>
+              )}
 
               {isLoggedIn && isDropdownOpen && (
-                <div className="absolute right-0 top-9 w-44 bg-[#1c1c1c] border border-white/10 rounded shadow-2xl py-1 z-[70]">
-                  <div className="px-3 py-2 border-b border-white/10">
-                    <p className="text-xs font-bold text-white truncate">{user?.name}</p>
-                    <p className="text-[10px] text-[#ff5500] font-semibold uppercase tracking-wider">Member Pro</p>
+                <div className="absolute right-0 top-10 w-52 bg-[#212121] border border-white/15 rounded-[8px] shadow-2xl py-1.5 z-[70]">
+                  <div className="px-4 py-2.5 border-b border-white/10">
+                    <p className="text-[14px] font-medium text-white truncate">{user?.name}</p>
+                    <p className="text-[12px] text-white/60 truncate">KV Music Member</p>
                   </div>
-                  <button onClick={() => { setIsDropdownOpen(false); setIsSettingsOpen(true); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-neutral-300 hover:text-white hover:bg-white/5 transition">
-                    <Settings className="w-3.5 h-3.5 text-neutral-400" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsDropdownOpen(false);
+                      setIsSettingsOpen(true);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] text-white/90 hover:text-white hover:bg-white/10 transition text-left"
+                  >
+                    <Settings className="w-4 h-4 text-white/70" />
                     <span>Settings</span>
                   </button>
-                  <button onClick={async () => { await logout(); setIsDropdownOpen(false); }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-xs text-neutral-300 hover:text-white hover:bg-white/5 transition">
-                    <LogOut className="w-3.5 h-3.5 text-red-400" />
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await logout();
+                      setIsDropdownOpen(false);
+                    }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] text-white/90 hover:text-white hover:bg-white/10 transition text-left"
+                  >
+                    <LogOut className="w-4 h-4 text-white/70" />
                     <span>Sign Out</span>
                   </button>
                 </div>
@@ -285,40 +348,82 @@ export default function Header() {
           </div>
         </div>
 
-        {/* Mobile search row */}
+        {/* Mobile Expandable Top Search Overlay */}
         {isMobileSearchOpen && (
-          <form onSubmit={handleFormSubmit} className="md:hidden px-3 pb-2 pt-1">
-            <div className="relative flex items-center w-full bg-[#242424] rounded border border-[#ff5500]">
-              <input
-                autoFocus
-                type="text"
-                value={query}
-                onChange={(e) => handleSearch(e.target.value)}
-                onCompositionStart={() => { isComposingRef.current = true; }}
-                onCompositionEnd={(e) => {
-                  isComposingRef.current = false;
-                  scheduleSearchAndSuggestions((e.target as HTMLInputElement).value);
-                }}
-                onFocus={() => { isFocusedRef.current = true; }}
-                onBlur={() => { isFocusedRef.current = false; }}
-                placeholder="Search tracks, artists, podcasts..."
-                className={`w-full pl-3 ${query ? 'pr-14' : 'pr-8'} py-2 bg-transparent text-white placeholder-neutral-500 text-xs font-medium focus:outline-none`}
-              />
-              {query && (
-                <button
-                  type="button"
-                  onClick={handleClearSearch}
-                  className="absolute right-8 text-neutral-500 hover:text-white transition"
-                  aria-label="Clear search"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+          <div className="md:hidden absolute inset-0 z-[65] h-16 bg-[#030303] px-3 flex items-center gap-2 border-b border-white/10">
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileSearchOpen(false);
+                setShowSuggestions(false);
+              }}
+              className="w-10 h-10 rounded-full flex items-center justify-center text-white hover:bg-white/10 transition flex-shrink-0"
+              aria-label="Close search"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+
+            <form onSubmit={handleFormSubmit} className="flex-1 min-w-0 relative">
+              <div className="flex items-center w-full h-10 bg-[#212121] focus-within:bg-[#030303] rounded-[8px] border border-white/15 focus-within:border-white/30 px-3">
+                <input
+                  autoFocus
+                  type="text"
+                  value={query}
+                  onChange={(e) => {
+                    handleSearch(e.target.value);
+                    setShowSuggestions(true);
+                  }}
+                  onCompositionStart={() => {
+                    isComposingRef.current = true;
+                  }}
+                  onCompositionEnd={(e) => {
+                    isComposingRef.current = false;
+                    scheduleSearchAndSuggestions((e.target as HTMLInputElement).value);
+                  }}
+                  onFocus={() => {
+                    isFocusedRef.current = true;
+                    setShowSuggestions(true);
+                  }}
+                  onBlur={() => {
+                    isFocusedRef.current = false;
+                    setTimeout(() => setShowSuggestions(false), 150);
+                  }}
+                  placeholder="Search songs, albums, artists..."
+                  className="flex-1 min-w-0 bg-transparent text-white placeholder:text-white/50 text-[15px] focus:outline-none pr-2"
+                />
+                {query && (
+                  <button
+                    type="button"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={handleClearSearch}
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-white/60 hover:text-white transition"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+
+              {hasDropdown && (
+                <div className="fixed top-16 left-0 right-0 bg-[#212121] border-b border-white/15 shadow-2xl py-2 z-[70]">
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={`mob-${s}-${i}`}
+                      type="button"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        handleSuggestionSelect(s);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] text-white/90 hover:bg-white/10 transition text-left"
+                    >
+                      <Search className="w-4 h-4 text-white/50 flex-shrink-0" />
+                      <span className="truncate">{s}</span>
+                    </button>
+                  ))}
+                </div>
               )}
-              <button type="submit" className="absolute right-2 text-neutral-400 hover:text-white" aria-label="Search">
-                <Search className="w-4 h-4" />
-              </button>
-            </div>
-          </form>
+            </form>
+          </div>
         )}
       </header>
 

@@ -12,8 +12,8 @@ android {
         applicationId = "com.kvmusic.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 5
-        versionName = "1.2.4"
+        versionCode = 6
+        versionName = "1.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -63,10 +63,11 @@ dependencies {
     implementation(libs.androidx.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
 
-    // Media3 ExoPlayer for SoundCloud Background Playback
+    // Media3 ExoPlayer for Background Playback + WARP/Proxy OkHttp DataSource
     implementation(libs.androidx.media3.exoplayer)
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.ui)
+    implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
     implementation("androidx.media:media:1.7.0")
 
     // Networking

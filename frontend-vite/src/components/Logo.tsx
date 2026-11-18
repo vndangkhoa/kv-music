@@ -18,6 +18,7 @@ export function Logo({
     const uid = useId().replace(/:/g, '');
     const bgId = `kvmusic-bg-${uid}`;
     const sheenId = `kvmusic-sheen-${uid}`;
+    const isCompactHeader = !showBadge && !showSubtitle;
 
     return (
         <div className={`inline-flex items-center gap-2 select-none group ${className}`}>
@@ -60,19 +61,22 @@ export function Logo({
 
             {showText && (
                 <div className="flex flex-col leading-tight">
-                    <div className="flex items-center gap-1">
-                        <span className="text-base font-black tracking-tight transition">
-                            <span className="text-[#ff5500]">KV</span>
-                            <span className="text-white group-hover:text-[#ff7a00] transition">Music</span>
+                    <div className="flex items-center gap-1.5">
+                        <span
+                            className={`font-bold tracking-tight text-white transition ${
+                                isCompactHeader ? 'text-[18px] leading-none ytm-display-font' : 'text-base'
+                            }`}
+                        >
+                            KV Music
                         </span>
                         {showBadge && (
-                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-[#ff5500] text-white uppercase tracking-wider">
+                            <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-white/15 text-white uppercase tracking-wider">
                                 PRO
                             </span>
                         )}
                     </div>
                     {showSubtitle && (
-                        <span className="text-[8px] font-bold text-neutral-400 tracking-widest uppercase">
+                        <span className="text-[8px] font-bold text-white/60 tracking-widest uppercase">
                             HI-RES STREAMING
                         </span>
                     )}

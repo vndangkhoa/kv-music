@@ -1,12 +1,17 @@
-import { Home, Rss, Library, User } from 'lucide-react';
+import { Home, Compass, Library, User } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { haptic } from '../utils/haptic';
+
+const NAV_TABS = [
+  { to: '/', label: 'Home', icon: Home, match: (p: string) => p === '/' },
+  { to: '/feed', label: 'Explore', icon: Compass, match: (p: string) => p === '/feed' || p === '/explore' },
+  { to: '/library', label: 'Library', icon: Library, match: (p: string) => p === '/library' },
+  { to: '/profile', label: 'Profile', icon: User, match: (p: string) => p === '/profile' },
+] as const;
 
 export default function BottomNav() {
   const location = useLocation();
   const navigate = useNavigate();
-
-  const isActive = (p: string) => location.pathname === p;
 
   const handleNav = (to: string) => {
     haptic(6);
@@ -14,52 +19,31 @@ export default function BottomNav() {
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-[env(safe-area-inset-bottom)] bg-[#121212] border-t border-white/10 select-none">
-      <div className="flex items-center justify-around h-14 px-2 relative">
-        {/* Home */}
-        <button
-          onClick={() => handleNav('/')}
-          className={`flex flex-col items-center justify-center w-14 py-1 transition ${
-            isActive('/') ? 'text-[#ff5500]' : 'text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <Home className="w-5 h-5" strokeWidth={isActive('/') ? 2.5 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Home</span>
-        </button>
-
-        {/* Stream / Feed */}
-        <button
-          onClick={() => handleNav('/feed')}
-          className={`flex flex-col items-center justify-center w-14 py-1 transition ${
-            isActive('/feed') ? 'text-[#ff5500]' : 'text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <Rss className="w-5 h-5" strokeWidth={isActive('/feed') ? 2.5 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Stream</span>
-        </button>
-
-        {/* Library */}
-        <button
-          onClick={() => handleNav('/library')}
-          className={`flex flex-col items-center justify-center w-14 py-1 transition ${
-            isActive('/library') ? 'text-[#ff5500]' : 'text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <Library className="w-5 h-5" strokeWidth={isActive('/library') ? 2.5 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Library</span>
-        </button>
-
-        {/* Profile */}
-        <button
-          onClick={() => handleNav('/profile')}
-          className={`flex flex-col items-center justify-center w-14 py-1 transition ${
-            isActive('/profile') ? 'text-[#ff5500]' : 'text-neutral-400 hover:text-neutral-200'
-          }`}
-        >
-          <User className="w-5 h-5" strokeWidth={isActive('/profile') ? 2.5 : 2} />
-          <span className="text-[10px] font-bold uppercase tracking-wider mt-0.5">Profile</span>
-        </button>
+    <nav
+      aria-label="Mobile navigation"
+      className="fixed bottom-0 left-0 right-0 z-50 md:hidden pb-[env(safe-area-inset-bottom)] bg-[#1D1D1D] border-t border-white/[0.08] select-none"
+    >
+      <div className="grid grid-cols-4 h-[56px]">
+        {NAV_TABS.map(({ to, label, icon: Icon, match }) => {
+          const active = match(location.pathname);
+          return (
+            <button
+              key={to}
+              type="button"
+              onClick={() => handleNav(to)}
+              aria-current={active ? 'page' : undefined}
+              className={`flex flex-col items-center justify-center gap-0.5 transition-colors ${
+                active ? 'text-white' : 'text-white/65 hover:text-white'
+              }`}
+            >
+              <Icon className="w-6 h-6" strokeWidth={active ? 2.2 : 1.75} />
+              <span className={`text-[10px] leading-3 tracking-tight ${active ? 'font-medium' : 'font-normal'}`}>
+                {label}
+              </span>
+            </button>
+          );
+        })}
       </div>
-    </div>
+    </nav>
   );
 }

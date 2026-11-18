@@ -1,377 +1,216 @@
-import { useEffect, useState, useCallback } from 'react';
-import { Link } from 'react-router-dom';
-import { UserPlus, Heart, History, Tag, Flame, Radio, Play, RefreshCw } from 'lucide-react';
-import { usePlayerStore } from '../stores/playerStore';
+import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Home, Compass, TrendingUp, Library, Plus, Play, Pin } from 'lucide-react';
 import { useLibraryStore } from '../stores/libraryStore';
+import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
+import { dbService, Playlist } from '../services/db';
 import { toast } from '../stores/toastStore';
-import CoverImage from './CoverImage';
-import type { Track } from '../types';
+import CreatePlaylistModal from './CreatePlaylistModal';
 
-interface SidebarArtist {
-  id: string;
-  name: string;
-  followers: string;
-  genre: string;
-  photo?: string;
+export interface YtmGuideSidebarProps {
+  collapsed?: boolean;
+  onCreatePlaylist?: () => void;
 }
 
-export default function SoundCloudSidebar() {
-  const [suggestedArtists, setSuggestedArtists] = useState<SidebarArtist[]>([]);
-  const [allArtistsPool, setAllArtistsPool] = useState<SidebarArtist[]>([]);
-  const [topChartTracks, setTopChartTracks] = useState<Track[]>([]);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [poolIndex, setPoolIndex] = useState(0);
+const GUIDE_LINKS = [
+  { to: '/', label: 'Home', icon: Home, match: (p: string) => p === '/' },
+  { to: '/feed', label: 'Explore', icon: Compass, match: (p: string) => p === '/feed' || p === '/explore' },
+  { to: '/charts', label: 'Charts', icon: TrendingUp, match: (p: string) => p === '/charts' },
+  { to: '/library', label: 'Library', icon: Library, match: (p: string) => p === '/library' },
+] as const;
 
-  const playHistory = usePlayerStore(s => s.playHistory);
+export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuideSidebarProps) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const userPlaylists = useLibraryStore(s => s.userPlaylists);
+  const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
   const likedTracksData = usePlayerStore(s => s.likedTracksData);
   const playTrack = usePlayerStore(s => s.playTrack);
+  const hasPlayerBar = usePlayerStore(s => Boolean(s.currentTrack));
 
-  const followedArtists = useLibraryStore(s => s.followedArtists);
-  const toggleFollowArtist = useLibraryStore(s => s.toggleFollowArtist);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  // Pre-load and save artist discography (songs, album, playlist) into database
-  const saveArtistContentToDb = useCallback(async (artistName: string, photo?: string) => {
+  const handleCreatePlaylist = async (name: string) => {
     try {
-      const songs = await libraryService.search(artistName).catch(() => []);
-      if (songs.length > 0) {
-        // Pre-fetch related content
-        libraryService.getRelatedContent(artistName, 'artist', 6).catch(() => {});
-      }
-    } catch { /* noop */ }
-  }, []);
-
-  const loadInitialArtists = useCallback(async () => {
-    try {
-      const [listVn, listUs] = await Promise.all([
-        libraryService.getArtists('vn').catch(() => []),
-        libraryService.getArtists('us').catch(() => []),
-      ]);
-      const combined = [...listVn, ...listUs];
-      const formatted: SidebarArtist[] = combined.map((a, idx) => ({
-        id: a.id,
-        name: a.name,
-        followers: `${(150 + (idx % 10) * 85).toLocaleString()}K`,
-        genre: idx % 3 === 0 ? 'V-Pop' : idx % 3 === 1 ? 'Hip-Hop' : 'R&B / Soul',
-        photo: a.photo,
-      }));
-      setAllArtistsPool(formatted);
-      if (formatted.length > 0) {
-        const initialSlice = formatted.slice(0, 5);
-        setSuggestedArtists(initialSlice);
-        // Save/preload songs for initial batch into database
-        initialSlice.forEach(a => saveArtistContentToDb(a.name, a.photo));
-      }
-    } catch { /* noop */ }
-  }, [saveArtistContentToDb]);
-
-  useEffect(() => {
-    loadInitialArtists();
-
-    libraryService.getInitialTrendingTracks().then(tracks => {
-      setTopChartTracks(tracks.slice(0, 4));
-    }).catch(() => {});
-  }, [loadInitialArtists]);
-
-  const handleRefreshArtists = async () => {
-    setIsRefreshing(true);
-    try {
-      let pool = allArtistsPool;
-      if (pool.length === 0) {
-        const list = await libraryService.getArtists('vn');
-        pool = list.map((a, idx) => ({
-          id: a.id,
-          name: a.name,
-          followers: `${(150 + idx * 85).toLocaleString()}K`,
-          genre: idx % 3 === 0 ? 'V-Pop' : idx % 3 === 1 ? 'Hip-Hop' : 'R&B / Soul',
-          photo: a.photo,
-        }));
-        setAllArtistsPool(pool);
-      }
-
-      const nextIndex = (poolIndex + 5) % Math.max(1, pool.length);
-      setPoolIndex(nextIndex);
-
-      let newBatch = pool.slice(nextIndex, nextIndex + 5);
-      if (newBatch.length < 5) {
-        newBatch = [...newBatch, ...pool.slice(0, 5 - newBatch.length)];
-      }
-
-      // Shuffle order for fresh variety
-      newBatch = [...newBatch].sort(() => Math.random() - 0.5);
-      setSuggestedArtists(newBatch);
-
-      // Pre-hydrate & save artist albums, playlists, and songs to database
-      newBatch.forEach(a => saveArtistContentToDb(a.name, a.photo));
-      toast('Refreshed artist suggestions & updated database');
+      const created = await dbService.createPlaylist(name);
+      await refreshLibrary();
+      toast(`Created playlist "${created.title}"`);
     } catch {
-      toast('Refreshed artist list');
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 300);
+      toast('Could not create playlist');
     }
   };
 
-  const handleToggleFollow = async (artist: SidebarArtist) => {
-    const isFollowing = followedArtists.includes(artist.name);
-    await toggleFollowArtist(artist.name, artist.photo);
-    if (!isFollowing) {
-      toast(`Followed ${artist.name}! Saved album & songs to Library`);
-    } else {
-      toast(`Unfollowed ${artist.name}`);
+  const handlePlayPlaylist = async (pl: Playlist) => {
+    if (pl.tracks && pl.tracks.length > 0) {
+      playTrack(pl.tracks[0], pl.tracks);
+      return;
     }
+    try {
+      const full = await libraryService.getPlaylist(pl.id);
+      if (full && full.tracks.length > 0) {
+        playTrack(full.tracks[0], full.tracks);
+        return;
+      }
+    } catch {
+      /* fallback to navigating to playlist */
+    }
+    navigate(`/playlist/${encodeURIComponent(pl.id)}`);
   };
-
-  const popularTags = [
-    { name: '#VPop', plays: '2.4M' },
-    { name: '#HipHop', plays: '1.8M' },
-    { name: '#Electronic', plays: '1.4M' },
-    { name: '#LofiChill', plays: '1.2M' },
-    { name: '#EDM', plays: '980K' },
-    { name: '#R&B', plays: '850K' },
-    { name: '#Indie', plays: '720K' },
-    { name: '#Rock', plays: '540K' },
-  ];
 
   return (
-    <aside className="w-80 h-full flex flex-col justify-between border-l border-white/5 pl-6 select-none py-1">
-      {/* Main Sidebar Scrollable Content */}
-      <div className="space-y-6">
-        {/* 1. Who to Follow Widget */}
-        <div className="bg-[#181818] border border-white/5 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
-            <div className="flex items-center gap-2">
-              <UserPlus className="w-4 h-4 text-[#ff5500]" />
-              <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">Who to follow</h3>
-            </div>
-            <button
-              onClick={handleRefreshArtists}
-              disabled={isRefreshing}
-              className="text-xs font-bold text-[#ff5500] hover:text-[#ff7a00] flex items-center gap-1 transition disabled:opacity-50"
-              title="Refresh artist suggestions"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
-              <span>Refresh</span>
-            </button>
-          </div>
+    <>
+      <aside
+        aria-label="Primary navigation"
+        className={`h-full bg-[#030303] border-r border-white/10 flex flex-col flex-shrink-0 select-none transition-[width] duration-200 ${
+          collapsed ? 'w-[72px]' : 'w-[240px]'
+        } ${hasPlayerBar ? 'pb-[76px]' : 'pb-4'}`}
+      >
+        {/* Primary Links */}
+        <nav className={collapsed ? 'px-1.5 pt-2 space-y-1' : 'px-2 pt-2 space-y-0.5'}>
+          {GUIDE_LINKS.map(({ to, label, icon: Icon, match }) => {
+            const active = match(location.pathname);
 
-          <div className="space-y-3">
-            {suggestedArtists.map(artist => {
-              const isFollowing = followedArtists.includes(artist.name);
+            if (collapsed) {
               return (
-                <div key={artist.id} className="flex items-center justify-between gap-2">
-                  <Link to={`/artist/${encodeURIComponent(artist.name)}`} className="flex items-center gap-2.5 min-w-0 flex-1 group">
-                    <CoverImage
-                      src={artist.photo}
-                      alt={artist.name}
-                      className="w-9 h-9 rounded-full object-cover group-hover:opacity-80 transition border border-white/10 flex-shrink-0"
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-extrabold text-white group-hover:text-[#ff5500] truncate transition leading-tight">
-                        {artist.name}
-                      </p>
-                      <p className="text-[10px] text-neutral-400 truncate mt-0.5 font-medium">
-                        {artist.followers} followers • {artist.genre}
-                      </p>
-                    </div>
-                  </Link>
+                <Link
+                  key={to}
+                  to={to}
+                  aria-current={active ? 'page' : undefined}
+                  title={label}
+                  className={`flex flex-col items-center justify-center py-3 px-1 rounded-[8px] gap-1 transition-colors ${
+                    active ? 'bg-white/10 text-white' : 'text-white/75 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <Icon className="w-6 h-6" strokeWidth={active ? 2.2 : 1.75} />
+                  <span className="text-[10px] leading-3 font-normal truncate w-full text-center">
+                    {label}
+                  </span>
+                </Link>
+              );
+            }
 
+            return (
+              <Link
+                key={to}
+                to={to}
+                aria-current={active ? 'page' : undefined}
+                className={`h-12 px-4 rounded-[8px] flex items-center gap-5 text-[15px] transition-colors ${
+                  active
+                    ? 'bg-white/10 text-white font-medium'
+                    : 'text-white/75 hover:text-white hover:bg-white/10 font-normal'
+                }`}
+              >
+                <Icon className="w-6 h-6 flex-shrink-0" strokeWidth={active ? 2.2 : 1.75} />
+                <span className="truncate">{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Secondary Section: Divider, + New playlist & User Playlists */}
+        {!collapsed && (
+          <>
+            <div className="h-px bg-white/10 mx-6 my-3 flex-shrink-0" />
+
+            <div className="px-4 mb-3 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onCreatePlaylist) onCreatePlaylist();
+                  else setIsCreateModalOpen(true);
+                }}
+                className="w-full h-9 rounded-full bg-white/10 hover:bg-white/20 text-white text-sm font-medium flex items-center justify-center gap-2 transition"
+              >
+                <Plus className="w-5 h-5" />
+                <span>New playlist</span>
+              </button>
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-y-auto ytm-scroller px-2 space-y-0.5">
+              {/* Pinned Liked Music */}
+              <Link
+                to="/collection/tracks"
+                className={`group relative flex items-center justify-between gap-2 h-14 px-4 rounded-[8px] transition-colors ${
+                  location.pathname === '/collection/tracks' ? 'bg-white/10' : 'hover:bg-white/10'
+                }`}
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="text-[14px] font-medium text-white truncate leading-[18px]">
+                    Liked Music
+                  </p>
+                  <p className="text-[12px] text-white/70 truncate leading-4 mt-0.5 flex items-center gap-1">
+                    <Pin className="w-3 h-3 flex-shrink-0 rotate-45 text-white/60" />
+                    <span className="truncate">
+                      Auto playlist{likedTracksData.length > 0 ? ` • ${likedTracksData.length}` : ''}
+                    </span>
+                  </p>
+                </div>
+
+                {likedTracksData.length > 0 && (
                   <button
-                    onClick={() => handleToggleFollow(artist)}
-                    className={`px-3 py-1 rounded-full text-xs font-extrabold transition flex-shrink-0 ${
-                      isFollowing
-                        ? 'bg-white/10 text-white hover:bg-white/20 border border-white/10'
-                        : 'bg-[#ff5500] text-white hover:bg-[#ff7a00] shadow'
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      playTrack(likedTracksData[0], likedTracksData);
+                    }}
+                    aria-label="Play Liked Music"
+                    className="w-6 h-6 rounded-full bg-white text-[#030303] flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:scale-105 transition shadow"
+                  >
+                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                  </button>
+                )}
+              </Link>
+
+              {/* Saved User & Curated Playlists */}
+              {userPlaylists.map((pl) => {
+                const playlistHref = `/playlist/${encodeURIComponent(pl.id)}`;
+                const isActive = location.pathname === playlistHref;
+                return (
+                  <Link
+                    key={pl.id}
+                    to={playlistHref}
+                    className={`group relative flex items-center justify-between gap-2 h-14 px-4 rounded-[8px] transition-colors ${
+                      isActive ? 'bg-white/10' : 'hover:bg-white/10'
                     }`}
                   >
-                    {isFollowing ? 'Following' : 'Follow'}
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[14px] font-medium text-white truncate leading-[18px]">
+                        {pl.title}
+                      </p>
+                      <p className="text-[12px] text-white/70 truncate leading-4 mt-0.5">
+                        Playlist • KV Music
+                      </p>
+                    </div>
 
-        {/* 2. Top Charts Widget (Replaces Creators & App Promos) */}
-        {topChartTracks.length > 0 && (
-          <div className="bg-[#181818] border border-white/5 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
-              <div className="flex items-center gap-2">
-                <Flame className="w-4 h-4 text-[#ff5500]" />
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">Top 50 Weekly Charts</h3>
-              </div>
-              <Link to="/charts" className="text-xs font-bold text-[#ff5500] hover:underline transition">
-                View Charts
-              </Link>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handlePlayPlaylist(pl);
+                      }}
+                      aria-label={`Play ${pl.title}`}
+                      className="w-6 h-6 rounded-full bg-white text-[#030303] flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:scale-105 transition shadow"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                    </button>
+                  </Link>
+                );
+              })}
             </div>
-
-            <div className="space-y-2.5">
-              {topChartTracks.map((track, idx) => (
-                <button
-                  key={`chart-${track.id}-${idx}`}
-                  onClick={() => playTrack(track, topChartTracks)}
-                  className="w-full flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 transition text-left group"
-                >
-                  <span className="text-xs font-black text-[#ff5500] w-4 text-center flex-shrink-0">
-                    #{idx + 1}
-                  </span>
-                  <CoverImage
-                    src={track.cover_url}
-                    alt={track.title}
-                    className="w-9 h-9 rounded object-cover flex-shrink-0 border border-white/5"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-white group-hover:text-[#ff5500] truncate transition">
-                      {track.title}
-                    </p>
-                    <p className="text-[10px] text-neutral-400 truncate mt-0.5">{track.artist}</p>
-                  </div>
-                  <div className="w-7 h-7 rounded-full bg-[#ff5500] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition shadow flex-shrink-0">
-                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
+          </>
         )}
+      </aside>
 
-        {/* 3. Recently Liked Tracks Widget */}
-        {likedTracksData.length > 0 && (
-          <div className="bg-[#181818] border border-white/5 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
-              <div className="flex items-center gap-2">
-                <Heart className="w-4 h-4 text-[#ff5500]" fill="currentColor" />
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">
-                  {likedTracksData.length} Likes
-                </h3>
-              </div>
-              <Link to="/library" className="text-xs font-bold text-[#ff5500] hover:underline transition">
-                View all
-              </Link>
-            </div>
-
-            <div className="space-y-2">
-              {likedTracksData.slice(0, 4).map((track, idx) => (
-                <button
-                  key={`liked-${track.id}-${idx}`}
-                  onClick={() => playTrack(track, likedTracksData)}
-                  className="w-full flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 transition text-left group"
-                >
-                  <CoverImage
-                    src={track.cover_url}
-                    alt={track.title}
-                    className="w-9 h-9 rounded object-cover flex-shrink-0 border border-white/5"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-white group-hover:text-[#ff5500] truncate transition">
-                      {track.title}
-                    </p>
-                    <p className="text-[10px] text-neutral-400 truncate mt-0.5">{track.artist}</p>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 4. Listening History Widget */}
-        {playHistory.length > 0 && (
-          <div className="bg-[#181818] border border-white/5 rounded-xl p-4 shadow-sm">
-            <div className="flex items-center justify-between pb-3 mb-3 border-b border-white/5">
-              <div className="flex items-center gap-2">
-                <History className="w-4 h-4 text-[#ff5500]" />
-                <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">Listening History</h3>
-              </div>
-              <Link to="/library" className="text-xs font-bold text-[#ff5500] hover:underline transition">
-                View all
-              </Link>
-            </div>
-
-            <div className="space-y-2">
-              {playHistory.slice(0, 4).map((track, idx) => (
-                <button
-                  key={`history-${track.id}-${idx}`}
-                  onClick={() => playTrack(track, playHistory)}
-                  className="w-full flex items-center gap-3 p-1.5 rounded-lg hover:bg-white/5 transition text-left group"
-                >
-                  <CoverImage
-                    src={track.cover_url}
-                    alt={track.title}
-                    className="w-9 h-9 rounded object-cover flex-shrink-0 border border-white/5"
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-white group-hover:text-[#ff5500] truncate transition">
-                      {track.title}
-                    </p>
-                    <p className="text-[10px] text-neutral-400 truncate mt-0.5">{track.artist}</p>
-                  </div>
-                  <span className="text-[10px] text-neutral-500 font-mono flex-shrink-0">
-                    {idx === 0 ? 'Just now' : `${idx * 15}m ago`}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* 5. Music Radar & Live Radio Recommendation */}
-        <div className="bg-[#181818] border border-white/5 rounded-xl p-4 shadow-sm space-y-2">
-          <div className="flex items-center gap-2 pb-2 border-b border-white/5">
-            <Radio className="w-4 h-4 text-[#ff5500]" />
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">Live Music Radar</h3>
-          </div>
-          <p className="text-[11px] text-neutral-400 leading-relaxed">
-            Continuous streaming station based on your recent listening habits and liked tracks.
-          </p>
-          <button
-            onClick={() => {
-              if (likedTracksData.length > 0) playTrack(likedTracksData[0], likedTracksData);
-              else if (topChartTracks.length > 0) playTrack(topChartTracks[0], topChartTracks);
-            }}
-            className="w-full py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white text-xs font-extrabold rounded-lg shadow transition active:scale-95 flex items-center justify-center gap-2"
-          >
-            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-            <span>Play Music Radar Station</span>
-          </button>
-        </div>
-
-        {/* 6. Trending Tags & Popular Genres */}
-        <div className="bg-[#181818] border border-white/5 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center gap-2 pb-3 mb-3 border-b border-white/5">
-            <Tag className="w-4 h-4 text-[#ff5500]" />
-            <h3 className="text-xs font-extrabold uppercase tracking-wider text-neutral-200">Trending Tags & Genres</h3>
-          </div>
-          <div className="flex flex-wrap gap-1.5">
-            {popularTags.map(tag => (
-              <Link
-                key={tag.name}
-                to={`/search?q=${encodeURIComponent(tag.name.replace('#', ''))}`}
-                className="px-2.5 py-1 bg-white/5 hover:bg-white/10 border border-white/5 hover:border-[#ff5500] rounded-full text-[11px] font-semibold text-neutral-300 hover:text-[#ff5500] transition flex items-center gap-1"
-              >
-                <span>{tag.name}</span>
-                <span className="text-[9px] text-neutral-500 font-mono">• {tag.plays}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Bottom KV Music Legal Footer */}
-      <div className="pt-6 mt-6 border-t border-white/5 text-[11px] text-neutral-500 space-y-3 leading-relaxed">
-        <div className="flex flex-wrap gap-x-2 gap-y-1 font-medium text-[11px]">
-          <a href="#" className="hover:text-white transition">Legal</a>
-          <span>•</span>
-          <a href="#" className="hover:text-white transition">Privacy</a>
-          <span>•</span>
-          <a href="#" className="hover:text-white transition">Cookies</a>
-          <span>•</span>
-          <a href="#" className="hover:text-white transition">Creator Resources</a>
-        </div>
-        <div className="flex items-center justify-between text-neutral-500 text-[10px]">
-          <span>Language: English (US)</span>
-          <span className="text-[#ff5500] font-bold">KV Music PRO</span>
-        </div>
-        <p className="text-neutral-600 text-[10px]">© 2026 KV Music Platform. All rights reserved.</p>
-      </div>
-    </aside>
+      <CreatePlaylistModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        onCreate={handleCreatePlaylist}
+      />
+    </>
   );
 }
+
+export default YtmGuideSidebar;

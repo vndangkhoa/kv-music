@@ -114,21 +114,25 @@ impl SpotdlService {
 
         // Shared cookie-aware client: keeps a persistent jar of fresh YouTube
         // session cookies so innerTube API calls avoid bot detection (429s).
+        // When Cloudflare WARP MASQUE (usque) or YTDLP_PROXY is active, route
+        // outbound YouTube HTTP requests through it as well.
         let cookie_jar = Arc::new(SharedCookieStore::new());
-        let yt_client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .cookie_provider(cookie_jar.clone())
-            .timeout(Duration::from_secs(30))
-            .build()
-            .unwrap_or_default();
+        let yt_builder = Self::apply_outbound_proxy(
+            reqwest::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .cookie_provider(cookie_jar.clone())
+                .timeout(Duration::from_secs(30)),
+        );
+        let yt_client = yt_builder.build().unwrap_or_default();
 
         // Dedicated short-timeout client for oEmbed lookups so Facebook's link
         // crawler (strict ~10s timeout) always gets an instant share page.
-        let oembed_client = reqwest::Client::builder()
-            .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-            .timeout(Duration::from_secs(3))
-            .build()
-            .unwrap_or_default();
+        let oembed_builder = Self::apply_outbound_proxy(
+            reqwest::Client::builder()
+                .user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+                .timeout(Duration::from_secs(3)),
+        );
+        let oembed_client = oembed_builder.build().unwrap_or_default();
 
         Self {
             download_dir,
@@ -1057,6 +1061,7 @@ impl SpotdlService {
         } else {
             None
         };
+        let warp_proxy = Self::outbound_proxy();
         serde_json::json!({
             "has_cookies": has_cookies,
             "is_authenticated": is_authenticated,
@@ -1064,6 +1069,8 @@ impl SpotdlService {
             "active_path": active_path,
             "user_cookies_rejected": USER_COOKIES_REJECTED.load(Ordering::Relaxed),
             "ipv6_routable": Self::ipv6_connectivity(),
+            "warp_active": warp_proxy.is_some(),
+            "warp_proxy": warp_proxy,
         })
     }
 
@@ -1183,6 +1190,80 @@ impl SpotdlService {
             || lower.contains("error 111")
     }
 
+    /// Resolve outbound HTTP/SOCKS proxy for YouTube traffic (KV-Tube WARP MASQUE symmetry).
+    /// Checks `YTDLP_PROXY` / standard `HTTPS_PROXY`/`HTTP_PROXY`/`ALL_PROXY` env vars first,
+    /// then auto-detects a local `usque` WARP MASQUE HTTP proxy listening on `127.0.0.1:29083`
+    /// (unless `ENABLE_WARP=0`).
+    pub fn outbound_proxy() -> Option<String> {
+        for key in [
+            "YTDLP_PROXY",
+            "HTTPS_PROXY",
+            "https_proxy",
+            "HTTP_PROXY",
+            "http_proxy",
+            "ALL_PROXY",
+            "all_proxy",
+        ] {
+            if let Ok(val) = env::var(key) {
+                let trimmed = val.trim();
+                if !trimmed.is_empty() {
+                    return Some(trimmed.to_string());
+                }
+            }
+        }
+
+        if let Ok(disabled) = env::var("ENABLE_WARP") {
+            let d = disabled.trim().to_ascii_lowercase();
+            if matches!(d.as_str(), "0" | "false" | "no" | "off") {
+                return None;
+            }
+        }
+
+        // Probe local `usque` WARP MASQUE proxy (cached 30s) so standalone containers
+        // or host-networked compose stacks automatically use WARP without manual config.
+        use std::net::{SocketAddr, TcpStream};
+        use std::str::FromStr;
+        static WARP_PROBE_CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(bool, Instant)>>> =
+            std::sync::OnceLock::new();
+        let mutex = WARP_PROBE_CACHE.get_or_init(|| std::sync::Mutex::new(None));
+        if let Ok(guard) = mutex.lock() {
+            if let Some((alive, ts)) = *guard {
+                if ts.elapsed() < Duration::from_secs(30) {
+                    return if alive {
+                        Some("http://127.0.0.1:29083".to_string())
+                    } else {
+                        None
+                    };
+                }
+            }
+        }
+
+        let alive = SocketAddr::from_str("127.0.0.1:29083")
+            .ok()
+            .and_then(|addr| TcpStream::connect_timeout(&addr, Duration::from_millis(150)).ok())
+            .is_some();
+        if let Ok(mut guard) = mutex.lock() {
+            *guard = Some((alive, Instant::now()));
+        }
+        if alive {
+            Some("http://127.0.0.1:29083".to_string())
+        } else {
+            None
+        }
+    }
+
+    pub fn apply_outbound_proxy(builder: reqwest::ClientBuilder) -> reqwest::ClientBuilder {
+        if let Some(proxy_url) = Self::outbound_proxy() {
+            if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
+                let no_proxy = reqwest::NoProxy::from_string(
+                    "localhost,127.0.0.1,0.0.0.0,192.168.0.0/16,10.0.0.0/8,172.16.0.0/12,100.64.0.0/10,companion,host.docker.internal",
+                );
+                return builder.proxy(proxy.no_proxy(no_proxy));
+            }
+        }
+        builder
+    }
+
     /// Build yt-dlp args with the IPv6 flag toggleable per attempt (for fallback).
     fn yt_dlp_args_with_flags_vec(use_ipv6: bool, extra_args: &[&str]) -> Vec<String> {
         Self::yt_dlp_args_with_options_vec(use_ipv6, false, false, extra_args)
@@ -1199,9 +1280,13 @@ impl SpotdlService {
         args.push("--js-runtimes".to_string());
         args.push("node".to_string());
 
-        // Prefer IPv6 when it is actually routable - YouTube bot detection
-        // blocks many IPv4 routes but allows IPv6.
-        if use_ipv6 {
+        let outbound_proxy = Self::outbound_proxy();
+        if let Some(ref proxy) = outbound_proxy {
+            args.push("--proxy".to_string());
+            args.push(proxy.clone());
+        } else if use_ipv6 {
+            // Prefer IPv6 when directly connected & routable — skip when a proxy
+            // is active so local proxy socket resolution isn't forced to IPv6.
             args.push("--force-ipv6".to_string());
         }
 
@@ -1384,9 +1469,10 @@ impl SpotdlService {
                 }
             }
             for default_base in [
+                "http://companion:8282/companion",
+                "http://127.0.0.1:8282/companion",
                 "http://192.168.31.71:8282/companion",
                 "http://100.94.92.63:8282/companion",
-                "http://127.0.0.1:8282/companion",
                 "http://host.docker.internal:8282/companion",
             ] {
                 if !bases.iter().any(|b| b == default_base) {
@@ -1401,6 +1487,7 @@ impl SpotdlService {
             };
 
             let no_redirect_client = reqwest::Client::builder()
+                .no_proxy()
                 .redirect(reqwest::redirect::Policy::none())
                 .connect_timeout(Duration::from_millis(1500))
                 .timeout(Duration::from_secs(8))
@@ -1408,6 +1495,7 @@ impl SpotdlService {
                 .ok()?;
 
             let chunk_client = reqwest::Client::builder()
+                .no_proxy()
                 .connect_timeout(Duration::from_millis(2000))
                 .timeout(Duration::from_secs(15))
                 .build()
@@ -1442,8 +1530,36 @@ impl SpotdlService {
                         continue;
                     };
 
-                    let playback_url = if loc.starts_with("http://") || loc.starts_with("https://") {
-                        loc.to_string()
+                    // Strict Stream IP-Symmetry (KV-Tube rule): if Companion returns a signed
+                    // *.googlevideo.com URL (bound to Companion's WARP egress IP), rewrite it back
+                    // through `${origin}/companion/videoplayback?...&host=<edge-host>` so stream bytes
+                    // egress through the exact same WARP IP that extracted the player response.
+                    let playback_url = if let Ok(parsed) = reqwest::Url::parse(loc) {
+                        let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
+                        if host.ends_with(".googlevideo.com") || host == "googlevideo.com" {
+                            let path = parsed.path();
+                            let target_path = if path.starts_with("/companion/") {
+                                path.to_string()
+                            } else if path == "/" || path.is_empty() {
+                                "/companion/videoplayback".to_string()
+                            } else {
+                                format!("/companion{}", path)
+                            };
+                            let query = parsed.query().unwrap_or_default();
+                            let has_host_param = query.split('&').any(|kv| kv.starts_with("host="));
+                            let joined_query = if has_host_param || query.is_empty() {
+                                if query.is_empty() {
+                                    format!("host={}", urlencoding::encode(&host))
+                                } else {
+                                    query.to_string()
+                                }
+                            } else {
+                                format!("{}&host={}", query, urlencoding::encode(&host))
+                            };
+                            format!("{}{}?{}", origin, target_path, joined_query)
+                        } else {
+                            loc.to_string()
+                        }
                     } else if loc.starts_with('/') {
                         format!("{}{}", origin, loc)
                     } else {

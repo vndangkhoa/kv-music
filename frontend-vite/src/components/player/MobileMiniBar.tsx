@@ -1,18 +1,9 @@
 import { motion } from 'framer-motion';
-import { Play, Pause, SkipBack, SkipForward, ChevronUp } from 'lucide-react';
+import { Play, Pause, SkipForward } from 'lucide-react';
 import { usePlayerStore } from '../../stores/playerStore';
 import { useSwipe } from '../../hooks/useSwipe';
 import { haptic } from '../../utils/haptic';
 import CoverImage from '../CoverImage';
-import Waveform from '../Waveform';
-import Logo from '../Logo';
-
-function formatTime(t: number) {
-  if (!Number.isFinite(t) || t < 0) return '0:00';
-  const m = Math.floor(t / 60);
-  const s = Math.floor(t % 60);
-  return `${m}:${s.toString().padStart(2, '0')}`;
-}
 
 export default function MobileMiniBar() {
   const currentTrack = usePlayerStore(s => s.currentTrack);
@@ -26,96 +17,94 @@ export default function MobileMiniBar() {
   const setIsFullScreenOpen = usePlayerStore(s => s.setIsFullScreenOpen);
 
   const swipe = useSwipe({
-    onSwipeLeft: () => { haptic(8); nextTrack(); },
-    onSwipeRight: () => { haptic(8); prevTrack(); },
+    onSwipeLeft: () => {
+      haptic(8);
+      nextTrack();
+    },
+    onSwipeRight: () => {
+      haptic(8);
+      prevTrack();
+    },
     onSwipeUp: () => setIsFullScreenOpen(true),
     threshold: 50,
   });
 
   if (!currentTrack) return null;
 
+  const playedFraction = duration > 0 ? Math.min(1, Math.max(0, progress / duration)) : 0;
+
   return (
-    <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom)+8px)] left-2 right-2 z-50 md:hidden select-none">
+    <div className="fixed bottom-[calc(56px+env(safe-area-inset-bottom))] left-0 right-0 z-50 md:hidden select-none">
       <motion.div
         {...swipe}
-        initial={{ y: 60, opacity: 0 }}
+        initial={{ y: 48, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="flex items-center gap-2.5 px-2.5 py-2 bg-[#1c1c1c]/95 backdrop-blur-md border border-white/10 rounded-xl shadow-2xl cursor-pointer touch-pan-y"
+        transition={{ duration: 0.2 }}
+        role="region"
+        aria-label="Mini player"
+        className="relative h-16 bg-[#212121] border-t border-white/10 px-4 flex items-center gap-3 cursor-pointer touch-pan-y"
         onClick={(e) => {
-          const t = e.target as HTMLElement;
-          if (t.closest('button')) return;
+          const target = e.target as HTMLElement;
+          if (target.closest('button')) return;
           setIsFullScreenOpen(true);
         }}
       >
         <CoverImage
           src={currentTrack.cover_url}
           alt={currentTrack.title}
-          className={`w-[42px] h-[42px] rounded-lg flex-shrink-0 object-cover border transition ${
-            isPlaying ? 'border-[#ff5500]/60 ring-1 ring-[#ff5500]/50' : 'border-white/10'
-          }`}
+          className="w-12 h-12 rounded-[4px] flex-shrink-0 object-cover bg-[#181818]"
           fallbackText="♪"
         />
 
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-bold text-white truncate">{currentTrack.title}</p>
-          <div className="flex items-center gap-1.5 text-[10px] text-neutral-400 min-w-0 mt-0.5">
-            <Logo size={13} showText={false} />
-            <span className="truncate">{currentTrack.artist}</span>
-            <span className="flex-shrink-0">•</span>
-            <span className="font-mono text-neutral-300 flex-shrink-0">
-              {formatTime(progress)}{duration > 0 ? ` / ${formatTime(duration)}` : ''}
-            </span>
-          </div>
-          {duration > 0 && (
-            <Waveform
-              trackId={currentTrack.id}
-              played={duration > 0 ? progress / duration : 0}
-              height={10}
-              barWidth={1.5}
-              barGap={1}
-              className="mt-1"
-            />
-          )}
+          <p className="text-[14px] font-medium text-white truncate leading-[18px]">
+            {currentTrack.title}
+          </p>
+          <p className="text-[14px] text-white/70 truncate leading-[18px] mt-0.5">
+            {currentTrack.artist}
+          </p>
         </div>
 
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
-            onClick={(e) => { e.stopPropagation(); haptic(8); prevTrack(); }}
-            className="p-1.5 rounded-full text-neutral-300 hover:text-white active:scale-95 transition"
-            aria-label="Previous track"
-          >
-            <SkipBack className="w-4 h-4 fill-current" />
-          </button>
-
-          <button
-            onClick={(e) => { e.stopPropagation(); haptic(8); togglePlay(); }}
-            className="w-9 h-9 rounded-full bg-[#ff5500] text-white flex items-center justify-center hover:scale-105 active:scale-95 transition shadow"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              haptic(8);
+              togglePlay();
+            }}
+            className="w-11 h-11 rounded-full hover:bg-white/10 flex items-center justify-center text-white active:scale-95 transition"
             aria-label={isPlaying ? 'Pause' : 'Play'}
           >
             {isBuffering ? (
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
             ) : isPlaying ? (
-              <Pause className="w-4 h-4 fill-current" />
+              <Pause className="w-6 h-6 fill-current" />
             ) : (
-              <Play className="w-4 h-4 fill-current ml-0.5" />
+              <Play className="w-6 h-6 fill-current ml-0.5" />
             )}
           </button>
 
           <button
-            onClick={(e) => { e.stopPropagation(); haptic(8); nextTrack(); }}
-            className="p-1.5 rounded-full text-neutral-300 hover:text-white active:scale-95 transition"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              haptic(8);
+              nextTrack();
+            }}
+            className="w-11 h-11 rounded-full hover:bg-white/10 flex items-center justify-center text-white active:scale-95 transition"
             aria-label="Next track"
           >
-            <SkipForward className="w-4 h-4 fill-current" />
+            <SkipForward className="w-6 h-6 fill-current" />
           </button>
+        </div>
 
-          <button
-            onClick={(e) => { e.stopPropagation(); setIsFullScreenOpen(true); }}
-            className="p-1 text-neutral-400 hover:text-white transition"
-            aria-label="Expand player"
-          >
-            <ChevronUp className="w-4 h-4" />
-          </button>
+        {/* Bottom 2px progress track */}
+        <div className="absolute bottom-0 left-0 right-0 h-[2px] bg-white/15 pointer-events-none">
+          <div
+            className="h-full bg-white transition-[width] duration-150 ease-linear"
+            style={{ width: `${playedFraction * 100}%` }}
+          />
         </div>
       </motion.div>
     </div>

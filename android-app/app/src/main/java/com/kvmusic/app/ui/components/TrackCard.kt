@@ -1,31 +1,80 @@
 package com.kvmusic.app.ui.components
 
+import android.content.Context
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.*
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kvmusic.app.data.model.Track
-import com.kvmusic.app.ui.theme.*
+import com.kvmusic.app.player.PlayerManager
+import com.kvmusic.app.ui.theme.YtmBlackAt50
+import com.kvmusic.app.ui.theme.YtmGrey11
+import com.kvmusic.app.ui.theme.YtmGrey12
+import com.kvmusic.app.ui.theme.YtmSubtitle01
+import com.kvmusic.app.ui.theme.YtmTitle02
+import com.kvmusic.app.ui.theme.YtmWhite
+import com.kvmusic.app.ui.theme.YtmWhite08
+import com.kvmusic.app.ui.theme.YtmWhite67
+import java.util.Locale
+
+internal fun formatDuration(durationSeconds: Int): String {
+    if (durationSeconds <= 0) return ""
+    val hours = durationSeconds / 3600
+    val minutes = (durationSeconds % 3600) / 60
+    val seconds = durationSeconds % 60
+    return if (hours > 0) {
+        String.format(Locale.getDefault(), "%d:%02d:%02d", hours, minutes, seconds)
+    } else {
+        String.format(Locale.getDefault(), "%d:%02d", minutes, seconds)
+    }
+}
+
+private fun shareTrack(context: Context, track: Track) {
+    val shareUrl = "https://sp.khoavo.myds.me/track/${track.id}"
+    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+        putExtra(
+            Intent.EXTRA_TEXT,
+            "Listen to '${track.title}' by ${track.artist} on KV Music:\n$shareUrl"
+        )
+        type = "text/plain"
+    }
+    context.startActivity(Intent.createChooser(sendIntent, "Share Track"))
+}
 
 @Composable
 fun TrackListItem(
@@ -34,116 +83,309 @@ fun TrackListItem(
     rankNumber: Int? = null,
     isLiked: Boolean = false,
     onLikeClick: (() -> Unit)? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    queue: List<Track> = emptyList(),
+    onPlayNext: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val currentTrack by PlayerManager.currentTrack.collectAsState()
+    val isPlayerPlaying by PlayerManager.isPlaying.collectAsState()
+    val downloadedIds by PlayerManager.downloadedTrackIds.collectAsState()
+    val likedIds by PlayerManager.likedTrackIds.collectAsState()
+
+    val isCurrentPlaying = currentTrack?.id == track.id && isPlayerPlaying
+    val isDownloaded = downloadedIds.contains(track.id)
+
+    var likedOverride by remember(track.id, isLiked) { mutableStateOf<Boolean?>(null) }
+    val effectiveLiked = likedOverride ?: (isLiked || likedIds.contains(track.id))
+
+    var showMenuSheet by remember { mutableStateOf(false) }
+
+    val formattedDuration = formatDuration(track.duration)
+    val subtitleText = buildString {
+        if (track.artist.isNotBlank()) append(track.artist)
+        if (formattedDuration.isNotEmpty()) {
+            if (isNotEmpty()) append(" • ")
+            append(formattedDuration)
+        }
+    }
+
+    val toggleLikeAction: () -> Unit = {
+        val nextLiked = !effectiveLiked
+        if (onLikeClick != null) {
+            onLikeClick()
+        } else {
+            PlayerManager.toggleLike(track.id)
+        }
+        likedOverride = nextLiked
+        Toast.makeText(
+            context,
+            if (nextLiked) "Saved '${track.title}' to library" else "Removed '${track.title}' from library",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
+            .defaultMinSize(minHeight = 64.dp)
             .clickable { onTrackClick() }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Optional Rank Number (for BXH / Charts)
         if (rankNumber != null) {
             Text(
                 text = "$rankNumber",
-                style = MaterialTheme.typography.titleLarge.copy(
-                    fontWeight = FontWeight.Black,
-                    fontSize = 18.sp
-                ),
-                color = if (rankNumber <= 3) SoundCloudNeonOrange else TextDarkMuted,
-                modifier = Modifier.width(32.dp)
+                style = YtmTitle02,
+                color = YtmWhite,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.width(24.dp)
             )
+            Spacer(modifier = Modifier.width(8.dp))
         }
 
-        // Cover image
         Box(
+            modifier = Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(YtmGrey12),
             contentAlignment = Alignment.Center
         ) {
             AsyncImage(
                 model = track.coverUrl,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(GlassSurfaceDark)
+                modifier = Modifier.fillMaxSize()
             )
-            Box(
-                modifier = Modifier
-                    .size(54.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(Color.Black.copy(alpha = 0.25f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.PlayArrow,
-                    contentDescription = "Play",
-                    tint = Color.White.copy(alpha = 0.9f),
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.width(14.dp))
-
-        // Info
-        Column(
-            modifier = Modifier.weight(1f)
-        ) {
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
-                ),
-                color = TextElectricWhite,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Spacer(modifier = Modifier.height(2.dp))
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 13.sp
-                ),
-                color = TextLightGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = {
-                val shareUrl = "https://sp.khoavo.myds.me/track/${track.id}"
-                val sendIntent = Intent(Intent.ACTION_SEND).apply {
-                    putExtra(Intent.EXTRA_TEXT, "Listen to '${track.title}' by ${track.artist} on KV Music:\n$shareUrl")
-                    type = "text/plain"
-                }
-                val shareIntent = Intent.createChooser(sendIntent, "Share Track")
-                context.startActivity(shareIntent)
-            }) {
-                Icon(
-                    imageVector = Icons.Default.Share,
-                    contentDescription = "Share",
-                    tint = TextLightGray,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
-
-            if (onLikeClick != null) {
-                IconButton(onClick = onLikeClick) {
+            if (isCurrentPlaying) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(YtmBlackAt50),
+                    contentAlignment = Alignment.Center
+                ) {
                     Icon(
-                        imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                        contentDescription = "Like",
-                        tint = if (isLiked) SoundCloudNeonOrange else TextLightGray,
-                        modifier = Modifier.size(22.dp)
+                        imageVector = YtmIcons.WaveformMusic18,
+                        contentDescription = "Playing",
+                        tint = YtmWhite,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .padding(start = 16.dp, end = 8.dp)
+        ) {
+            Text(
+                text = track.title,
+                style = YtmTitle02,
+                color = YtmWhite,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (isDownloaded) {
+                    Icon(
+                        imageVector = YtmIcons.Downloaded24,
+                        contentDescription = "Downloaded",
+                        tint = YtmWhite67,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+                Text(
+                    text = subtitleText,
+                    style = YtmSubtitle01,
+                    color = YtmWhite67,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+
+        IconButton(
+            onClick = { showMenuSheet = true },
+            modifier = Modifier.size(40.dp)
+        ) {
+            Icon(
+                imageVector = YtmIcons.OverflowVertical24,
+                contentDescription = "Menu",
+                tint = YtmWhite67,
+                modifier = Modifier.size(24.dp)
+            )
+        }
+    }
+
+    if (showMenuSheet) {
+        TrackMenuBottomSheet(
+            track = track,
+            isLiked = effectiveLiked,
+            isDownloaded = isDownloaded,
+            onDismiss = { showMenuSheet = false },
+            onPlayNext = {
+                if (onPlayNext != null) {
+                    onPlayNext()
+                } else {
+                    val baseQueue = queue.ifEmpty { PlayerManager.queue.value }
+                    val nextQueue = if (baseQueue.isEmpty()) {
+                        listOf(track)
+                    } else {
+                        listOf(track) + baseQueue.filterNot { it.id == track.id }
+                    }
+                    PlayerManager.playTrack(track, nextQueue)
+                }
+                showMenuSheet = false
+            },
+            onToggleLike = toggleLikeAction,
+            onToggleDownload = {
+                PlayerManager.toggleDownload(context, track)
+                showMenuSheet = false
+            },
+            onShare = {
+                shareTrack(context, track)
+                showMenuSheet = false
+            }
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TrackMenuBottomSheet(
+    track: Track,
+    isLiked: Boolean,
+    isDownloaded: Boolean,
+    onDismiss: () -> Unit,
+    onPlayNext: () -> Unit,
+    onToggleLike: () -> Unit,
+    onToggleDownload: () -> Unit,
+    onShare: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+        containerColor = YtmGrey11,
+        contentColor = YtmWhite,
+        shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+        dragHandle = null
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .padding(bottom = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AsyncImage(
+                    model = track.coverUrl,
+                    contentDescription = track.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(4.dp))
+                        .background(YtmGrey12)
+                )
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = track.title,
+                        style = YtmTitle02,
+                        color = YtmWhite,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = track.artist,
+                        style = YtmSubtitle01,
+                        color = YtmWhite67,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                IconButton(onClick = onToggleLike) {
+                    Icon(
+                        imageVector = if (isLiked) YtmIcons.ThumbUpFilled else YtmIcons.ThumbUpOutline,
+                        contentDescription = if (isLiked) "Unlike" else "Like",
+                        tint = YtmWhite,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(YtmWhite08)
+            )
+
+            TrackMenuItem(
+                icon = YtmIcons.QueueNext24,
+                label = "Play next",
+                onClick = onPlayNext
+            )
+            TrackMenuItem(
+                icon = if (isLiked) YtmIcons.CheckCircle24 else YtmIcons.PlaylistAdd24,
+                label = if (isLiked) "Saved to library" else "Save to library",
+                onClick = {
+                    onToggleLike()
+                    onDismiss()
+                }
+            )
+            TrackMenuItem(
+                icon = if (isDownloaded) YtmIcons.Downloaded24 else YtmIcons.Download24,
+                label = if (isDownloaded) "Remove offline download" else "Download offline",
+                onClick = onToggleDownload
+            )
+            TrackMenuItem(
+                icon = YtmIcons.Share24,
+                label = "Share",
+                onClick = onShare
+            )
+        }
+    }
+}
+
+@Composable
+private fun TrackMenuItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = 48.dp)
+            .clickable { onClick() }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = YtmWhite,
+            modifier = Modifier.size(24.dp)
+        )
+        Spacer(modifier = Modifier.width(24.dp))
+        Text(
+            text = label,
+            style = YtmTitle02,
+            color = YtmWhite,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }
 
@@ -153,47 +395,63 @@ fun TrackCardSquare(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Card(
+    val currentTrack by PlayerManager.currentTrack.collectAsState()
+    val isPlayerPlaying by PlayerManager.isPlaying.collectAsState()
+    val isCurrentPlaying = currentTrack?.id == track.id && isPlayerPlaying
+
+    Column(
         modifier = modifier
-            .width(150.dp)
-            .border(1.dp, GlassCardBorder, RoundedCornerShape(14.dp))
-            .clickable { onClick() },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = GlassCardDark)
+            .width(148.dp)
+            .clickable { onClick() }
     ) {
-        Column(
-            modifier = Modifier.padding(10.dp)
+        Box(
+            modifier = Modifier
+                .size(148.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .background(YtmGrey12),
+            contentAlignment = Alignment.Center
         ) {
             AsyncImage(
                 model = track.coverUrl,
                 contentDescription = track.title,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(130.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(GlassSurfaceDark)
+                modifier = Modifier.fillMaxSize()
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Text(
-                text = track.title,
-                style = MaterialTheme.typography.titleMedium.copy(
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                ),
-                color = TextElectricWhite,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = track.artist,
-                style = MaterialTheme.typography.bodyMedium.copy(
-                    fontSize = 12.sp
-                ),
-                color = TextLightGray,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+            if (isCurrentPlaying) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(YtmBlackAt50),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = YtmIcons.WaveformMusic18,
+                        contentDescription = "Playing",
+                        tint = YtmWhite,
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
+            }
         }
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        Text(
+            text = track.title,
+            style = YtmTitle02,
+            color = YtmWhite,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = track.artist,
+            style = YtmSubtitle01,
+            color = YtmWhite67,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

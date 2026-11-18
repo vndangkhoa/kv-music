@@ -6,6 +6,7 @@ import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import coil.request.CachePolicy
+import com.kvmusic.app.data.api.RetrofitClient
 import com.kvmusic.app.data.repository.AuthRepository
 import com.kvmusic.app.data.repository.MusicRepository
 import okhttp3.OkHttpClient
@@ -21,6 +22,7 @@ class KVMusicApp : Application(), ImageLoaderFactory {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        RetrofitClient.init(this)
         musicRepository = MusicRepository()
         authRepository = AuthRepository(this)
     }

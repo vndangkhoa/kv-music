@@ -4,6 +4,12 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.5] - 2026-11-18
+
+### Added
+- **YouTube Music-Inspired Web & Android Visual Interface** - Replicated YouTube Music's dark canvas (`#030303`), collapsible `240px`/`72px` guide rail, `64px` search bar, `72px` bottom player bar, and expandable split Watch Page (`Song | Video`, `UP NEXT | LYRICS | RELATED`) across `frontend-vite` and `android-app` while preserving the **KV Music** app name, icon, and squircle emblem
+- **Cloudflare WARP MASQUE IP-Block Bypass** - Integrated `usque` v4.2.1 (`ENABLE_WARP=1`, HTTP proxy `127.0.0.1:29083`) and OkHttp/innerTube failover across `backend-rust` and `android-app`
+
 ## [1.2.4] - 2026-11-17
 
 ### Added

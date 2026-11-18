@@ -113,3 +113,13 @@ YouTube blocks many residential **IPv4** routes but allows the same traffic over
 - Cookie state: shared `CookieStore` between the HTTP client (innerTube API calls) and the Netscape file serializer
 - Clear in-memory caches after any cookie refresh so everything re-fetches with the new session
 - Keep the error body informative: `Download failed. stderr: <yt-dlp output>` — it is the fastest diagnostic for users
+
+---
+
+## 8. Cloudflare WARP MASQUE (`usque` 443/udp) + Companion Stream IP-Symmetry + Android Direct InnerTube (ported from KV-Tube)
+
+On residential ISPs (notably VNPT) and NAS hosts without routable IPv6, YouTube rate-limits residential IPv4 routes while ISP middleboxes throttle WireGuard UDP (`2408/udp`):
+1. **Cloudflare WARP over MASQUE (`usque`, HTTP/3 QUIC on `443/udp`)** runs either as the `warp` compose sidecar (`127.0.0.1:29083`) or standalone inside the container (`/app/data/warp-config.json`), providing a clean Cloudflare egress IP without kernel modules or `NET_ADMIN`.
+2. **`SpotdlService::outbound_proxy()`** honors `YTDLP_PROXY` / `HTTPS_PROXY` / `HTTP_PROXY` / `ALL_PROXY` or auto-probes `127.0.0.1:29083`, passing `--proxy` to `yt-dlp`, configuring `reqwest::Proxy::all` with LAN `NoProxy` on `yt_client` / `oembed_client` / `YtmBridge`, forwarding `HTTP_PROXY`/`HTTPS_PROXY` to `ytm_bridge.py`, and skipping `--force-ipv6` when a proxy is active.
+3. **Strict Companion Stream IP-Symmetry**: When `try_companion_download` receives a signed `*.googlevideo.com/videoplayback` redirect from Invidious Companion, it rewrites the chunk target back through `${origin}/companion/videoplayback?...&host=<edge-host>` so bytes egress through Companion's WARP IP rather than direct host IPv4.
+4. **Android On-Device Direct InnerTube Bypass (`InnerTubeMusicClient`)**: The Android app defaults to direct multi-client InnerTube resolution (`ANDROID`, `VISIONOS`, `IOS`, `WEB_REMIX`) over Cloudflare DoH (`1.1.1.1`) or an optional user-configured WARP HTTP/SOCKS proxy, with automatic bidirectional failover to the KV Music server `/api/stream/:id` on playback error.

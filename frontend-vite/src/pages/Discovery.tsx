@@ -1,34 +1,68 @@
-import { useEffect, useState } from 'react';
-import { ChevronLeft, ChevronRight, Play, Flame, Compass } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { usePlayerStore } from '../stores/playerStore';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { libraryService } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
-import CoverImage from '../components/CoverImage';
+import TrackRow, { YtmCarousel, YtmMediaCard } from '../components/TrackRow';
 import Skeleton from '../components/Skeleton';
-import SoundCloudTrackCard from '../components/SoundCloudTrackCard';
-import SoundCloudSidebar from '../components/SoundCloudSidebar';
 import { safeStorage } from '../utils/safeStorage';
+
+const MOOD_CHIPS = [
+  { label: 'All', query: '' },
+  { label: 'Energize', query: 'Energize upbeat pop hits' },
+  { label: 'Relax', query: 'Relax chill acoustic' },
+  { label: 'Workout', query: 'Workout gym hype hits' },
+  { label: 'Commute', query: 'Commute driving chill hits' },
+  { label: 'Focus', query: 'Focus instrumental lofi beats' },
+  { label: 'Podcasts', query: 'Music podcast talk radio' },
+  { label: 'Romance', query: 'Romantic love ballads' },
+  { label: 'Party', query: 'Party dance club hits' },
+] as const;
+
+type ArtistRegionChip = 'VN' | 'US' | 'KR' | 'GB';
+
+const ARTIST_REGIONS: { label: ArtistRegionChip; apiRegion: 'vn' | 'us' | 'kr' | 'cn' }[] = [
+  { label: 'VN', apiRegion: 'vn' },
+  { label: 'US', apiRegion: 'us' },
+  { label: 'KR', apiRegion: 'kr' },
+  { label: 'GB', apiRegion: 'cn' },
+];
+
+interface ArtistChartItem {
+  id: string;
+  name: string;
+  photo?: string;
+  region: string;
+  rank: number;
+  followers: string;
+  topTrack: string;
+}
 
 export default function Discovery() {
   const [browseData, setBrowseData] = useState<Record<string, StaticPlaylist[]>>({});
   const [loading, setLoading] = useState(true);
-  const [heroSlides, setHeroSlides] = useState<StaticPlaylist[]>([]);
-  const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
-  const [popularTracks, setPopularTracks] = useState<Track[]>([]);
-  const [popularLoading, setPopularLoading] = useState(true);
+
+  const [selectedMood, setSelectedMood] = useState<string>('All');
+  const [defaultQuickPicks, setDefaultQuickPicks] = useState<Track[]>([]);
+  const [quickPicks, setQuickPicks] = useState<Track[]>([]);
+  const [quickPicksLoading, setQuickPicksLoading] = useState(true);
+
+  const [trendingTracks, setTrendingTracks] = useState<Track[]>([]);
+  const [trendingLoading, setTrendingLoading] = useState(true);
+
+  const [artistRegion, setArtistRegion] = useState<ArtistRegionChip>('VN');
+  const [artists, setArtists] = useState<ArtistChartItem[]>([]);
+  const [artistsLoading, setArtistsLoading] = useState(true);
 
   const playTrack = usePlayerStore(s => s.playTrack);
+  const playHistory = usePlayerStore(s => s.playHistory);
 
-  const loadAll = async () => {
-    setLoading(true);
+  const loadBrowse = async () => {
     try {
       const data = await libraryService.getBrowseContent();
       setBrowseData(data);
       safeStorage.setItem('nct_browse_cache_v1', JSON.stringify(data));
-      const allPlaylists = Object.values(data).flat().filter((p: any) => p.type === 'Playlist') as StaticPlaylist[];
-      if (allPlaylists.length > 0) setHeroSlides(allPlaylists.slice(0, 6));
     } catch (e) {
       console.error('browse load error', e);
     } finally {
@@ -36,20 +70,58 @@ export default function Discovery() {
     }
   };
 
-  const loadPopular = async () => {
-    setPopularLoading(true);
+  const loadChartsAndPicks = async () => {
+    setTrendingLoading(true);
+    setQuickPicksLoading(true);
     try {
-      const res = await libraryService.getCharts('trending');
-      setPopularTracks((res || []).slice(0, 15));
+      const charts = await libraryService.getCharts('trending').catch(() => [] as Track[]);
+      if (charts.length > 0) {
+        setTrendingTracks(charts.slice(0, 10));
+        setDefaultQuickPicks(charts.slice(0, 20));
+        setQuickPicks((prev) => (selectedMood === 'All' && prev.length === 0 ? charts.slice(0, 20) : prev));
+        setTrendingLoading(false);
+        setQuickPicksLoading(false);
+      }
+
+      const initial = await libraryService.getInitialTrendingTracks().catch(() => [] as Track[]);
+      const seen = new Set<string>();
+      const merged: Track[] = [];
+      for (const t of [...initial, ...charts]) {
+        if (t?.id && !seen.has(t.id)) {
+          seen.add(t.id);
+          merged.push(t);
+        }
+      }
+      if (merged.length > 0) {
+        const picks = merged.slice(0, 20);
+        setDefaultQuickPicks(picks);
+        if (selectedMood === 'All') {
+          setQuickPicks(picks);
+        }
+      }
     } catch (e) {
       console.error('charts load error', e);
     } finally {
-      setPopularLoading(false);
+      setTrendingLoading(false);
+      setQuickPicksLoading(false);
+    }
+  };
+
+  const loadArtists = async (regionChip: ArtistRegionChip) => {
+    setArtistsLoading(true);
+    const mapped = ARTIST_REGIONS.find(r => r.label === regionChip)?.apiRegion || 'vn';
+    try {
+      const list = await libraryService.getArtists(mapped);
+      setArtists(list.slice(0, 12));
+    } catch (e) {
+      console.error('artists load error', e);
+    } finally {
+      setArtistsLoading(false);
     }
   };
 
   const { containerRef, pullProps, indicator } = usePullToRefresh(async () => {
-    await Promise.all([loadAll(), loadPopular()]);
+    await Promise.all([loadBrowse(), loadChartsAndPicks(), loadArtists(artistRegion)]);
   });
 
   useEffect(() => {
@@ -59,21 +131,41 @@ export default function Discovery() {
         const parsed = JSON.parse(cached);
         setBrowseData(parsed);
         setLoading(false);
-        const allPlaylists = Object.values(parsed).flat().filter((p: any) => p.type === 'Playlist') as StaticPlaylist[];
-        if (allPlaylists.length > 0) setHeroSlides(allPlaylists.slice(0, 6));
-      } catch { /* ignore */ }
+      } catch {
+        /* ignore */
+      }
     }
-    loadAll();
-    loadPopular();
+    loadBrowse();
+    loadChartsAndPicks();
   }, []);
 
   useEffect(() => {
-    if (heroSlides.length <= 1) return;
-    const timer = setInterval(() => {
-      setCurrentSlideIndex(prev => (prev + 1) % heroSlides.length);
-    }, 5000);
-    return () => clearInterval(timer);
-  }, [heroSlides.length]);
+    loadArtists(artistRegion);
+  }, [artistRegion]);
+
+  const handleMoodSelect = async (label: string, query: string) => {
+    const nextMood = selectedMood === label && label !== 'All' ? 'All' : label;
+    setSelectedMood(nextMood);
+
+    if (nextMood === 'All') {
+      setQuickPicks(defaultQuickPicks);
+      return;
+    }
+
+    setQuickPicksLoading(true);
+    try {
+      const matching = await libraryService.search(query || nextMood);
+      if (matching.length > 0) {
+        setQuickPicks(matching.slice(0, 20));
+      } else {
+        setQuickPicks(defaultQuickPicks);
+      }
+    } catch {
+      setQuickPicks(defaultQuickPicks);
+    } finally {
+      setQuickPicksLoading(false);
+    }
+  };
 
   const playCollection = async (id: string, isAlbum: boolean) => {
     try {
@@ -86,190 +178,345 @@ export default function Discovery() {
     }
   };
 
-  const playTopic = async (query: string) => {
+  const playArtistTop = async (artistName: string) => {
     try {
-      const tracks = await libraryService.search(query);
-      if (tracks && tracks.length > 0) {
+      const tracks = await libraryService.search(artistName);
+      if (tracks.length > 0) {
         playTrack(tracks[0], tracks);
       }
     } catch (e) {
-      console.error('Failed to play topic', e);
+      console.error('Failed to play artist', e);
     }
   };
 
-  const browseTiles = [
-    { label: 'Hip-Hop & Rap', monogram: 'HH', query: 'Hip Hop' },
-    { label: 'Chill & Lofi', monogram: 'LF', query: 'Lofi Chill' },
-    { label: 'V-Pop', monogram: 'VP', query: 'V-Pop' },
-    { label: 'Dance & EDM', monogram: 'EDM', query: 'EDM Dance' },
-    { label: 'Rock', monogram: 'RK', query: 'Rock' },
-    { label: 'R&B', monogram: 'RB', query: 'R&B' },
-  ];
+  // Chunk Quick picks into columns of 4 tracks for 3-col x 4-row YTM horizontal snap grid
+  const quickPickColumns = useMemo(() => {
+    const cols: Track[][] = [];
+    for (let i = 0; i < quickPicks.length; i += 4) {
+      cols.push(quickPicks.slice(i, i + 4));
+    }
+    return cols;
+  }, [quickPicks]);
 
-  const topPlaylists = Object.entries(browseData).slice(0, 2);
+  const browseCategories = useMemo(() => {
+    const entries = Object.entries(browseData).filter(([, items]) => Array.isArray(items) && items.length > 0);
+    const nonArtist = entries.filter(([cat, items]) => {
+      const lower = cat.toLowerCase();
+      return !lower.includes('artist') && items.some(i => i.type !== 'Artist');
+    });
+    return nonArtist.slice(0, 4);
+  }, [browseData]);
+
+  const mixedForYouItems = useMemo(() => {
+    const allItems = Object.values(browseData).flat().filter(p => p.type !== 'Artist');
+    return allItems.slice(0, 12);
+  }, [browseData]);
 
   return (
-    <div className="min-h-full text-white bg-[#121212]">
-      <div
-        ref={containerRef}
-        {...pullProps}
-        className="max-w-[1240px] mx-auto px-3 md:px-6 py-4 md:py-6 flex gap-8 overflow-y-auto no-scrollbar"
-        style={{ minHeight: '100%' }}
-      >
-        {indicator}
+    <div
+      ref={containerRef}
+      {...pullProps}
+      className="min-h-full bg-transparent text-white"
+    >
+      {indicator}
 
-        {/* Main Column */}
-        <div className="flex-1 min-w-0 space-y-8">
-          {/* Hero Banner */}
-          {loading ? (
-            <div className="w-full aspect-video md:aspect-[16/7] bg-[#1c1c1c] rounded-xl animate-pulse" />
-          ) : heroSlides.length > 0 && (
-            <div className="relative w-full aspect-video md:aspect-[16/7] rounded-xl overflow-hidden shadow-2xl group border border-white/10">
-              <div
-                className="w-full h-full flex transition-transform duration-700 ease-out"
-                style={{ transform: `translateX(-${currentSlideIndex * 100}%)` }}
-              >
-                {heroSlides.map((slide, idx) => (
-                  <div key={slide.id || idx} className="w-full h-full flex-shrink-0 relative">
-                    <CoverImage src={slide.cover_url} alt={slide.title} className="w-full h-full object-cover brightness-[0.55]" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-[#121212] via-black/30 to-transparent flex flex-col justify-end p-5 md:p-8">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="bg-[#ff5500] text-white text-[10px] font-extrabold uppercase px-2 py-0.5 rounded tracking-wider">
-                          SoundCloud Spotlight
-                        </span>
-                      </div>
-                      <h2 className="text-2xl md:text-4xl font-extrabold text-white mb-1 line-clamp-1">{slide.title}</h2>
-                      <p className="text-neutral-300 text-xs md:text-sm line-clamp-2 max-w-xl mb-4">{slide.description}</p>
-                      <button
-                        onClick={() => playCollection(slide.id, false)}
-                        className="w-fit inline-flex items-center gap-2 px-6 py-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white rounded font-bold text-xs uppercase tracking-wider shadow-lg active:scale-95 transition"
-                      >
-                        <Play className="w-4 h-4 fill-current" />
-                        Listen Now
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
+      <div className="max-w-[1478px] mx-auto px-4 md:px-10 py-6 space-y-10">
+        {/* 1. Mood Filter Chip Bar */}
+        <div
+          role="tablist"
+          aria-label="Mood and activity filters"
+          className="flex items-center gap-2.5 overflow-x-auto no-scrollbar pb-1"
+        >
+          {MOOD_CHIPS.map((chip) => {
+            const isActive = selectedMood === chip.label;
+            return (
               <button
-                onClick={() => setCurrentSlideIndex(prev => (prev === 0 ? heroSlides.length - 1 : prev - 1))}
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                aria-label="Previous"
+                key={chip.label}
+                type="button"
+                role="tab"
+                aria-selected={isActive}
+                onClick={() => handleMoodSelect(chip.label, chip.query)}
+                className={`h-8 px-3 rounded-[8px] text-sm font-medium whitespace-nowrap transition flex-shrink-0 ${
+                  isActive
+                    ? 'bg-white text-[#030303]'
+                    : 'bg-white/10 text-white hover:bg-white/[0.16] border border-white/10'
+                }`}
               >
-                <ChevronLeft className="w-5 h-5" />
+                {chip.label}
               </button>
-              <button
-                onClick={() => setCurrentSlideIndex(prev => (prev + 1) % heroSlides.length)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/60 hover:bg-black/90 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                aria-label="Next"
-              >
-                <ChevronRight className="w-5 h-5" />
-              </button>
+            );
+          })}
+        </div>
 
-              <div className="absolute bottom-3 right-4 flex items-center gap-1.5">
-                {heroSlides.map((_, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setCurrentSlideIndex(i)}
-                    className={`h-1.5 rounded-full transition-all duration-300 ${i === currentSlideIndex ? 'w-5 bg-[#ff5500]' : 'w-1.5 bg-white/40 hover:bg-white'}`}
-                    aria-label={`Slide ${i + 1}`}
-                  />
-                ))}
-              </div>
+        {/* 2. Shelf 1: Quick Picks (3-col x 4-row horizontal snap carousel) */}
+        {quickPicksLoading && quickPicks.length === 0 ? (
+          <section className="space-y-4">
+            <div className="space-y-2">
+              <Skeleton className="h-3.5 w-44" />
+              <Skeleton className="h-8 w-52" />
             </div>
-          )}
-
-          {/* Browse Categories (Monogram Dark Tiles) */}
-          <section>
-            <div className="flex items-center gap-2 mb-3">
-              <Compass className="w-4 h-4 text-[#ff5500]" />
-              <h2 className="text-base font-extrabold uppercase tracking-wider text-white">Browse Genres</h2>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5">
-              {browseTiles.map(tile => (
-                <button
-                  key={tile.label}
-                  onClick={() => playTopic(tile.query)}
-                  className="relative h-20 rounded-lg overflow-hidden bg-[#181818] border border-white/10 hover:border-[#ff5500] hover:bg-[#202020] p-3 flex flex-col justify-between items-start text-left transition group shadow-sm"
-                >
-                  <span className="w-7 h-7 rounded bg-white/5 border border-white/10 group-hover:border-[#ff5500] text-[#ff5500] font-black text-xs flex items-center justify-center tracking-wider transition">
-                    {tile.monogram}
-                  </span>
-                  <span className="text-xs font-bold text-white leading-tight group-hover:text-[#ff5500] transition">{tile.label}</span>
-                </button>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {[1, 2, 3].map(col => (
+                <div key={col} className={`space-y-2 ${col > 1 ? 'hidden md:block' : ''}`}>
+                  {[1, 2, 3, 4].map(row => (
+                    <Skeleton key={row} className="h-14 w-full rounded-[6px]" />
+                  ))}
+                </div>
               ))}
             </div>
           </section>
-
-          {/* Trending Tracks Stream with SoundCloud Track Cards */}
-          <section>
-            <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-4">
-              <div className="flex items-center gap-2">
-                <Flame className="w-5 h-5 text-[#ff5500]" />
-                <h2 className="text-lg font-extrabold text-white">Trending on SoundCloud</h2>
-              </div>
-              <Link to="/charts" className="text-xs font-bold text-[#ff5500] hover:underline">
-                View Charts
-              </Link>
-            </div>
-
-            {popularLoading ? (
-              <div className="space-y-3">
-                {[1, 2, 3, 4].map(i => (
-                  <Skeleton key={i} className="h-32 w-full rounded-lg" />
-                ))}
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {popularTracks.map((track, i) => (
-                  <SoundCloudTrackCard
-                    key={`${track.id}-${i}`}
+        ) : quickPickColumns.length > 0 && (
+          <YtmCarousel
+            eyebrow={selectedMood === 'All' ? 'START RADIO FROM A SONG' : `${selectedMood.toUpperCase()} RADIO`}
+            title={selectedMood === 'All' ? 'Quick picks' : `${selectedMood} picks`}
+            itemCount={quickPickColumns.length}
+            actionPill={{
+              label: 'Play all',
+              onClick: () => {
+                if (quickPicks.length > 0) {
+                  playTrack(quickPicks[0], quickPicks);
+                }
+              },
+            }}
+            trackClassName="gap-6"
+          >
+            {quickPickColumns.map((col, colIdx) => (
+              <div
+                key={`qp-col-${colIdx}`}
+                role="group"
+                aria-roledescription="slide"
+                aria-label={`${colIdx + 1} of ${quickPickColumns.length}`}
+                className="min-w-[300px] sm:min-w-[360px] lg:w-[calc((100%-48px)/3)] flex-shrink-0 snap-start flex flex-col"
+              >
+                {col.map((track, rowIdx) => (
+                  <TrackRow
+                    key={`${track.id}-${colIdx}-${rowIdx}`}
                     track={track}
-                    queue={popularTracks}
+                    queue={quickPicks}
+                    showStats={false}
+                    compact
+                    disableSwipe
                   />
                 ))}
               </div>
-            )}
+            ))}
+          </YtmCarousel>
+        )}
+
+        {/* 3. Shelf 2: Mixed for you (when browse content loaded) */}
+        {loading && mixedForYouItems.length === 0 ? (
+          <section className="space-y-4">
+            <Skeleton className="h-7 w-48" />
+            <div className="flex gap-6 overflow-hidden">
+              {[1, 2, 3, 4, 5, 6].map(i => (
+                <div key={i} className="w-[176px] flex-shrink-0 space-y-2.5">
+                  <Skeleton className="w-full aspect-square rounded-[6px]" />
+                  <Skeleton className="h-4 w-4/5" />
+                  <Skeleton className="h-3.5 w-3/5" />
+                </div>
+              ))}
+            </div>
           </section>
+        ) : mixedForYouItems.length > 0 && (
+          <YtmCarousel
+            eyebrow={playHistory.length > 0 ? 'BASED ON YOUR LISTENING' : undefined}
+            title="Mixed for you"
+            itemCount={mixedForYouItems.length}
+            actionPill={{ label: 'More', to: '/feed' }}
+            trackClassName="gap-4 md:gap-6"
+          >
+            {mixedForYouItems.map((item, idx) => {
+              const isAlbum = item.type === 'Album';
+              return (
+                <div
+                  key={`mixed-${item.id}-${idx}`}
+                  role="group"
+                  aria-roledescription="slide"
+                  aria-label={`${idx + 1} of ${mixedForYouItems.length}`}
+                  className="w-[164px] sm:w-[176px] md:w-[192px] flex-shrink-0 snap-start"
+                >
+                  <YtmMediaCard
+                    title={item.title}
+                    subtitle={item.creator || item.description || (isAlbum ? 'Album' : 'Playlist')}
+                    imageUrl={item.cover_url}
+                    to={isAlbum ? `/album/${encodeURIComponent(item.id)}` : `/playlist/${encodeURIComponent(item.id)}`}
+                    onPlay={() => playCollection(item.id, isAlbum)}
+                    fallbackText={item.title?.substring(0, 2).toUpperCase()}
+                  />
+                </div>
+              );
+            })}
+          </YtmCarousel>
+        )}
 
-          {/* Playlists Shelves */}
-          {topPlaylists.map(([category, playlists]) => (
-            <section key={category}>
-              <div className="flex items-center justify-between pb-2 border-b border-white/10 mb-3">
-                <h2 className="text-base font-extrabold text-white">{category}</h2>
-                <Link to={`/section?category=${encodeURIComponent(category)}`} className="text-xs font-bold text-neutral-400 hover:text-white">
-                  See more
-                </Link>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                {(playlists as any[]).slice(0, 8).map(playlist => (
-                  <div
-                    key={playlist.id}
-                    onClick={() => playCollection(playlist.id, false)}
-                    className="bg-[#181818] hover:bg-[#222222] p-2.5 rounded-lg transition group cursor-pointer border border-white/5 flex flex-col"
+        {/* 4. Browse Category Carousels */}
+        {browseCategories.map(([category, items]) => (
+          <YtmCarousel
+            key={category}
+            title={category}
+            itemCount={Math.min(items.length, 15)}
+            actionPill={{ label: 'More', to: `/section?category=${encodeURIComponent(category)}` }}
+            trackClassName="gap-4 md:gap-6"
+          >
+            {items.slice(0, 15).map((item, idx) => {
+              const isAlbum = item.type === 'Album';
+              const targetUrl = isAlbum
+                ? `/album/${encodeURIComponent(item.id)}`
+                : `/playlist/${encodeURIComponent(item.id)}`;
+              return (
+                <div
+                  key={`${category}-${item.id}-${idx}`}
+                  role="group"
+                  aria-roledescription="slide"
+                  aria-label={`${idx + 1} of ${Math.min(items.length, 15)}`}
+                  className="w-[164px] sm:w-[176px] md:w-[192px] flex-shrink-0 snap-start"
+                >
+                  <YtmMediaCard
+                    title={item.title}
+                    subtitle={item.description || item.creator || (isAlbum ? 'Album' : 'Playlist')}
+                    imageUrl={item.cover_url}
+                    to={targetUrl}
+                    onPlay={() => playCollection(item.id, isAlbum)}
+                    fallbackText={item.title?.substring(0, 2).toUpperCase()}
+                  />
+                </div>
+              );
+            })}
+          </YtmCarousel>
+        ))}
+
+        {/* 5. Recommended Artists Shelf with VN / US / KR / GB Region Chips */}
+        <YtmCarousel
+          title="Recommended artists"
+          itemCount={artists.length}
+          actionPill={{ label: 'More', to: '/artists' }}
+          headerRightExtra={
+            <div className="hidden sm:flex items-center gap-1.5 mr-1">
+              {ARTIST_REGIONS.map(({ label }) => {
+                const active = artistRegion === label;
+                return (
+                  <button
+                    key={label}
+                    type="button"
+                    onClick={() => setArtistRegion(label)}
+                    className={`h-8 px-3 rounded-[8px] text-xs font-medium transition ${
+                      active
+                        ? 'bg-white text-[#030303]'
+                        : 'bg-white/10 text-white hover:bg-white/[0.16] border border-white/10'
+                    }`}
                   >
-                    <div className="relative mb-2 overflow-hidden rounded">
-                      <CoverImage src={playlist.cover_url} alt={playlist.title} className="w-full aspect-square object-cover group-hover:scale-105 transition duration-300" fallbackText="SC" />
-                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition flex items-center justify-center">
-                        <div className="w-10 h-10 bg-[#ff5500] rounded-full flex items-center justify-center shadow-lg transform scale-90 group-hover:scale-100 transition">
-                          <Play className="w-5 h-5 text-white fill-white ml-0.5" />
-                        </div>
-                      </div>
-                    </div>
-                    <h3 className="font-bold text-white text-xs line-clamp-1 group-hover:text-[#ff5500] transition">{playlist.title}</h3>
-                    <p className="text-[10px] text-neutral-400 line-clamp-1 mt-0.5">{playlist.description || 'Playlist'}</p>
-                  </div>
-                ))}
+                    {label}
+                  </button>
+                );
+              })}
+            </div>
+          }
+          trackClassName="gap-4 md:gap-6"
+        >
+          {artistsLoading && artists.length === 0 ? (
+            [1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="w-[160px] sm:w-[176px] flex-shrink-0 flex flex-col items-center space-y-2.5">
+                <Skeleton className="w-full aspect-square rounded-full" />
+                <Skeleton className="h-4 w-2/3" />
+                <Skeleton className="h-3 w-1/3" />
               </div>
-            </section>
-          ))}
+            ))
+          ) : (
+            artists.map((artist, idx) => (
+              <div
+                key={`${artist.id}-${idx}`}
+                role="group"
+                aria-roledescription="slide"
+                aria-label={`${idx + 1} of ${artists.length}`}
+                className="w-[160px] sm:w-[176px] md:w-[184px] flex-shrink-0 snap-start"
+              >
+                <YtmMediaCard
+                  variant="artist"
+                  title={artist.name}
+                  subtitle={artist.followers ? `Artist • ${artist.followers}` : 'Artist'}
+                  imageUrl={artist.photo}
+                  to={`/artist/${encodeURIComponent(artist.name)}`}
+                  onPlay={() => playArtistTop(artist.name)}
+                  fallbackText={artist.name.substring(0, 2).toUpperCase()}
+                />
+              </div>
+            ))
+          )}
+        </YtmCarousel>
+
+        {/* Mobile artist region chips */}
+        <div className="flex sm:hidden items-center gap-2 -mt-6">
+          {ARTIST_REGIONS.map(({ label }) => {
+            const active = artistRegion === label;
+            return (
+              <button
+                key={`mob-${label}`}
+                type="button"
+                onClick={() => setArtistRegion(label)}
+                className={`h-8 px-3 rounded-[8px] text-xs font-medium transition ${
+                  active
+                    ? 'bg-white text-[#030303]'
+                    : 'bg-white/10 text-white hover:bg-white/[0.16] border border-white/10'
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
         </div>
 
-        {/* Desktop SoundCloud Right Sidebar */}
-        <div className="hidden lg:flex flex-shrink-0 flex-col items-stretch">
-          <SoundCloudSidebar />
-        </div>
+        {/* 6. Trending Ranked List + Charts Link */}
+        <section className="space-y-4">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider text-white/70 mb-1">TOP SONGS</p>
+              <h2
+                className="text-[22px] sm:text-[24px] md:text-[28px] font-bold tracking-tight text-white leading-[1.2]"
+                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
+              >
+                Trending
+              </h2>
+            </div>
+
+            <div className="flex items-center gap-2 sm:gap-3">
+              {trendingTracks.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => playTrack(trendingTracks[0], trendingTracks)}
+                  className="h-9 px-4 rounded-full border border-white/20 text-sm font-medium text-white hover:bg-white/10 transition"
+                >
+                  Play all
+                </button>
+              )}
+              <Link
+                to="/charts"
+                className="h-9 px-4 rounded-full border border-white/20 text-sm font-medium text-white hover:bg-white/10 inline-flex items-center justify-center transition"
+              >
+                Charts
+              </Link>
+            </div>
+          </div>
+
+          {trendingLoading && trendingTracks.length === 0 ? (
+            <div className="space-y-2">
+              {[1, 2, 3, 4, 5].map(i => (
+                <Skeleton key={i} className="h-14 w-full rounded-[6px]" />
+              ))}
+            </div>
+          ) : (
+            <div className="divide-y-0">
+              {trendingTracks.map((track, idx) => (
+                <TrackRow
+                  key={`trending-${track.id}-${idx}`}
+                  track={track}
+                  index={idx}
+                  rankDelta={idx < 3 ? 'up' : idx % 4 === 0 ? 'down' : 'neutral'}
+                  queue={trendingTracks}
+                />
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   );

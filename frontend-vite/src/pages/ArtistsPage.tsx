@@ -1,30 +1,45 @@
 import { useEffect, useState } from 'react';
-import { Play, Users, Sparkles, Music } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
+import { ArrowLeft } from 'lucide-react';
 import { libraryService } from '../services/library';
 import { usePlayerStore } from '../stores/playerStore';
-import CoverImage from '../components/CoverImage';
+import { YtmMediaCard } from '../components/TrackRow';
+import Skeleton from '../components/Skeleton';
+
+const REGION_TABS: { id: 'vn' | 'us' | 'kr' | 'cn'; label: string }[] = [
+    { id: 'vn', label: 'Vietnam' },
+    { id: 'us', label: 'US' },
+    { id: 'kr', label: 'South Korea' },
+    { id: 'cn', label: 'Global' },
+];
 
 export default function ArtistsPage() {
-    const navigate = useNavigate();
     const playTrack = usePlayerStore(s => s.playTrack);
     const [region, setRegion] = useState<'vn' | 'us' | 'kr' | 'cn'>('vn');
-    const [artists, setArtists] = useState<Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string; topTrack: string }>>([]);
+    const [artists, setArtists] = useState<
+        Array<{ id: string; name: string; photo?: string; region: string; rank: number; followers: string; topTrack: string }>
+    >([]);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
         let isMounted = true;
         setLoading(true);
 
-        // Synchronous initial load with instant avatars so zero empty gray boxes ever appear
-        libraryService.getArtists(region).then((res) => {
-            if (isMounted) {
-                setArtists(res);
-                setLoading(false);
-            }
-        });
+        libraryService
+            .getArtists(region)
+            .then(res => {
+                if (isMounted) {
+                    setArtists(res);
+                    setLoading(false);
+                }
+            })
+            .catch(() => {
+                if (isMounted) setLoading(false);
+            });
 
-        return () => { isMounted = false; };
+        return () => {
+            isMounted = false;
+        };
     }, [region]);
 
     const playArtistTrack = async (artistName: string) => {
@@ -34,101 +49,89 @@ export default function ArtistsPage() {
                 playTrack(tracks[0], tracks);
             }
         } catch (e) {
-            console.error("Failed to play artist track", e);
+            console.error('Failed to play artist track', e);
         }
     };
 
     return (
-        <div className="min-h-full overflow-y-auto p-4 md:p-6 no-scrollbar pb-28 text-white bg-[#111111] w-full">
-            {/* Header */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 border-b border-orange-500/15 pb-5 w-full">
-                <div>
-                    <div className="flex items-center gap-2 text-orange-400 text-xs font-bold uppercase tracking-wider mb-1">
-                        <Users className="w-4 h-4" />
-                        <span>Bảng Xếp Hạng Nghệ Sĩ Realtime</span>
-                    </div>
-                    <h1 className="text-2xl md:text-3xl font-black text-white">TOP NGHỆ SĨ NỔI BẬT</h1>
-                    <p className="text-xs text-neutral-400 mt-1">Nghệ sĩ có lượt nghe và theo dõi hàng đầu theo từng quốc gia</p>
-                </div>
-
-                {/* Regional Filter Tabs */}
-                <div className="grid grid-cols-4 gap-1 bg-[#2a2a2a] p-1 rounded-2xl border border-orange-500/20 text-xs font-extrabold text-center max-w-md w-full">
-                    {[
-                        { id: 'vn', label: 'VIỆT NAM' },
-                        { id: 'us', label: 'ÂU MỸ' },
-                        { id: 'kr', label: 'HÀN QUỐC' },
-                        { id: 'cn', label: 'TRUNG QUỐC' },
-                    ].map(tab => (
-                        <button
-                            key={tab.id}
-                            onClick={() => setRegion(tab.id as any)}
-                            className={`py-2 rounded-xl transition ${region === tab.id ? 'bg-gradient-to-r from-[#ff5500] to-[#ff7a00] text-white shadow-lg shadow-orange-500/20' : 'text-neutral-400 hover:text-white'}`}
+        <div className="min-h-full bg-transparent text-white pb-24">
+            <div className="max-w-[1478px] mx-auto px-4 md:px-10 py-6 space-y-8">
+                {/* Header */}
+                <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+                    <div className="flex items-center gap-3">
+                        <Link
+                            to="/"
+                            aria-label="Back to Home"
+                            className="w-10 h-10 rounded-full hover:bg-white/10 text-white/80 hover:text-white flex items-center justify-center transition md:hidden"
                         >
-                            {tab.label}
-                        </button>
-                    ))}
-                </div>
-            </div>
-
-            {/* Grid List - Full Page Width */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-4 w-full">
-                {artists.map((artist) => (
-                    <div
-                        key={artist.id}
-                        className="bg-[#2a2a2a] hover:bg-[#333333] border border-orange-500/15 hover:border-orange-400/40 rounded-2xl p-4 transition-all duration-300 flex items-center justify-between group shadow-md w-full"
-                    >
-                        <div className="flex items-center gap-3.5 min-w-0">
-                            {/* Rank badge */}
-                            <div className={`w-8 h-8 rounded-xl font-black text-xs flex items-center justify-center flex-shrink-0 ${
-                                artist.rank === 1 ? 'bg-amber-400 text-black shadow-lg shadow-amber-400/30' :
-                                artist.rank === 2 ? 'bg-orange-400 text-black shadow-lg shadow-orange-400/30' :
-                                artist.rank === 3 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/30' :
-                                'bg-[#111111] text-neutral-400 border border-orange-500/20'
-                            }`}>
-                                #{artist.rank}
-                            </div>
-
-                            {/* Artist Avatar */}
-                            <div
-                                onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
-                                className="cursor-pointer flex-shrink-0 relative group-hover:scale-105 transition"
+                            <ArrowLeft className="w-5 h-5" />
+                        </Link>
+                        <div>
+                            <p className="text-xs uppercase tracking-wider text-white/70 mb-1">CHARTS</p>
+                            <h1
+                                className="text-[28px] md:text-[36px] font-bold tracking-tight text-white leading-[1.15]"
+                                style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
                             >
-                                <CoverImage
-                                    src={artist.photo}
-                                    alt={artist.name}
-                                    className="w-14 h-14 rounded-full object-cover border-2 border-orange-400/30 shadow-md"
-                                    fallbackText={artist.name[0]}
-                                />
-                            </div>
-
-                            {/* Artist Info */}
-                            <div className="min-w-0">
-                                <h3
-                                    onClick={() => navigate(`/artist/${encodeURIComponent(artist.name)}`)}
-                                    className="font-bold text-white text-sm hover:text-orange-400 cursor-pointer truncate transition"
-                                >
-                                    {artist.name}
-                                </h3>
-                                <p className="text-[11px] text-orange-400 font-medium flex items-center gap-1 mt-0.5">
-                                    <Users className="w-3 h-3" />
-                                    <span>{artist.followers} người nghe</span>
-                                </p>
-                                <p className="text-[10px] text-neutral-400 truncate mt-0.5">
-                                    {artist.topTrack ? `HOT: ${artist.topTrack}` : 'YouTube Music Chart Artist'}
-                                </p>
-                            </div>
+                                Top artists
+                            </h1>
                         </div>
-
-                        {/* Play button */}
-                        <button
-                            onClick={() => playArtistTrack(artist.name)}
-                            className="w-9 h-9 rounded-full bg-gradient-to-r from-[#ff5500] to-[#ff7a00] text-white flex items-center justify-center shadow-lg shadow-orange-500/30 hover:scale-110 active:scale-95 transition flex-shrink-0 ml-2"
-                            title={`Phát nhạc ${artist.name}`}
-                        >
-                            <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                        </button>
                     </div>
-                ))}
+
+                    {/* Region Filter Chips */}
+                    <div
+                        role="tablist"
+                        aria-label="Artist chart region"
+                        className="flex items-center gap-2 overflow-x-auto no-scrollbar"
+                    >
+                        {REGION_TABS.map(tab => {
+                            const isActive = region === tab.id;
+                            return (
+                                <button
+                                    key={tab.id}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={isActive}
+                                    onClick={() => setRegion(tab.id)}
+                                    className={`h-8 px-3 rounded-[8px] text-sm font-medium whitespace-nowrap transition ${
+                                        isActive
+                                            ? 'bg-white text-[#030303]'
+                                            : 'bg-white/10 text-white hover:bg-white/[0.16] border border-white/10'
+                                    }`}
+                                >
+                                    {tab.label}
+                                </button>
+                            );
+                        })}
+                    </div>
+                </header>
+
+                {/* Responsive Artist Grid */}
+                {loading && artists.length === 0 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                        {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(i => (
+                            <div key={i} className="flex flex-col items-center space-y-2.5">
+                                <Skeleton className="w-full aspect-square rounded-full" />
+                                <Skeleton className="h-4 w-2/3" />
+                                <Skeleton className="h-3.5 w-1/3" />
+                            </div>
+                        ))}
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+                        {artists.map((artist, idx) => (
+                            <YtmMediaCard
+                                key={`${artist.id}-${idx}`}
+                                variant="artist"
+                                title={artist.name}
+                                subtitle={`#${artist.rank}${artist.followers ? ` • ${artist.followers}` : ''}`}
+                                imageUrl={artist.photo}
+                                to={`/artist/${encodeURIComponent(artist.name)}`}
+                                onPlay={() => playArtistTrack(artist.name)}
+                                fallbackText={artist.name[0]}
+                            />
+                        ))}
+                    </div>
+                )}
             </div>
         </div>
     );
