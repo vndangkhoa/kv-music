@@ -4,6 +4,17 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.7] - 2026-11-20
+
+### Added
+- **On-Device Audio Cache & 256 KiB Head Pre-Buffering (`AudioCacheManager`)** - Added Media3 `SimpleCache` (250 MiB LRU at `exo_audio_cache`) and bounded 256 KiB head pre-buffering (aligned with backend progressive burst chunks) for visible Home, Search, Detail, and next-3 Queue tracks so tapped songs start immediately
+- **Real Offline & Phone Storage Downloads (`OfflineDownloadManager`)** - Downloads full audio tracks via `/api/download/{id}?fmt=m4a` (with `/api/stream/{id}` fallback) into persistent offline app storage AND exports copy into public `Music/KV Music/` via `MediaStore.Audio.Media` (Android 10+) / external storage (API 26–28) with live progress indicators and restart persistence
+- **Shared HTTP/2 Socket Prewarming & Cache-First Home (`MusicRepository`, `RetrofitClient`)** - Prewarms HTTP/2 + TLS socket at launch, deduplicates Home chart calls, fixes `/api/new-releases` (`region`), `/api/recommendations` (`seed`/`RecommendationsResponse`), and `/api/lyrics` (`track`/`video_id`) parameters, and renders Home immediately from SharedPreferences cache
+
+### Changed
+- **Instant Android Playback Path (`PlayerManager`)** - Switched default stream path to offline file → `SimpleCache` → server `/api/stream/{id}` (WebM/Opus, matching server prefetch cache) with automatic Direct InnerTube failover, removed the broken default InnerTube `403` pre-detour, tuned `DefaultLoadControl` (`250 ms` start / `750 ms` rebuffer), and removed `replaceMediaItem` artwork stutter during playback
+- **Release APK Version** - Bumped `versionCode = 8`, `versionName = "1.2.7"`
+
 ## [1.2.5] - 2026-11-18
 
 ### Added

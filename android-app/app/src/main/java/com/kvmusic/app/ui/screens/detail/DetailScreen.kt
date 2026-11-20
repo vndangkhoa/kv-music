@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.player.AudioCacheManager
 import com.kvmusic.app.player.PlayerManager
 import com.kvmusic.app.ui.components.TrackListItem
 import com.kvmusic.app.ui.components.YtmIcons
@@ -71,6 +72,9 @@ fun DetailScreen(
         } else {
             musicRepo.universalSearch(query).getOrNull()?.songs ?: emptyList()
         }
+        if (tracks.isNotEmpty()) {
+            AudioCacheManager.preloadTracks(context, tracks, maxCount = 3)
+        }
         isLoading = false
     }
 
@@ -98,7 +102,7 @@ fun DetailScreen(
             "$typeLabel • ${tracks.size} songs"
         }
     }
-    val hasDownloadedLead = tracks.firstOrNull()?.let { downloadedIds.contains(it.id) } ?: false
+    val allDownloaded = tracks.isNotEmpty() && tracks.all { downloadedIds.contains(it.id) }
 
     fun shareEntity() {
         val shareUrl = "https://sp.khoavo.myds.me/track/${id}"
@@ -406,11 +410,11 @@ fun DetailScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 YtmDetailCircleButton(
-                                    icon = if (hasDownloadedLead) YtmIcons.Downloaded24 else YtmIcons.Download24,
-                                    contentDescription = "Download",
+                                    icon = if (allDownloaded) YtmIcons.Downloaded24 else YtmIcons.Download24,
+                                    contentDescription = "Download all to phone",
                                     onClick = {
-                                        tracks.firstOrNull()?.let { lead ->
-                                            PlayerManager.toggleDownload(context, lead)
+                                        if (tracks.isNotEmpty()) {
+                                            PlayerManager.downloadTracks(context, tracks)
                                         }
                                     }
                                 )

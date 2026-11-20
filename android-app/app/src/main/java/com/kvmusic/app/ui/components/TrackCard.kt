@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +44,7 @@ import coil.compose.AsyncImage
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.player.PlayerManager
 import com.kvmusic.app.ui.theme.YtmBlackAt50
+import com.kvmusic.app.ui.theme.YtmGreen01
 import com.kvmusic.app.ui.theme.YtmGrey11
 import com.kvmusic.app.ui.theme.YtmGrey12
 import com.kvmusic.app.ui.theme.YtmSubtitle01
@@ -91,10 +93,12 @@ fun TrackListItem(
     val currentTrack by PlayerManager.currentTrack.collectAsState()
     val isPlayerPlaying by PlayerManager.isPlaying.collectAsState()
     val downloadedIds by PlayerManager.downloadedTrackIds.collectAsState()
+    val downloadProgress by PlayerManager.downloadProgress.collectAsState()
     val likedIds by PlayerManager.likedTrackIds.collectAsState()
 
     val isCurrentPlaying = currentTrack?.id == track.id && isPlayerPlaying
     val isDownloaded = downloadedIds.contains(track.id)
+    val trackDownloadProgress = downloadProgress[track.id]
 
     var likedOverride by remember(track.id, isLiked) { mutableStateOf<Boolean?>(null) }
     val effectiveLiked = likedOverride ?: (isLiked || likedIds.contains(track.id))
@@ -188,11 +192,18 @@ fun TrackListItem(
             )
             Spacer(modifier = Modifier.height(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (isDownloaded) {
+                if (trackDownloadProgress != null) {
+                    CircularProgressIndicator(
+                        color = YtmWhite,
+                        strokeWidth = 1.5.dp,
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                } else if (isDownloaded) {
                     Icon(
                         imageVector = YtmIcons.Downloaded24,
                         contentDescription = "Downloaded",
-                        tint = YtmWhite67,
+                        tint = YtmGreen01,
                         modifier = Modifier.size(14.dp)
                     )
                     Spacer(modifier = Modifier.width(4.dp))
@@ -225,6 +236,7 @@ fun TrackListItem(
             track = track,
             isLiked = effectiveLiked,
             isDownloaded = isDownloaded,
+            downloadProgress = trackDownloadProgress,
             onDismiss = { showMenuSheet = false },
             onPlayNext = {
                 if (onPlayNext != null) {
@@ -259,6 +271,7 @@ private fun TrackMenuBottomSheet(
     track: Track,
     isLiked: Boolean,
     isDownloaded: Boolean,
+    downloadProgress: Float?,
     onDismiss: () -> Unit,
     onPlayNext: () -> Unit,
     onToggleLike: () -> Unit,
@@ -346,7 +359,11 @@ private fun TrackMenuBottomSheet(
             )
             TrackMenuItem(
                 icon = if (isDownloaded) YtmIcons.Downloaded24 else YtmIcons.Download24,
-                label = if (isDownloaded) "Remove offline download" else "Download offline",
+                label = when {
+                    downloadProgress != null -> "Downloading ${(downloadProgress * 100).toInt().coerceIn(1, 99)}% (tap to cancel)"
+                    isDownloaded -> "Remove offline download"
+                    else -> "Save to phone (Music/KV Music)"
+                },
                 onClick = onToggleDownload
             )
             TrackMenuItem(

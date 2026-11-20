@@ -12,8 +12,8 @@ android {
         applicationId = "com.kvmusic.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "1.2.6"
+        versionCode = 8
+        versionName = "1.2.7"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.androidx.media3.session)
     implementation(libs.androidx.media3.ui)
     implementation("androidx.media3:media3-datasource-okhttp:1.3.1")
+    implementation("androidx.media3:media3-database:1.3.1")
     implementation("androidx.media:media:1.7.0")
 
     // Networking

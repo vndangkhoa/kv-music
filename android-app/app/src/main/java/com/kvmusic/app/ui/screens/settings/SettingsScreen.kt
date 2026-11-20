@@ -262,7 +262,7 @@ fun SettingsScreen(
                         style = YtmTitle02
                     )
                     Text(
-                        text = "Resolves streams via Android/VisionOS/iOS InnerTube with DoH and auto-failover to server WARP",
+                        text = "Uses fast server WARP + local audio cache first, and auto-fails over to Direct InnerTube (or routes direct when a WARP proxy is set)",
                         style = YtmSubtitle01.copy(fontSize = 12.sp)
                     )
                 }

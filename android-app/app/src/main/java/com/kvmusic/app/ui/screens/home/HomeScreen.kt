@@ -27,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,12 +39,12 @@ import coil.compose.AsyncImage
 import com.kvmusic.app.data.model.ArtistHit
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.player.AudioCacheManager
 import com.kvmusic.app.player.PlayerManager
 import com.kvmusic.app.ui.components.TrackCardSquare
 import com.kvmusic.app.ui.components.TrackListItem
 import com.kvmusic.app.ui.components.YtmIcons
 import com.kvmusic.app.ui.theme.*
-import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 
 private val homeMoodChips = listOf(
@@ -68,10 +69,11 @@ fun HomeScreen(
     onNavigateSearch: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    var feedTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var newReleaseTracks by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var trendingCharts by remember { mutableStateOf<List<Track>>(emptyList()) }
-    var topArtists by remember { mutableStateOf<List<ArtistHit>>(emptyList()) }
+    val context = LocalContext.current
+    var feedTracks by remember { mutableStateOf(musicRepo.getCachedCharts("VN", "trending")) }
+    var newReleaseTracks by remember { mutableStateOf(musicRepo.getCachedNewReleases("VN")) }
+    var trendingCharts by remember { mutableStateOf(musicRepo.getCachedCharts("VN", "trending")) }
+    var topArtists by remember { mutableStateOf(musicRepo.getCachedArtists("vn")) }
 
     var selectedMood by remember { mutableStateOf<String?>(null) }
     val moodTrackCache = remember { mutableStateMapOf<String, List<Track>>() }
@@ -79,7 +81,9 @@ fun HomeScreen(
 
     var selectedArtistRegion by remember { mutableStateOf("VN") }
     var isArtistsLoading by remember { mutableStateOf(false) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember {
+        mutableStateOf(feedTracks.isEmpty() && newReleaseTracks.isEmpty() && trendingCharts.isEmpty())
+    }
     var showCastDialog by remember { mutableStateOf(false) }
 
     val likedIds by PlayerManager.likedTrackIds.collectAsState()
@@ -119,29 +123,36 @@ fun HomeScreen(
     }
 
     LaunchedEffect(Unit) {
-        isLoading = true
-        val feedDeferred = async { musicRepo.getFeed() }
-        val newRelDeferred = async { musicRepo.getNewReleases("VN") }
-        val chartsDeferred = async { musicRepo.getCharts("VN", "trending") }
-        val artistsDeferred = async { musicRepo.getArtists("vn") }
-
-        val feedRes = feedDeferred.await()
-        val newRelRes = newRelDeferred.await()
-        val chartsRes = chartsDeferred.await()
-        val artistsRes = artistsDeferred.await()
-
-        if (feedRes.isSuccess) {
-            feedTracks = feedRes.getOrDefault(emptyList())
+        if (feedTracks.isEmpty() && newReleaseTracks.isEmpty()) {
+            isLoading = true
         }
-        if (newRelRes.isSuccess) {
-            newReleaseTracks = newRelRes.getOrDefault(emptyList())
+        val chartsJob = launch {
+            val res = musicRepo.getCharts("VN", "trending")
+            if (res.isSuccess) {
+                val list = res.getOrDefault(emptyList())
+                feedTracks = list
+                trendingCharts = list
+            }
+            isLoading = false
         }
-        if (chartsRes.isSuccess) {
-            trendingCharts = chartsRes.getOrDefault(emptyList())
+        val releasesJob = launch {
+            val res = musicRepo.getNewReleases("VN")
+            if (res.isSuccess) {
+                newReleaseTracks = res.getOrDefault(emptyList())
+            }
+            if (newReleaseTracks.isNotEmpty()) {
+                isLoading = false
+            }
         }
-        if (artistsRes.isSuccess) {
-            topArtists = artistsRes.getOrDefault(emptyList())
+        val artistsJob = launch {
+            val res = musicRepo.getArtists("vn")
+            if (res.isSuccess) {
+                topArtists = res.getOrDefault(emptyList())
+            }
         }
+        chartsJob.join()
+        releasesJob.join()
+        artistsJob.join()
         isLoading = false
     }
 
@@ -158,6 +169,18 @@ fun HomeScreen(
             activeMoodTracks.drop(4).ifEmpty { activeMoodTracks }.take(12)
         } else {
             newReleaseTracks.ifEmpty { feedTracks.asReversed() }.take(12)
+        }
+    }
+
+    LaunchedEffect(quickPicks) {
+        if (quickPicks.isNotEmpty()) {
+            AudioCacheManager.preloadTracks(context, quickPicks, maxCount = 4)
+        }
+    }
+
+    LaunchedEffect(mixedForYou) {
+        if (mixedForYou.isNotEmpty()) {
+            AudioCacheManager.preloadTracks(context, mixedForYou, maxCount = 2)
         }
     }
 

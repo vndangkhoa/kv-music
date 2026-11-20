@@ -49,6 +49,10 @@ data class SearchResponse(
     val tracks: List<Track> = emptyList()
 )
 
+data class RecommendationsResponse(
+    val tracks: List<Track> = emptyList()
+)
+
 data class ArtistsResponse(
     val artists: List<ArtistHit> = emptyList()
 )

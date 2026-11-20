@@ -32,7 +32,8 @@ interface KVMusicApi {
 
     @GET("/api/new-releases")
     suspend fun getNewReleases(
-        @Query("country") country: String = "VN"
+        @Query("region") region: String = "vn",
+        @Query("limit") limit: Int = 20
     ): Response<SearchResponse>
 
     @GET("/api/artists")
@@ -42,14 +43,16 @@ interface KVMusicApi {
 
     @GET("/api/recommendations")
     suspend fun getRecommendations(
-        @Query("id") trackId: String
-    ): Response<List<Track>>
+        @Query("seed") seed: String,
+        @Query("seed_type") seedType: String = "track",
+        @Query("limit") limit: Int = 20
+    ): Response<RecommendationsResponse>
 
     @GET("/api/lyrics")
     suspend fun getLyrics(
-        @Query("id") trackId: String,
-        @Query("title") title: String,
-        @Query("artist") artist: String
+        @Query("track") track: String,
+        @Query("artist") artist: String,
+        @Query("video_id") videoId: String? = null
     ): Response<SyncedLyricsResponse>
 
     @POST("/api/auth/login")

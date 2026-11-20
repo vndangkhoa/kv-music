@@ -5,10 +5,15 @@ import coil.ImageLoader
 import coil.ImageLoaderFactory
 import coil.disk.DiskCache
 import coil.memory.MemoryCache
-import coil.request.CachePolicy
 import com.kvmusic.app.data.api.RetrofitClient
+import com.kvmusic.app.data.download.OfflineDownloadManager
 import com.kvmusic.app.data.repository.AuthRepository
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.player.AudioCacheManager
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 
 class KVMusicApp : Application(), ImageLoaderFactory {
@@ -19,16 +24,25 @@ class KVMusicApp : Application(), ImageLoaderFactory {
     lateinit var authRepository: AuthRepository
         private set
 
+    private val appIoScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     override fun onCreate() {
         super.onCreate()
         instance = this
         RetrofitClient.init(this)
-        musicRepository = MusicRepository()
+        OfflineDownloadManager.init(this)
+        musicRepository = MusicRepository(this)
         authRepository = AuthRepository(this)
+
+        appIoScope.launch {
+            runCatching { AudioCacheManager.getCache(this@KVMusicApp) }
+            RetrofitClient.prewarmConnection()
+        }
     }
 
     override fun newImageLoader(): ImageLoader {
         val okHttpClient = OkHttpClient.Builder()
+            .connectionPool(RetrofitClient.sharedConnectionPool)
             .followRedirects(true)
             .followSslRedirects(true)
             .addInterceptor { chain ->

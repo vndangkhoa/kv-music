@@ -2,7 +2,9 @@ package com.kvmusic.app.data.api
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.util.Log
 import okhttp3.Call
+import okhttp3.ConnectionPool
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,6 +24,7 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
+    private const val TAG = "RetrofitClient"
     private const val PREFS_NAME = "kv_music_network_prefs"
     private const val KEY_BASE_URL = "base_url"
     private const val KEY_WARP_BYPASS = "warp_bypass_enabled"
@@ -35,7 +38,11 @@ object RetrofitClient {
 
     private var apiInstance: KVMusicApi? = null
     private var mediaClientInstance: OkHttpClient? = null
+    private var downloadClientInstance: OkHttpClient? = null
     private val streamUserAgents = ConcurrentHashMap<String, String>()
+
+    // Shared HTTP/2 + TLS socket pool reused across API calls, ExoPlayer/SimpleCache streams, and file downloads
+    val sharedConnectionPool: ConnectionPool = ConnectionPool(8, 5, TimeUnit.MINUTES)
 
     /**
      * System DNS with automatic Cloudflare DoH (1.1.1.1) fallback when ISP/emulator DNS
@@ -93,6 +100,7 @@ object RetrofitClient {
         warpProxyUrl = p.getString(KEY_WARP_PROXY_URL, "")?.trim().orEmpty()
         apiInstance = null
         mediaClientInstance = null
+        downloadClientInstance = null
     }
 
     private fun normalizeServerUrl(raw: String): String {
@@ -125,6 +133,8 @@ object RetrofitClient {
         if (currentBaseUrl != formatted || apiInstance == null) {
             currentBaseUrl = formatted
             apiInstance = createApi(formatted)
+            mediaClientInstance = null
+            downloadClientInstance = null
         }
     }
 
@@ -144,6 +154,7 @@ object RetrofitClient {
         warpProxyUrl = normalized
         prefs?.edit()?.putString(KEY_WARP_PROXY_URL, normalized)?.apply()
         mediaClientInstance = null
+        downloadClientInstance = null
         apiInstance = null
     }
 
@@ -173,6 +184,23 @@ object RetrofitClient {
     }
 
     /**
+     * Warms up the DNS + TLS + HTTP/2 connection to the configured server during startup so
+     * the first track tap and first feed call reuse an already-established socket.
+     */
+    fun prewarmConnection() {
+        try {
+            val req = Request.Builder()
+                .url("$currentBaseUrl/api/version")
+                .build()
+            getMediaOkHttpClient().newCall(req).execute().use { resp ->
+                Log.d(TAG, "Prewarmed HTTP/2 socket to $currentBaseUrl (HTTP ${resp.code})")
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "Prewarm skipped: ${e.message}")
+        }
+    }
+
+    /**
      * Dynamic Call.Factory passed to ExoPlayer's OkHttpDataSource.Factory so proxy
      * updates and client-matched User-Agents take effect without recreating ExoPlayer.
      */
@@ -180,16 +208,16 @@ object RetrofitClient {
         getMediaOkHttpClient().newCall(request)
     }
 
-    @Synchronized
-    fun getMediaOkHttpClient(): OkHttpClient {
-        mediaClientInstance?.let { return it }
+    private fun buildMediaClient(readTimeoutSec: Long, writeTimeoutSec: Long): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .connectionPool(sharedConnectionPool)
             .dns(cloudflareFallbackDns)
             .followRedirects(true)
             .followSslRedirects(true)
+            .retryOnConnectionFailure(true)
             .connectTimeout(15, TimeUnit.SECONDS)
-            .readTimeout(30, TimeUnit.SECONDS)
-            .writeTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(readTimeoutSec, TimeUnit.SECONDS)
+            .writeTimeout(writeTimeoutSec, TimeUnit.SECONDS)
             .addInterceptor { chain ->
                 val req = chain.request()
                 val fullUrl = req.url.toString()
@@ -199,7 +227,7 @@ object RetrofitClient {
                     !matchedUa.isNullOrBlank() -> matchedUa
                     host.contains("googlevideo.com") || host.contains("youtube.com") ->
                         "com.google.android.youtube/20.10.38 (Linux; U; Android 11) gzip"
-                    else -> "KVMusic-Android/1.2"
+                    else -> "KVMusic-Android/1.2.7"
                 }
                 val updated = req.newBuilder()
                     .header("User-Agent", ua)
@@ -235,7 +263,21 @@ object RetrofitClient {
             })
         }
 
-        return builder.build().also { mediaClientInstance = it }
+        return builder.build()
+    }
+
+    @Synchronized
+    fun getMediaOkHttpClient(): OkHttpClient {
+        mediaClientInstance?.let { return it }
+        return buildMediaClient(readTimeoutSec = 30, writeTimeoutSec = 30)
+            .also { mediaClientInstance = it }
+    }
+
+    @Synchronized
+    fun getDownloadOkHttpClient(): OkHttpClient {
+        downloadClientInstance?.let { return it }
+        return buildMediaClient(readTimeoutSec = 120, writeTimeoutSec = 60)
+            .also { downloadClientInstance = it }
     }
 
     @Synchronized
@@ -248,12 +290,14 @@ object RetrofitClient {
 
     private fun createApi(baseUrl: String): KVMusicApi {
         val logging = HttpLoggingInterceptor().apply {
-            level = HttpLoggingInterceptor.Level.BODY
+            level = HttpLoggingInterceptor.Level.NONE
         }
 
         val okHttpClient = OkHttpClient.Builder()
+            .connectionPool(sharedConnectionPool)
             .dns(cloudflareFallbackDns)
             .addInterceptor(logging)
+            .retryOnConnectionFailure(true)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)

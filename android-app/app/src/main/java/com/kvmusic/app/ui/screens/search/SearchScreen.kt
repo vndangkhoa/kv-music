@@ -48,6 +48,7 @@ import com.kvmusic.app.data.model.ArtistHit
 import com.kvmusic.app.data.model.PlaylistHit
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.player.AudioCacheManager
 import com.kvmusic.app.player.PlayerManager
 import com.kvmusic.app.ui.components.TrackCardSquare
 import com.kvmusic.app.ui.components.TrackListItem
@@ -150,6 +151,18 @@ fun SearchScreen(
 
     LaunchedEffect(selectedRegion) {
         loadExploreContentForRegion(selectedRegion)
+    }
+
+    LaunchedEffect(songs) {
+        if (songs.isNotEmpty()) {
+            AudioCacheManager.preloadTracks(context, songs, maxCount = 3)
+        }
+    }
+
+    LaunchedEffect(preSearchSongs) {
+        if (preSearchSongs.isNotEmpty()) {
+            AudioCacheManager.preloadTracks(context, preSearchSongs, maxCount = 2)
+        }
     }
 
     LaunchedEffect(isSearchActive) {

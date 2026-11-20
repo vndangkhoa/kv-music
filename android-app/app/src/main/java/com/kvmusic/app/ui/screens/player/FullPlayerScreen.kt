@@ -123,6 +123,7 @@ import com.kvmusic.app.ui.components.YtmIcons
 import com.kvmusic.app.ui.theme.YouTubeSansFontFamily
 import com.kvmusic.app.ui.theme.YtmBlue02
 import com.kvmusic.app.ui.theme.YtmEntityHeaderTitle
+import com.kvmusic.app.ui.theme.YtmGreen01
 import com.kvmusic.app.ui.theme.YtmGrey10
 import com.kvmusic.app.ui.theme.YtmGrey11
 import com.kvmusic.app.ui.theme.YtmGrey13
@@ -356,6 +357,7 @@ fun FullPlayerScreen(
     val queueIndex by PlayerManager.queueIndex.collectAsState()
     val likedTrackIds by PlayerManager.likedTrackIds.collectAsState()
     val downloadedIds by PlayerManager.downloadedTrackIds.collectAsState()
+    val downloadProgress by PlayerManager.downloadProgress.collectAsState()
 
     val isVideoMode by WatchPageStateHolder.isVideoMode.collectAsState()
     val dislikedIds by WatchPageStateHolder.dislikedTrackIds.collectAsState()
@@ -369,6 +371,7 @@ fun FullPlayerScreen(
     val isLiked = likedTrackIds.contains(currentTrack.id)
     val isDisliked = dislikedIds.contains(currentTrack.id)
     val isDownloaded = downloadedIds.contains(currentTrack.id)
+    val currentDownloadProgress = downloadProgress[currentTrack.id]
     val isSaved = isLiked || WatchPageStateHolder.isTrackSavedInAnyPlaylist(currentTrack.id)
 
     // Real ExoPlayer playbackState listener for buffering spinner & REPEAT_MODE_ONE sync
@@ -732,6 +735,7 @@ fun FullPlayerScreen(
                 isLiked = isLiked,
                 isDisliked = isDisliked,
                 isDownloaded = isDownloaded,
+                downloadProgress = currentDownloadProgress,
                 isSaved = isSaved,
                 isStartingRadio = isStartingRadio,
                 onToggleLike = {
@@ -1565,6 +1569,7 @@ private fun PlayerActionPillBar(
     isLiked: Boolean,
     isDisliked: Boolean,
     isDownloaded: Boolean,
+    downloadProgress: Float?,
     isSaved: Boolean,
     isStartingRadio: Boolean,
     onToggleLike: () -> Unit,
@@ -1679,11 +1684,45 @@ private fun PlayerActionPillBar(
 
         // Pill 5: Download
         item {
-            ActionPillChip(
-                icon = if (isDownloaded) YtmIcons.Downloaded24 else YtmIcons.Download24,
-                label = if (isDownloaded) "Downloaded" else "Download",
-                onClick = onDownloadClick
-            )
+            if (downloadProgress != null) {
+                Surface(
+                    onClick = onDownloadClick,
+                    shape = RoundedCornerShape(18.dp),
+                    color = YtmWhite10,
+                    tonalElevation = 0.dp,
+                    modifier = Modifier.height(36.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(horizontal = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        CircularProgressIndicator(
+                            color = YtmWhite,
+                            strokeWidth = 2.dp,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        val pct = (downloadProgress * 100f).toInt().coerceIn(1, 99)
+                        Text(
+                            text = "Saving $pct%",
+                            fontFamily = FontFamily.SansSerif,
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 14.sp,
+                            color = YtmWhite,
+                            maxLines = 1
+                        )
+                    }
+                }
+            } else {
+                ActionPillChip(
+                    icon = if (isDownloaded) YtmIcons.Downloaded24 else YtmIcons.Download24,
+                    label = if (isDownloaded) "Saved" else "Download",
+                    iconTint = if (isDownloaded) YtmGreen01 else YtmWhite,
+                    onClick = onDownloadClick
+                )
+            }
         }
 
         // Pill 6: Radio
@@ -1735,6 +1774,7 @@ private fun PlayerActionPillBar(
 private fun ActionPillChip(
     icon: ImageVector,
     label: String,
+    iconTint: Color = YtmWhite,
     onClick: () -> Unit
 ) {
     Surface(
@@ -1753,7 +1793,7 @@ private fun ActionPillChip(
             Icon(
                 imageVector = icon,
                 contentDescription = null,
-                tint = YtmWhite,
+                tint = iconTint,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.width(6.dp))

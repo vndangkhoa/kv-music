@@ -148,7 +148,9 @@ fun LibraryScreen(
     val currentUser by authRepo.currentUser.collectAsState()
     val likedIds by PlayerManager.likedTrackIds.collectAsState()
     val historyTracks by PlayerManager.recentlyPlayedHistory.collectAsState()
-    val downloadedIds by PlayerManager.downloadedTrackIds.collectAsState()
+    val persistedDownloads by PlayerManager.downloadedTracks.collectAsState()
+    val downloadProgress by PlayerManager.downloadProgress.collectAsState()
+    val totalDownloadBytes by PlayerManager.totalDownloadBytes.collectAsState()
     val currentTrack by PlayerManager.currentTrack.collectAsState()
     val queueTracks by PlayerManager.queue.collectAsState()
 
@@ -178,8 +180,8 @@ fun LibraryScreen(
         }
     }
 
-    val allKnownTracks = remember(historyTracks, queueTracks, currentTrack, currentUser) {
-        (historyTracks + queueTracks + listOfNotNull(currentTrack) + (currentUser?.liked ?: emptyList()) + (currentUser?.history ?: emptyList()))
+    val allKnownTracks = remember(historyTracks, queueTracks, persistedDownloads, currentTrack, currentUser) {
+        (persistedDownloads + historyTracks + queueTracks + listOfNotNull(currentTrack) + (currentUser?.liked ?: emptyList()) + (currentUser?.history ?: emptyList()))
             .distinctBy { it.id }
     }
 
@@ -187,9 +189,7 @@ fun LibraryScreen(
         allKnownTracks.filter { likedIds.contains(it.id) }
     }
 
-    val downloadedTracks = remember(allKnownTracks, downloadedIds) {
-        allKnownTracks.filter { downloadedIds.contains(it.id) }
-    }
+    val downloadedTracks = persistedDownloads
 
     fun applySortAndQuery(tracks: List<Track>): List<Track> {
         val filtered = if (inlineFilterQuery.isBlank()) {
@@ -718,20 +718,33 @@ fun LibraryScreen(
 
                 // Downloads section
                 if (activeFilter == null || activeFilter == "Downloads") {
-                    if (activeFilter == "Downloads" || displayedDownloads.isNotEmpty()) {
+                    if (activeFilter == "Downloads" || displayedDownloads.isNotEmpty() || downloadProgress.isNotEmpty()) {
                         item {
                             Spacer(modifier = Modifier.height(12.dp))
-                            Text(
-                                text = "Downloads (${displayedDownloads.size})",
-                                style = YtmTitle03,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
+                            Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                                Text(
+                                    text = if (downloadProgress.isNotEmpty()) {
+                                        "Downloads (${displayedDownloads.size}) • Downloading ${downloadProgress.size}..."
+                                    } else {
+                                        "Downloads (${displayedDownloads.size})"
+                                    },
+                                    style = YtmTitle03
+                                )
+                                if (displayedDownloads.isNotEmpty()) {
+                                    val sizeMb = totalDownloadBytes / (1024f * 1024f)
+                                    Text(
+                                        text = String.format(java.util.Locale.getDefault(), "Saved offline & in Music/KV Music • %.1f MB", sizeMb),
+                                        style = YtmSubtitle01,
+                                        color = YtmWhite67
+                                    )
+                                }
+                            }
                         }
 
                         if (displayedDownloads.isEmpty()) {
                             item {
                                 EmptyLibraryNotice(
-                                    text = "No offline tracks saved yet. Tap the download icon on any track or album to save it here."
+                                    text = "No offline tracks saved yet. Tap Download on any song or album to save it to your phone (Music/KV Music)."
                                 )
                             }
                         } else {
