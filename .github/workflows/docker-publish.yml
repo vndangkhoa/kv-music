@@ -44,6 +44,13 @@ jobs:
 
       # ── Docker metadata / tags ─────────────────────────────────────────────
 
+      - name: 🔖 Resolve image tag version
+        id: imgver
+        run: |
+          TAG=$(grep -m1 -oE '\[Docker [0-9]+\.[0-9]+\.[0-9]+-[0-9]+\]' CHANGELOG.md | awk '{print $2}' | tr -d ']' || true)
+          if [ -z "$TAG" ]; then TAG="sha-${GITHUB_SHA::7}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: 🏷️ Extract Docker metadata
         id: meta
         uses: docker/metadata-action@v5
@@ -66,5 +73,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           platforms: linux/amd64
+          build-args: |
+            IMAGE_TAG=${{ steps.imgver.outputs.tag }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -4,6 +4,14 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.9] / [Docker 1.0.0-29] - 2026-11-22
+
+### Fixed
+- **Fast Cold Streaming & Accurate Image Tag (`backend-rust`, `.github/workflows`)**:
+  - Reconstructed direct `https://<host>/videoplayback?...` googlevideo URLs from Companion `/companion/videoplayback?...&host=...` redirects (preserving raw percent-encoded signatures/PO tokens) and ordered stream attempts direct -> Companion proxy -> local `usque` WARP proxy, cutting cold first-chunk TTFF from ~46s to ~1.2s by bypassing stalled Companion proxy streams
+  - Added fast-fail Companion cooldown + break when all chunk candidates fail with transport/timeout errors so broken Companions fail over immediately without retrying every itag
+  - Resolved `IMAGE_TAG` from `CHANGELOG.md` in `docker-publish.yml` so GitHub Actions builds bake the matching `KV_IMAGE_TAG` instead of `"dev"`
+
 ## [1.2.8] / [Docker 1.0.0-28] - 2026-11-22
 
 ### Fixed

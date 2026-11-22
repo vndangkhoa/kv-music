@@ -112,6 +112,7 @@ pub struct CompanionResolvedStream {
     pub total_size: Option<u64>,
     pub ext: &'static str,
     pub content_type: &'static str,
+    pub use_warp: bool,
 }
 
 pub struct ProgressiveStreamPlan {
@@ -165,6 +166,45 @@ fn companion_fast_burst_client() -> &'static reqwest::Client {
             .build()
             .unwrap_or_default()
     })
+}
+
+fn build_companion_warp_client(
+    cache: &'static std::sync::OnceLock<std::sync::Mutex<Option<(String, reqwest::Client)>>>,
+    connect_ms: u64,
+    timeout_secs: u64,
+    pool_max: usize,
+) -> Option<reqwest::Client> {
+    let proxy_url = SpotdlService::outbound_proxy()?;
+    let mutex = cache.get_or_init(|| std::sync::Mutex::new(None));
+    if let Ok(guard) = mutex.lock() {
+        if let Some((ref cached_proxy, ref client)) = *guard {
+            if cached_proxy == &proxy_url {
+                return Some(client.clone());
+            }
+        }
+    }
+    let builder = reqwest::Client::builder()
+        .connect_timeout(Duration::from_millis(connect_ms))
+        .timeout(Duration::from_secs(timeout_secs))
+        .pool_max_idle_per_host(pool_max)
+        .tcp_nodelay(true);
+    let client = SpotdlService::apply_outbound_proxy(builder).build().ok()?;
+    if let Ok(mut guard) = mutex.lock() {
+        *guard = Some((proxy_url, client.clone()));
+    }
+    Some(client)
+}
+
+fn companion_warp_burst_client() -> Option<reqwest::Client> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(String, reqwest::Client)>>> =
+        std::sync::OnceLock::new();
+    build_companion_warp_client(&CACHE, 2000, 6, 8)
+}
+
+fn companion_warp_chunk_client() -> Option<reqwest::Client> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<Option<(String, reqwest::Client)>>> =
+        std::sync::OnceLock::new();
+    build_companion_warp_client(&CACHE, 2000, 15, 8)
 }
 
 fn last_working_companion() -> &'static std::sync::Mutex<Option<String>> {
@@ -2272,15 +2312,44 @@ impl SpotdlService {
         bases
     }
 
-    fn rewrite_companion_location(base: &str, loc: &str) -> (String, Option<u64>) {
+    fn extract_direct_googlevideo_url(parsed: &reqwest::Url) -> Option<String> {
+        let host = parsed
+            .query_pairs()
+            .find(|(k, _)| k == "host")
+            .map(|(_, v)| v.trim().to_ascii_lowercase())?;
+        if (host != "googlevideo.com" && !host.ends_with(".googlevideo.com"))
+            || host.contains('/')
+            || host.contains('@')
+            || host.chars().any(|c| c.is_whitespace())
+        {
+            return None;
+        }
+        let raw_query = parsed.query().unwrap_or_default();
+        let clean_query: Vec<&str> = raw_query
+            .split('&')
+            .filter(|seg| !seg.is_empty() && *seg != "host" && !seg.starts_with("host="))
+            .collect();
+        if clean_query.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "https://{}/videoplayback?{}",
+            host,
+            clean_query.join("&")
+        ))
+    }
+
+    fn parse_companion_location(base: &str, loc: &str) -> (Option<String>, String, Option<u64>) {
         let origin = if let Some(idx) = base.find("/companion") {
             &base[..idx]
         } else {
-            base
+            base.trim_end_matches('/')
         };
 
         let mut total_size: Option<u64> = None;
-        let playback_url = if let Ok(parsed) = reqwest::Url::parse(loc) {
+        let mut direct_googlevideo_url: Option<String> = None;
+
+        let proxy_url = if let Ok(parsed) = reqwest::Url::parse(loc) {
             for (k, v) in parsed.query_pairs() {
                 if k == "clen" {
                     if let Ok(clen) = v.parse::<u64>() {
@@ -2293,6 +2362,7 @@ impl SpotdlService {
             }
             let host = parsed.host_str().unwrap_or_default().to_ascii_lowercase();
             if host.ends_with(".googlevideo.com") || host == "googlevideo.com" {
+                direct_googlevideo_url = Some(loc.to_string());
                 let path = parsed.path();
                 let target_path = if path.starts_with("/companion/") {
                     path.to_string()
@@ -2314,15 +2384,32 @@ impl SpotdlService {
                 };
                 format!("{}{}?{}", origin, target_path, joined_query)
             } else {
+                direct_googlevideo_url = Self::extract_direct_googlevideo_url(&parsed);
                 loc.to_string()
             }
-        } else if loc.starts_with('/') {
-            format!("{}{}", origin, loc)
         } else {
-            format!("{}/{}", base, loc)
+            let joined = if loc.starts_with('/') {
+                format!("{}{}", origin, loc)
+            } else {
+                format!("{}/{}", base.trim_end_matches('/'), loc)
+            };
+            if let Ok(parsed) = reqwest::Url::parse(&joined) {
+                for (k, v) in parsed.query_pairs() {
+                    if k == "clen" {
+                        if let Ok(clen) = v.parse::<u64>() {
+                            if clen > 0 {
+                                total_size = Some(clen);
+                            }
+                        }
+                        break;
+                    }
+                }
+                direct_googlevideo_url = Self::extract_direct_googlevideo_url(&parsed);
+            }
+            joined
         };
 
-        (playback_url, total_size)
+        (direct_googlevideo_url, proxy_url, total_size)
     }
 
     fn parse_content_range_total(headers: &reqwest::header::HeaderMap) -> Option<u64> {
@@ -2358,6 +2445,7 @@ impl SpotdlService {
 
         let no_redirect_client = companion_no_redirect_client();
         let burst_client = companion_fast_burst_client();
+        let warp_burst_client = companion_warp_burst_client();
 
         for base in &bases {
             if Self::is_companion_recently_failed(base) {
@@ -2393,60 +2481,113 @@ impl SpotdlService {
                     continue;
                 };
 
-                let (playback_url, mut total_size) = Self::rewrite_companion_location(base, loc);
+                let (direct_url, proxy_url, mut total_size) =
+                    Self::parse_companion_location(base, loc);
                 let end = match total_size {
                     Some(t) if t > 0 => first_chunk_end.min(t - 1),
                     _ => first_chunk_end,
                 };
                 let range_hdr = format!("bytes=0-{}", end);
-                let Ok(chunk_resp) = burst_client
-                    .get(&playback_url)
-                    .header(reqwest::header::RANGE, &range_hdr)
-                    .send()
-                    .await
-                else {
-                    continue;
-                };
 
-                let status = chunk_resp.status();
-                if status != reqwest::StatusCode::PARTIAL_CONTENT && status != reqwest::StatusCode::OK {
-                    println!(
-                        "[Companion] Initial chunk HTTP {} for {} itag={}",
-                        status, video_id, itag
-                    );
-                    continue;
+                let mut candidates: Vec<(String, bool)> = Vec::with_capacity(3);
+                if let Some(ref d) = direct_url {
+                    candidates.push((d.clone(), false));
+                }
+                candidates.push((proxy_url, false));
+                if let Some(ref d) = direct_url {
+                    if warp_burst_client.is_some() {
+                        candidates.push((d.clone(), true));
+                    }
                 }
 
-                if total_size.is_none() {
-                    total_size = Self::parse_content_range_total(chunk_resp.headers());
-                }
-                if total_size.is_none() && status == reqwest::StatusCode::OK {
-                    total_size = chunk_resp
-                        .headers()
-                        .get(reqwest::header::CONTENT_LENGTH)
-                        .and_then(|v| v.to_str().ok())
-                        .and_then(|s| s.trim().parse::<u64>().ok())
-                        .filter(|&n| n > 0);
+                let mut all_transport_fail = true;
+                for (candidate_url, use_warp) in candidates {
+                    let client = if use_warp {
+                        match warp_burst_client {
+                            Some(ref c) => c,
+                            None => continue,
+                        }
+                    } else {
+                        burst_client
+                    };
+
+                    let chunk_resp = match client
+                        .get(&candidate_url)
+                        .header(reqwest::header::RANGE, &range_hdr)
+                        .send()
+                        .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            println!(
+                                "[Companion] First chunk request failed (warp={}) for {} itag={}: {}",
+                                use_warp, video_id, itag, e
+                            );
+                            continue;
+                        }
+                    };
+
+                    let status = chunk_resp.status();
+                    if status != reqwest::StatusCode::PARTIAL_CONTENT
+                        && status != reqwest::StatusCode::OK
+                    {
+                        all_transport_fail = false;
+                        println!(
+                            "[Companion] Initial chunk HTTP {} (warp={}) for {} itag={}",
+                            status, use_warp, video_id, itag
+                        );
+                        continue;
+                    }
+
+                    if total_size.is_none() {
+                        total_size = Self::parse_content_range_total(chunk_resp.headers());
+                    }
+                    if total_size.is_none() && status == reqwest::StatusCode::OK {
+                        total_size = chunk_resp
+                            .headers()
+                            .get(reqwest::header::CONTENT_LENGTH)
+                            .and_then(|v| v.to_str().ok())
+                            .and_then(|s| s.trim().parse::<u64>().ok())
+                            .filter(|&n| n > 0);
+                    }
+
+                    let bytes = match chunk_resp.bytes().await {
+                        Ok(b) => b,
+                        Err(e) => {
+                            println!(
+                                "[Companion] First chunk body failed (warp={}) for {} itag={}: {}",
+                                use_warp, video_id, itag, e
+                            );
+                            continue;
+                        }
+                    };
+                    if bytes.is_empty() {
+                        continue;
+                    }
+
+                    if let Ok(mut guard) = last_working_companion().lock() {
+                        *guard = Some(base.clone());
+                    }
+
+                    let resolved = CompanionResolvedStream {
+                        playback_url: candidate_url,
+                        total_size,
+                        ext,
+                        content_type,
+                        use_warp,
+                    };
+                    return Some((resolved, bytes.to_vec(), status == reqwest::StatusCode::OK));
                 }
 
-                let Ok(bytes) = chunk_resp.bytes().await else {
-                    continue;
-                };
-                if bytes.is_empty() {
-                    continue;
+                if all_transport_fail {
+                    Self::mark_companion_failed(base);
+                    if let Ok(mut guard) = last_working_companion().lock() {
+                        if guard.as_deref() == Some(base.as_str()) {
+                            *guard = None;
+                        }
+                    }
+                    break;
                 }
-
-                if let Ok(mut guard) = last_working_companion().lock() {
-                    *guard = Some(base.clone());
-                }
-
-                let resolved = CompanionResolvedStream {
-                    playback_url,
-                    total_size,
-                    ext,
-                    content_type,
-                };
-                return Some((resolved, bytes.to_vec(), status == reqwest::StatusCode::OK));
             }
         }
         None
@@ -2587,6 +2728,7 @@ impl SpotdlService {
         };
 
         let playback_url = resolved.playback_url.clone();
+        let use_warp = resolved.use_warp;
         let vid_bg = vid.clone();
         let initial_bg = initial_bytes.clone();
 
@@ -2595,7 +2737,11 @@ impl SpotdlService {
 
             let _guard = guard;
             let mut tx = tx_opt;
-            let client = companion_chunk_client();
+            let client = if use_warp {
+                companion_warp_chunk_client().unwrap_or_else(|| companion_chunk_client().clone())
+            } else {
+                companion_chunk_client().clone()
+            };
             let chunk_size: u64 = 1024 * 1024; // 1 MiB parallel chunks
 
             let mut full_data = Vec::with_capacity(total_size.unwrap_or(4 * 1024 * 1024) as usize);
@@ -2612,7 +2758,7 @@ impl SpotdlService {
                 }
 
                 let mut chunk_stream = stream::iter(ranges)
-                    .map(|(s, e)| Self::fetch_companion_chunk_with_retry(client, &playback_url, s, e))
+                    .map(|(s, e)| Self::fetch_companion_chunk_with_retry(&client, &playback_url, s, e))
                     .buffered(3);
 
                 while let Some(res) = chunk_stream.next().await {
@@ -2669,7 +2815,7 @@ impl SpotdlService {
                 let mut offset = initial_bg.len() as u64;
                 loop {
                     let end = offset + chunk_size - 1;
-                    match Self::fetch_companion_chunk_with_retry(client, &playback_url, offset, end).await {
+                    match Self::fetch_companion_chunk_with_retry(&client, &playback_url, offset, end).await {
                         Ok((_, bytes)) => {
                             let got = bytes.len() as u64;
                             full_data.extend_from_slice(&bytes);
@@ -2774,7 +2920,11 @@ impl SpotdlService {
 
             let mut ok = true;
             if !complete {
-                let client = companion_chunk_client();
+                let client = if resolved.use_warp {
+                    companion_warp_chunk_client().unwrap_or_else(|| companion_chunk_client().clone())
+                } else {
+                    companion_chunk_client().clone()
+                };
                 let chunk_size: u64 = 1024 * 1024;
                 if let Some(total) = resolved.total_size {
                     let mut ranges = Vec::new();
@@ -2786,7 +2936,7 @@ impl SpotdlService {
                     }
                     let mut chunk_stream = stream::iter(ranges)
                         .map(|(s, e)| {
-                            Self::fetch_companion_chunk_with_retry(client, &resolved.playback_url, s, e)
+                            Self::fetch_companion_chunk_with_retry(&client, &resolved.playback_url, s, e)
                         })
                         .buffered(4);
                     while let Some(res) = chunk_stream.next().await {
@@ -2804,7 +2954,7 @@ impl SpotdlService {
                     loop {
                         let end = offset + chunk_size - 1;
                         match Self::fetch_companion_chunk_with_retry(
-                            client,
+                            &client,
                             &resolved.playback_url,
                             offset,
                             end,
