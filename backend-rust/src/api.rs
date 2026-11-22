@@ -1208,7 +1208,6 @@ pub async fn charts_handler(
     match state.spotdl.fetch_chart_tracks(chart_url, 100).await {
         Ok(tracks) => {
             let results: Vec<_> = tracks.into_iter().take(50).collect();
-            state.spotdl.prefetch_top_tracks(&results, 2);
             (StatusCode::OK, Json(serde_json::json!({"tracks": results})))
         }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))),
@@ -1275,7 +1274,6 @@ pub async fn new_releases_handler(
         return (StatusCode::OK, Json(serde_json::json!({"tracks": []})));
     }
 
-    state.spotdl.prefetch_top_tracks(&tracks, 2);
     (StatusCode::OK, Json(serde_json::json!({"tracks": tracks})))
 }
 
@@ -1821,10 +1819,12 @@ pub async fn universal_search_handler(
     });
 
     if !songs.is_empty() || !albums.is_empty() || !playlists.is_empty() || !artists.is_empty() {
-        state.spotdl.prefetch_top_tracks(&songs, 2);
         let mut cache = state.spotdl.universal_search_cache.write().await;
-        if cache.len() > 500 {
-            cache.clear();
+        if cache.len() >= 300 {
+            cache.retain(|_, (ts, _)| ts.elapsed() < std::time::Duration::from_secs(600));
+            if cache.len() >= 300 {
+                cache.clear();
+            }
         }
         cache.insert(cache_key, (std::time::Instant::now(), payload.clone()));
     }
@@ -1852,7 +1852,6 @@ pub async fn collection_handler(
 
     match state.spotdl.fetch_collection_tracks(id, 100).await {
         Ok(tracks) => {
-            state.spotdl.prefetch_top_tracks(&tracks, 2);
             let cover_url = tracks.first().map(|t| t.cover_url.clone()).unwrap_or_default();
             (StatusCode::OK, Json(serde_json::json!({
                 "id": id,

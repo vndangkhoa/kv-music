@@ -155,7 +155,14 @@ function normalizeVideoIdForPrefetch(rawId?: string | null): string | null {
     return null;
 }
 
+function isAutomatedBotClient(): boolean {
+    if (typeof navigator === 'undefined') return false;
+    if ((navigator as { webdriver?: boolean }).webdriver) return true;
+    return /bot|crawler|spider|reflectionbot|googlebot|googleother|bingbot/i.test(navigator.userAgent || '');
+}
+
 export function prefetchTrack(rawId?: string | null): void {
+    if (isAutomatedBotClient()) return;
     const id = normalizeVideoIdForPrefetch(rawId);
     if (!id || prefetchedTrackIds.has(id)) return;
     if (prefetchedTrackIds.size > 300) {
@@ -172,6 +179,7 @@ export function prefetchTrack(rawId?: string | null): void {
 }
 
 export function prefetchTracks(tracks: Array<{ id?: string }>, count = 3): void {
+    if (isAutomatedBotClient()) return;
     if (!Array.isArray(tracks) || tracks.length === 0) return;
     for (const track of tracks.slice(0, count)) {
         prefetchTrack(track?.id);
@@ -200,7 +208,6 @@ export const libraryService = {
                 }
                 return { ...track, id: videoId, url: `${streamUrl(videoId)}` };
             });
-            prefetchTracks(normalized, 2);
             return normalized;
         }
         return [];
@@ -220,7 +227,6 @@ export const libraryService = {
             ...t,
             url: t.url && t.url.startsWith('/') ? t.url : `${streamUrl(t.id)}`
         }));
-        prefetchTracks(songs, 2);
         return {
             songs,
             albums: data.albums || [],
@@ -359,7 +365,6 @@ export const libraryService = {
             const data = await apiFetch(`/recommendations?seed=${encodeURIComponent(seed)}&seed_type=${seedType}&limit=${limit}`);
             if (data) {
                 const tracks = data.tracks || [];
-                prefetchTracks(tracks, 2);
                 return {
                     tracks,
                     albums: data.albums || [],

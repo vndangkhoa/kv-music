@@ -6,14 +6,18 @@ mod ytm;
 
 use axum::{
     body::Body,
+    extract::Request,
     http::{header, StatusCode},
-    response::Response,
+    middleware::{self, Next},
+    response::{IntoResponse, Response},
     routing::{get, post},
     Router,
 };
+use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
 use tower::service_fn;
 use tower_http::{
     cors::{Any, CorsLayer},
@@ -40,6 +44,210 @@ fn resolve_static_dir() -> String {
         }
     }
     "static".to_string()
+}
+
+async fn robots_txt_handler() -> impl IntoResponse {
+    const ROBOTS_TXT: &str = "\
+User-agent: Reflectionbot
+Disallow: /
+
+User-agent: GPTBot
+Disallow: /
+
+User-agent: ClaudeBot
+Disallow: /
+
+User-agent: anthropic-ai
+Disallow: /
+
+User-agent: Bytespider
+Disallow: /
+
+User-agent: CCBot
+Disallow: /
+
+User-agent: Amazonbot
+Disallow: /
+
+User-agent: AhrefsBot
+Disallow: /
+
+User-agent: SemrushBot
+Disallow: /
+
+User-agent: PetalBot
+Disallow: /
+
+User-agent: *
+Disallow: /api/
+Disallow: /artist/
+Disallow: /album/
+Disallow: /playlist/
+Disallow: /search
+Allow: /$
+Allow: /track/
+Allow: /share/
+";
+    (
+        StatusCode::OK,
+        [
+            (header::CONTENT_TYPE, "text/plain; charset=utf-8"),
+            (header::CACHE_CONTROL, "public, max-age=3600"),
+        ],
+        ROBOTS_TXT,
+    )
+}
+
+fn rate_limit_store() -> &'static Mutex<HashMap<String, (Instant, u32)>> {
+    static STORE: OnceLock<Mutex<HashMap<String, (Instant, u32)>>> = OnceLock::new();
+    STORE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn extract_client_ip(headers: &axum::http::HeaderMap) -> String {
+    for h in ["cf-connecting-ip", "x-real-ip", "x-forwarded-for"] {
+        if let Some(val) = headers.get(h).and_then(|v| v.to_str().ok()) {
+            let first = val.split(',').next().unwrap_or("").trim();
+            if !first.is_empty() {
+                return first.to_string();
+            }
+        }
+    }
+    "unknown".to_string()
+}
+
+fn forbidden_bot_response() -> Response {
+    Response::builder()
+        .status(StatusCode::FORBIDDEN)
+        .header("X-Robots-Tag", "noindex, nofollow")
+        .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+        .body(Body::from("Forbidden"))
+        .unwrap()
+}
+
+fn too_many_requests_response() -> Response {
+    Response::builder()
+        .status(StatusCode::TOO_MANY_REQUESTS)
+        .header("Retry-After", "30")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"error":"Too Many Requests"}"#))
+        .unwrap()
+}
+
+async fn bot_and_rate_guard(req: Request, next: Next) -> Response {
+    let path = req.uri().path();
+    let ua = req
+        .headers()
+        .get(header::USER_AGENT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    const AI_SCRAPERS: &[&str] = &[
+        "reflectionbot",
+        "bytespider",
+        "gptbot",
+        "claudebot",
+        "anthropic-ai",
+        "ccbot",
+        "amazonbot",
+        "ahrefsbot",
+        "semrushbot",
+        "mj12bot",
+        "dotbot",
+        "petalbot",
+        "scrapy",
+        "meta-externalagent",
+    ];
+    if path != "/robots.txt" && AI_SCRAPERS.iter().any(|b| ua.contains(b)) {
+        return forbidden_bot_response();
+    }
+
+    const SOCIAL_PREVIEW_BOTS: &[&str] = &[
+        "facebookexternalhit",
+        "facebot",
+        "twitterbot",
+        "discordbot",
+        "telegrambot",
+        "slackbot",
+        "whatsapp",
+        "zalo",
+        "linkedinbot",
+    ];
+    if SOCIAL_PREVIEW_BOTS.iter().any(|b| ua.contains(b))
+        && (path.starts_with("/track/")
+            || path.starts_with("/share/")
+            || path.starts_with("/api/track/")
+            || path == "/robots.txt"
+            || path.starts_with("/assets/")
+            || path.ends_with(".svg")
+            || path.ends_with(".png")
+            || path.ends_with(".ico"))
+    {
+        return next.run(req).await;
+    }
+
+    const SEARCH_CRAWLERS: &[&str] = &[
+        "googlebot",
+        "googleother",
+        "bingbot",
+        "yandexbot",
+        "baiduspider",
+        "applebot",
+        "crawler",
+        "spider",
+    ];
+    if SEARCH_CRAWLERS.iter().any(|b| ua.contains(b))
+        && (path.starts_with("/api/")
+            || path.starts_with("/artist/")
+            || path.starts_with("/album/")
+            || path.starts_with("/playlist/")
+            || path == "/search"
+            || path.starts_with("/search/"))
+    {
+        return forbidden_bot_response();
+    }
+
+    let limit_bucket: Option<(&'static str, u32)> = if path == "/api/search"
+        || path == "/api/universal-search"
+        || path == "/api/recommendations"
+        || path == "/api/artist/info"
+    {
+        Some(("disc", 60))
+    } else if path.starts_with("/api/stream/") || path.starts_with("/api/download/") {
+        Some(("media", 150))
+    } else {
+        None
+    };
+
+    if let Some((bucket, max_per_min)) = limit_bucket {
+        let client_ip = extract_client_ip(req.headers());
+        let key = format!("{}:{}", bucket, client_ip);
+        let now = Instant::now();
+        let window = Duration::from_secs(60);
+        let mut exceeded = false;
+        if let Ok(mut map) = rate_limit_store().lock() {
+            if map.len() >= 4096 {
+                map.retain(|_, (started, _)| now.duration_since(*started) < window);
+                if map.len() >= 4096 {
+                    map.clear();
+                }
+            }
+            let entry = map.entry(key).or_insert((now, 0));
+            if now.duration_since(entry.0) >= window {
+                *entry = (now, 1);
+            } else {
+                entry.1 = entry.1.saturating_add(1);
+                if entry.1 > max_per_min {
+                    exceeded = true;
+                }
+            }
+        }
+        if exceeded {
+            return too_many_requests_response();
+        }
+    }
+
+    next.run(req).await
 }
 
 #[tokio::main]
@@ -123,6 +331,7 @@ async fn main() {
     });
 
 let app = Router::new()
+        .route("/robots.txt", get(robots_txt_handler))
         .route("/api/search", get(api::search_handler))
         .route("/api/suggestions", get(api::suggestions_handler))
         .route("/api/feed", get(api::feed_handler))
@@ -162,6 +371,7 @@ let app = Router::new()
             ServeDir::new(&static_dir)
                 .fallback(spa_fallback),
         )
+        .layer(middleware::from_fn(bot_and_rate_guard))
         .layer(cors)
         .with_state(app_state);
 

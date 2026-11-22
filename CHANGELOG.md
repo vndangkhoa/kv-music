@@ -4,6 +4,15 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.8] / [Docker 1.0.0-28] - 2026-11-22
+
+### Fixed
+- **High CPU & RAM Under Bot Crawls (`backend-rust`, `frontend-vite`)**:
+  - Added `/robots.txt` and Axum `bot_and_rate_guard` middleware blocking AI scrapers (`Reflectionbot`, `Bytespider`, `GPTBot`, `ClaudeBot`, etc.), keeping social link-preview crawlers working for `/track/*` & `/share/*`, blocking search crawlers from infinite SPA discovery & `/api/*` loops, and rate-limiting discovery/stream endpoints per client IP
+  - Validated Netscape cookie files strictly (`is_valid_netscape_cookie_file`) and matched `"does not look like a Netscape format cookies file"` so empty/0-byte `/app/cookies.txt` bind mounts are skipped instead of crashing every `yt-dlp` process
+  - Removed speculative `prefetch_top_tracks` storms from search/charts/recommendations handlers, added a 5-minute failed-prefetch cooldown + Companion-only background prefetch (zero `yt-dlp` spawns), added `http://invidious-companion:8282/companion` with 60s failure cooldown, removed `yt-dlp` fallback from `search_artist()`, added a global 2-permit `sync_ytdlp_gate`, and bounded all in-memory caches (`search_cache`, `universal_search_cache`, `track_info_cache`, `share_preview_cache`, `artist_photo_cache`, `download_locks`)
+  - Stopped web frontend search/recommendation bulk prefetching and skipped automated bot user agents
+
 ## [1.2.7] - 2026-11-20
 
 ### Added

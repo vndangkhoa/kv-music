@@ -103,6 +103,8 @@ pub struct SpotdlService {
     pub share_preview_cache: Arc<RwLock<HashMap<String, CacheItem>>>,
     /// Cached recommendations results by seed/type/limit (30m TTL).
     pub recommendations_cache: Arc<RwLock<HashMap<String, (Instant, crate::api::Recommendations)>>>,
+    /// Cached artist avatar lookups by lowercase query (6h TTL).
+    pub artist_photo_cache: Arc<RwLock<HashMap<String, (Instant, String)>>>,
 }
 
 pub struct CompanionResolvedStream {
@@ -200,6 +202,59 @@ fn prefetch_semaphore() -> &'static tokio::sync::Semaphore {
     SEM.get_or_init(|| tokio::sync::Semaphore::new(2))
 }
 
+fn failed_prefetch_cache() -> &'static std::sync::Mutex<HashMap<String, Instant>> {
+    static MAP: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Instant>>> = std::sync::OnceLock::new();
+    MAP.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+fn failed_companion_bases() -> &'static std::sync::Mutex<HashMap<String, Instant>> {
+    static MAP: std::sync::OnceLock<std::sync::Mutex<HashMap<String, Instant>>> = std::sync::OnceLock::new();
+    MAP.get_or_init(|| std::sync::Mutex::new(HashMap::new()))
+}
+
+struct SyncSemaphore {
+    state: std::sync::Mutex<usize>,
+    cvar: std::sync::Condvar,
+    max_permits: usize,
+}
+
+struct SyncPermit<'a> {
+    sem: &'a SyncSemaphore,
+}
+
+impl Drop for SyncPermit<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut count) = self.sem.state.lock() {
+            *count = count.saturating_sub(1);
+            self.sem.cvar.notify_one();
+        }
+    }
+}
+
+impl SyncSemaphore {
+    fn new(max_permits: usize) -> Self {
+        Self {
+            state: std::sync::Mutex::new(0),
+            cvar: std::sync::Condvar::new(),
+            max_permits,
+        }
+    }
+
+    fn acquire(&self) -> SyncPermit<'_> {
+        let mut count = self.state.lock().unwrap_or_else(|e| e.into_inner());
+        while *count >= self.max_permits {
+            count = self.cvar.wait(count).unwrap_or_else(|e| e.into_inner());
+        }
+        *count += 1;
+        SyncPermit { sem: self }
+    }
+}
+
+fn sync_ytdlp_gate() -> &'static SyncSemaphore {
+    static GATE: std::sync::OnceLock<SyncSemaphore> = std::sync::OnceLock::new();
+    GATE.get_or_init(|| SyncSemaphore::new(2))
+}
+
 impl SpotdlService {
     pub fn new() -> Self {
         let temp_dir = env::temp_dir();
@@ -243,6 +298,7 @@ impl SpotdlService {
             track_info_cache: Arc::new(RwLock::new(HashMap::new())),
             share_preview_cache: Arc::new(RwLock::new(HashMap::new())),
             recommendations_cache: Arc::new(RwLock::new(HashMap::new())),
+            artist_photo_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -281,24 +337,44 @@ impl SpotdlService {
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?
     }
 
-    /// True if any cookie file (uploaded, managed, COOKIE_FILE, docker, local) exists.
-    /// Uses `is_file()` so a directory mounted in place of a missing file
-    /// (Docker creates one for `./cookies.txt:/app/cookies.txt:ro` when the
-    /// host file does not exist) is never mistaken for a real cookie file.
+    /// True when `path` is a non-empty regular file in valid Netscape cookie format.
+    pub fn is_valid_netscape_cookie_file(path: &Path) -> bool {
+        let Ok(meta) = fs::metadata(path) else {
+            return false;
+        };
+        if !meta.is_file() || meta.len() < 20 {
+            return false;
+        }
+        let Ok(content) = fs::read_to_string(path) else {
+            return false;
+        };
+        let Some(first_non_empty) = content.lines().map(str::trim).find(|l| !l.is_empty()) else {
+            return false;
+        };
+        let lower_head = first_non_empty.to_ascii_lowercase();
+        let has_header = lower_head.starts_with("# netscape http cookie file")
+            || lower_head.starts_with("# http cookie file")
+            || lower_head.starts_with("#lwp-cookies");
+        has_header && Self::count_cookie_lines(&content) > 0
+    }
+
+    /// True if any valid cookie file (uploaded, managed, COOKIE_FILE, docker, local) exists.
+    /// Rejects 0-byte or non-Netscape mounts so empty `./cookies.txt` files never trigger
+    /// repeated `yt-dlp` startup failures.
     pub fn has_cookies_file() -> bool {
-        if Self::uploaded_cookie_path().is_file() {
+        if Self::is_valid_netscape_cookie_file(&Self::uploaded_cookie_path()) {
             return true;
         }
-        let managed = Self::managed_cookie_path();
-        if managed.is_file() {
+        if Self::is_valid_netscape_cookie_file(&Self::managed_cookie_path()) {
             return true;
         }
         if let Ok(env_path) = env::var("COOKIE_FILE") {
-            if PathBuf::from(&env_path).is_file() {
+            if Self::is_valid_netscape_cookie_file(Path::new(&env_path)) {
                 return true;
             }
         }
-        Path::new("/app/cookies.txt").is_file() || Path::new("cookies.txt").is_file()
+        Self::is_valid_netscape_cookie_file(Path::new("/app/cookies.txt"))
+            || Self::is_valid_netscape_cookie_file(Path::new("cookies.txt"))
     }
 
     fn yt_dlp_path() -> String {
@@ -966,7 +1042,6 @@ impl SpotdlService {
             if let Some(item) = cache.get(query) {
                 if item.timestamp.elapsed() < Duration::from_secs(3600) {
                     println!("Cache Hit: {}", query);
-                    self.prefetch_top_tracks(&item.tracks, 2);
                     return Ok(item.tracks.clone());
                 }
             }
@@ -976,12 +1051,16 @@ impl SpotdlService {
         if let Some(tracks) = self.search_tracks_innertube(query).await {
             if !tracks.is_empty() {
                 let mut cache = self.search_cache.write().await;
+                if cache.len() >= 500 {
+                    cache.retain(|_, v| v.timestamp.elapsed() < Duration::from_secs(3600));
+                    if cache.len() >= 500 {
+                        cache.clear();
+                    }
+                }
                 cache.insert(query.to_string(), CacheItem {
                     tracks: tracks.clone(),
                     timestamp: Instant::now(),
                 });
-                drop(cache);
-                self.prefetch_top_tracks(&tracks, 2);
                 return Ok(tracks);
             }
         }
@@ -1059,12 +1138,16 @@ impl SpotdlService {
 
                 if !tracks.is_empty() {
                     let mut cache = self.search_cache.write().await;
+                    if cache.len() >= 500 {
+                        cache.retain(|_, v| v.timestamp.elapsed() < Duration::from_secs(3600));
+                        if cache.len() >= 500 {
+                            cache.clear();
+                        }
+                    }
                     cache.insert(query.to_string(), CacheItem {
                         tracks: tracks.clone(),
                         timestamp: Instant::now(),
                     });
-                    drop(cache);
-                    self.prefetch_top_tracks(&tracks, 2);
                 }
                 return Ok(tracks);
             }
@@ -1170,6 +1253,12 @@ impl SpotdlService {
                         codec: res.acodec,
                     };
                     let mut cache = self.track_info_cache.write().await;
+                    if cache.len() >= 500 {
+                        cache.retain(|_, v| v.timestamp.elapsed() < Duration::from_secs(6 * 3600));
+                        if cache.len() >= 500 {
+                            cache.clear();
+                        }
+                    }
                     cache.insert(id.to_string(), CacheItem {
                         tracks: vec![track.clone()],
                         timestamp: Instant::now(),
@@ -1234,8 +1323,14 @@ impl SpotdlService {
             ),
         };
 
-        // 2. Cache the result for 24h
+        // 2. Cache the result for 24h (capped at 500 entries)
         let mut cache = self.share_preview_cache.write().await;
+        if cache.len() >= 500 {
+            cache.retain(|_, v| v.timestamp.elapsed() < Duration::from_secs(24 * 3600));
+            if cache.len() >= 500 {
+                cache.clear();
+            }
+        }
         cache.insert(id.to_string(), CacheItem {
             tracks: vec![Track {
                 id: id.to_string(),
@@ -1357,6 +1452,12 @@ impl SpotdlService {
 
                 if !tracks.is_empty() {
                     let mut cache = self.search_cache.write().await;
+                    if cache.len() >= 500 {
+                        cache.retain(|_, v| v.timestamp.elapsed() < Duration::from_secs(3600));
+                        if cache.len() >= 500 {
+                            cache.clear();
+                        }
+                    }
                     cache.insert(cache_key, CacheItem {
                         tracks: tracks.clone(),
                         timestamp: Instant::now(),
@@ -1435,49 +1536,51 @@ impl SpotdlService {
     }
 
     fn cookies_file_path() -> PathBuf {
-        // Priority:
+        // Priority (all require valid non-empty Netscape cookie format):
         // 1. User-uploaded cookies via Settings UI (/app/data/user_cookies.txt), if not rejected
         // 2. Explicit COOKIE_FILE env or /app/cookies.txt or cookies.txt (via writable_cookie_copy), if not rejected
         // 3. Managed auto-refreshed file (/app/data/cookies.txt)
         let rejected = USER_COOKIES_REJECTED.load(Ordering::Relaxed);
         if !rejected {
             let uploaded = Self::uploaded_cookie_path();
-            if uploaded.is_file() {
+            if Self::is_valid_netscape_cookie_file(&uploaded) {
                 return uploaded;
             }
             if let Ok(env_path) = env::var("COOKIE_FILE") {
                 let p = PathBuf::from(&env_path);
-                if p.is_file() {
+                if Self::is_valid_netscape_cookie_file(&p) {
                     return Self::writable_cookie_copy(p);
                 }
             }
             let docker_path = PathBuf::from("/app/cookies.txt");
-            if docker_path.is_file() {
+            if Self::is_valid_netscape_cookie_file(&docker_path) {
                 return Self::writable_cookie_copy(docker_path);
             }
             let local_path = PathBuf::from("cookies.txt");
-            if local_path.is_file() {
+            if Self::is_valid_netscape_cookie_file(&local_path) {
                 return Self::writable_cookie_copy(local_path);
             }
         }
         let managed = Self::managed_cookie_path();
-        if managed.is_file() {
+        if Self::is_valid_netscape_cookie_file(&managed) {
             return managed;
         }
-        PathBuf::from("cookies.txt")
+        PathBuf::new()
     }
 
-    /// True when yt-dlp reports that the supplied cookies are stale/expired
-    /// or that a logged-in session is required (bot detection).
+    /// True when yt-dlp reports that the supplied cookies are stale/expired,
+    /// malformed (empty / non-Netscape), or that a logged-in session is required.
     fn is_rejected_cookie_error(stderr: &str) -> bool {
         let lower = stderr
             .to_lowercase()
             .replace('\u{2019}', "'")
             .replace('\u{2018}', "'");
         lower.contains("cookies are no longer valid")
+            || lower.contains("does not look like a netscape format cookies file")
             || lower.contains("sign in to confirm")
             || lower.contains("not a bot")
             || lower.contains("this helps protect our community")
+            || (lower.contains("cookie") && lower.contains("format"))
             || (lower.contains("cookies") && (lower.contains("not valid") || lower.contains("expired")))
     }
 
@@ -1856,7 +1959,7 @@ impl SpotdlService {
 
         if !skip_cookies {
             let cookie_path = Self::cookies_file_path();
-            if cookie_path.is_file() {
+            if Self::is_valid_netscape_cookie_file(&cookie_path) {
                 args.push("--cookies".to_string());
                 // yt-dlp runs with current_dir set to the download dir, so a
                 // relative path (e.g. local "data/cookies.txt") would resolve to
@@ -1971,6 +2074,7 @@ impl SpotdlService {
         self.track_info_cache.write().await.clear();
         self.share_preview_cache.write().await.clear();
         self.recommendations_cache.write().await.clear();
+        self.artist_photo_cache.write().await.clear();
         println!("[Cookies] All caches cleared - next fetches will use fresh cookies.");
     }
 
@@ -2038,18 +2142,38 @@ impl SpotdlService {
         None
     }
 
-    /// Trigger a background audio download so the track is already cached on disk
-    /// when the user clicks or the queue advances to it.
+    /// Trigger a background audio download via Companion (zero `yt-dlp` subprocesses)
+    /// so the track is already cached on disk when the user clicks or the queue advances to it.
     pub fn spawn_prefetch(&self, video_or_id: String, prefer_m4a: bool) {
         let video_id = Self::extract_id(&video_or_id);
         if video_id.is_empty() || self.find_cached_audio(&video_id, prefer_m4a).is_some() {
             return;
         }
         let key = format!("{}:{}", video_id, if prefer_m4a { "m4a" } else { "webm" });
+
+        // Skip tracks that recently failed prefetch (5m cooldown) to prevent tight retry storms
+        if let Ok(mut failed) = failed_prefetch_cache().lock() {
+            let now = Instant::now();
+            if failed.len() > 1000 {
+                failed.retain(|_, ts| now.duration_since(*ts) < Duration::from_secs(300));
+                if failed.len() > 1000 {
+                    failed.clear();
+                }
+            }
+            if let Some(ts) = failed.get(&key) {
+                if ts.elapsed() < Duration::from_secs(300) {
+                    return;
+                }
+            }
+        }
+
         {
             let Ok(mut set) = in_flight_prefetch_set().lock() else {
                 return;
             };
+            if set.len() >= 6 {
+                return;
+            }
             if !set.insert(key.clone()) {
                 return;
             }
@@ -2070,7 +2194,16 @@ impl SpotdlService {
                 if service.find_cached_audio(&video_id, prefer_m4a).is_none() {
                     let s2 = service.clone();
                     let vid2 = video_id.clone();
-                    let _ = tokio::task::spawn_blocking(move || s2.get_stream_url(&vid2, prefer_m4a)).await;
+                    let ok = tokio::task::spawn_blocking(move || {
+                        s2.try_companion_download(&vid2, prefer_m4a).is_some()
+                    })
+                    .await
+                    .unwrap_or(false);
+                    if !ok {
+                        if let Ok(mut failed) = failed_prefetch_cache().lock() {
+                            failed.insert(key.clone(), Instant::now());
+                        }
+                    }
                 }
                 if let Ok(mut set) = in_flight_prefetch_set().lock() {
                     set.remove(&key);
@@ -2078,6 +2211,23 @@ impl SpotdlService {
             });
         } else if let Ok(mut set) = in_flight_prefetch_set().lock() {
             set.remove(&key);
+        }
+    }
+
+    fn is_companion_recently_failed(base: &str) -> bool {
+        let Ok(mut guard) = failed_companion_bases().lock() else {
+            return false;
+        };
+        guard.retain(|_, ts| ts.elapsed() < Duration::from_secs(60));
+        guard.contains_key(base)
+    }
+
+    fn mark_companion_failed(base: &str) {
+        if let Ok(mut guard) = failed_companion_bases().lock() {
+            if guard.len() > 64 {
+                guard.clear();
+            }
+            guard.insert(base.to_string(), Instant::now());
         }
     }
 
@@ -2107,6 +2257,7 @@ impl SpotdlService {
             }
         }
         for default_base in [
+            "http://invidious-companion:8282/companion",
             "http://companion:8282/companion",
             "http://127.0.0.1:8282/companion",
             "http://172.18.0.4:8282/companion",
@@ -2209,6 +2360,9 @@ impl SpotdlService {
         let burst_client = companion_fast_burst_client();
 
         for base in &bases {
+            if Self::is_companion_recently_failed(base) {
+                continue;
+            }
             for &(itag, ext, content_type) in itags {
                 let resolve_url = format!(
                     "{}/latest_version?id={}&itag={}&local=true",
@@ -2217,6 +2371,7 @@ impl SpotdlService {
                 let resp = match no_redirect_client.get(&resolve_url).send().await {
                     Ok(r) => r,
                     Err(_) => {
+                        Self::mark_companion_failed(base);
                         if let Ok(mut guard) = last_working_companion().lock() {
                             if guard.as_deref() == Some(base.as_str()) {
                                 *guard = None;
@@ -2712,6 +2867,9 @@ impl SpotdlService {
         // Per-video lock so concurrent range/probe requests wait for the active download
         let video_lock = {
             let mut map = self.download_locks.lock().unwrap_or_else(|e| e.into_inner());
+            if map.len() > 256 {
+                map.retain(|_, v| Arc::strong_count(v) > 1);
+            }
             map.entry(video_id.clone())
                 .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
                 .clone()
@@ -2745,6 +2903,8 @@ impl SpotdlService {
         let mut skip_cookies = false;
         let mut use_alt_clients = false;
         let mut disable_proxy = false;
+
+        let _ytdlp_permit = sync_ytdlp_gate().acquire();
 
         // Retry with fallbacks for transient 429 / proxy / rejected cookies / IPv6 errors
         let mut last_err = String::new();
@@ -2853,6 +3013,9 @@ impl SpotdlService {
 
         let video_lock = {
             let mut map = self.download_locks.lock().unwrap_or_else(|e| e.into_inner());
+            if map.len() > 256 {
+                map.retain(|_, v| Arc::strong_count(v) > 1);
+            }
             map.entry(format!("video:{}", video_id))
                 .or_insert_with(|| Arc::new(std::sync::Mutex::new(())))
                 .clone()
@@ -2883,6 +3046,8 @@ impl SpotdlService {
         let mut skip_cookies = false;
         let mut use_alt_clients = false;
         let mut disable_proxy = false;
+
+        let _ytdlp_permit = sync_ytdlp_gate().acquire();
 
         // Retry up to 2 times with backoff for transient 429 / proxy / network errors
         let mut last_err = String::new();
@@ -2964,6 +3129,15 @@ impl SpotdlService {
     }
     
     pub async fn search_artist(&self, query: &str) -> Result<String, String> {
+        let cache_key = query.trim().to_lowercase();
+        {
+            let cache = self.artist_photo_cache.read().await;
+            if let Some((ts, photo)) = cache.get(&cache_key) {
+                if ts.elapsed() < Duration::from_secs(6 * 3600) {
+                    return Ok(photo.clone());
+                }
+            }
+        }
         {
             let cache = self.search_cache.read().await;
             if let Some(cached) = cache.get(query) {
@@ -2976,41 +3150,20 @@ impl SpotdlService {
         }
 
         // Fast path: direct InnerTube artist search (~350-600ms, zero subprocess)
-        if let Some(photo) = self.fetch_innertube_artist_photo(query).await {
-            return Ok(photo);
-        }
+        let photo = self
+            .fetch_innertube_artist_photo(query)
+            .await
+            .unwrap_or_else(|| self.get_placeholder_image(query));
 
-        let path = Self::yt_dlp_path();
-        let search_query = format!("ytsearch5:{} artist", query);
-        
-        let artist_search_args = vec![
-            search_query.as_str(), "--dump-json", "--flat-playlist",
-        ];
-        let all_args = Self::yt_dlp_args_with_flags_vec(Self::ipv6_connectivity(), false, &artist_search_args);
-        
-        let output = Self::run_command_output(path.clone(), all_args).await;
-        
-        if let Ok(o) = output {
-            let stdout = String::from_utf8_lossy(&o.stdout);
-            for line in stdout.lines() {
-                if line.trim().is_empty() {
-                    continue;
-                }
-                if let Ok(res) = serde_json::from_str::<YTResult>(line) {
-                    // Get the video thumbnail which often has the artist
-                    if let Some(thumb) = res.thumbnails.last() {
-                        if !thumb.url.is_empty() {
-                            // Convert to higher quality thumbnail
-                            let high_quality = thumb.url.replace("hqdefault", "maxresdefault");
-                            return Ok(high_quality);
-                        }
-                    }
-                }
+        let mut cache = self.artist_photo_cache.write().await;
+        if cache.len() >= 1000 {
+            cache.retain(|_, (ts, _)| ts.elapsed() < Duration::from_secs(6 * 3600));
+            if cache.len() >= 1000 {
+                cache.clear();
             }
         }
-        
-        // Fallback to placeholder if no real photo found
-        Ok(self.get_placeholder_image(query))
+        cache.insert(cache_key, (Instant::now(), photo.clone()));
+        Ok(photo)
     }
 
     fn extract_id(url: &str) -> String {
@@ -3086,7 +3239,6 @@ impl SpotdlService {
             if let Some((ts, rec)) = cache.get(&cache_key) {
                 if ts.elapsed() < Duration::from_secs(1800) {
                     println!("[Recommendations] Cache Hit: {}", cache_key);
-                    self.prefetch_top_tracks(&rec.tracks, 2);
                     return Ok(rec.clone());
                 }
             }
@@ -3253,11 +3405,13 @@ impl SpotdlService {
             playlists,
             artists,
         };
-        self.prefetch_top_tracks(&rec.tracks, 2);
         if !rec.tracks.is_empty() || !rec.artists.is_empty() {
             let mut cache = self.recommendations_cache.write().await;
-            if cache.len() > 300 {
-                cache.clear();
+            if cache.len() >= 300 {
+                cache.retain(|_, (ts, _)| ts.elapsed() < Duration::from_secs(1800));
+                if cache.len() >= 300 {
+                    cache.clear();
+                }
             }
             cache.insert(cache_key, (Instant::now(), rec.clone()));
         }
