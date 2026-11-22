@@ -1,63 +1,146 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { X } from 'lucide-react';
+import { useModalDialog } from '../hooks/useModalDialog';
 
 interface CreatePlaylistModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onCreate: (name: string) => void;
+    onCreate: (name: string, description?: string) => Promise<void> | void;
+    mode?: 'create' | 'edit';
+    initialTitle?: string;
+    initialDescription?: string;
 }
 
-export default function CreatePlaylistModal({ isOpen, onClose, onCreate }: CreatePlaylistModalProps) {
-    const [name, setName] = useState('');
+export default function CreatePlaylistModal({
+    isOpen,
+    onClose,
+    onCreate,
+    mode = 'create',
+    initialTitle = '',
+    initialDescription = '',
+}: CreatePlaylistModalProps) {
+    const [name, setName] = useState(initialTitle);
+    const [description, setDescription] = useState(initialDescription);
+    const [submitting, setSubmitting] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
-    if (!isOpen) return null;
+    const dialogRef = useRef<HTMLDialogElement>(null);
+    const titleInputRef = useRef<HTMLInputElement>(null);
+    const titleId = useId();
 
-    const handleSubmit = (e: React.FormEvent) => {
+    useModalDialog(dialogRef, isOpen, onClose);
+
+    useEffect(() => {
+        if (isOpen) {
+            setName(initialTitle);
+            setDescription(initialDescription);
+            setError(null);
+            setSubmitting(false);
+            requestAnimationFrame(() => titleInputRef.current?.focus());
+        }
+    }, [isOpen, initialTitle, initialDescription]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (name.trim()) {
-            onCreate(name.trim());
+        const trimmed = name.trim();
+        if (!trimmed || submitting) return;
+
+        setSubmitting(true);
+        setError(null);
+        try {
+            await onCreate(trimmed, description.trim() || undefined);
             setName('');
-            onClose();
+            setDescription('');
+            dialogRef.current?.close('submitted');
+        } catch (err) {
+            setError(err instanceof Error ? err.message : 'Could not save playlist');
+        } finally {
+            setSubmitting(false);
         }
     };
 
+    const heading = mode === 'edit' ? 'Edit playlist' : 'New playlist';
+    const submitLabel = submitting
+        ? (mode === 'edit' ? 'Saving…' : 'Creating…')
+        : (mode === 'edit' ? 'Save' : 'Create');
+
     return (
-        <div
-            className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={onClose}
+        <dialog
+            ref={dialogRef}
+            aria-labelledby={titleId}
+            {...({ closedby: 'any' } as any)}
+            className="m-auto w-[calc(100%-2rem)] max-w-md rounded-[12px] bg-[#212121] border border-white/10 text-white p-0 shadow-2xl"
         >
-            <div
-                className="bg-[#333333] rounded-lg w-full max-w-sm shadow-2xl animate-in"
-                onClick={(e) => e.stopPropagation()}
-            >
-                <div className="p-6">
-                    <h2 className="text-xl font-bold mb-4">Create Playlist</h2>
-                    <form onSubmit={handleSubmit}>
+            <div className="p-6">
+                <div className="flex items-center justify-between mb-5">
+                    <h2 id={titleId} className="text-lg font-bold tracking-tight text-white">
+                        {heading}
+                    </h2>
+                    <button
+                        type="button"
+                        onClick={() => dialogRef.current?.close()}
+                        aria-label="Close dialog"
+                        className="w-8 h-8 rounded-full text-white/70 hover:text-white hover:bg-white/10 flex items-center justify-center transition"
+                    >
+                        <X className="w-4 h-4" />
+                    </button>
+                </div>
+
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-xs font-medium text-white/70 mb-1.5">
+                            Title
+                        </label>
                         <input
+                            ref={titleInputRef}
                             type="text"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            placeholder="My Playlist"
-                            className="w-full px-4 py-3 bg-neutral-700 rounded-lg text-white placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-[#FF0000] mb-4"
+                            placeholder="Give your playlist a title"
+                            maxLength={100}
+                            className="w-full h-11 px-3.5 bg-[#030303] border border-white/15 rounded-[8px] text-sm text-white placeholder-white/40 focus:outline-none focus:border-white/50"
                             autoFocus
                         />
-                        <div className="flex gap-3 justify-end">
-                            <button
-                                type="button"
-                                onClick={onClose}
-                                className="px-6 py-2 text-neutral-400 hover:text-white font-medium transition"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                type="submit"
-                                className="px-6 py-2 bg-[#FF0000] text-white font-bold rounded-full hover:scale-105 transition"
-                            >
-                                Create
-                            </button>
-                        </div>
-                    </form>
-                </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-xs font-medium text-white/70 mb-1.5">
+                            Description
+                        </label>
+                        <input
+                            type="text"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                            placeholder="Optional description"
+                            maxLength={240}
+                            className="w-full h-11 px-3.5 bg-[#030303] border border-white/15 rounded-[8px] text-sm text-white placeholder-white/40 focus:outline-none focus:border-white/50"
+                        />
+                    </div>
+
+                    {error && (
+                        <p className="text-xs text-[#ff4e45]" role="alert">
+                            {error}
+                        </p>
+                    )}
+
+                    <div className="flex items-center justify-end gap-2 pt-2">
+                        <button
+                            type="button"
+                            onClick={() => dialogRef.current?.close()}
+                            className="h-9 px-4 rounded-full text-sm font-medium text-white/75 hover:text-white hover:bg-white/10 transition"
+                        >
+                            Cancel
+                        </button>
+                        <button
+                            type="submit"
+                            disabled={!name.trim() || submitting}
+                            className="h-9 px-5 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 disabled:opacity-40 disabled:pointer-events-none transition"
+                        >
+                            {submitLabel}
+                        </button>
+                    </div>
+                </form>
             </div>
-        </div>
+        </dialog>
     );
 }

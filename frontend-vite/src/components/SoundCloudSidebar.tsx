@@ -4,7 +4,8 @@ import { Home, Compass, TrendingUp, Library, Plus, Play, Pin } from 'lucide-reac
 import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
-import { dbService, Playlist } from '../services/db';
+import { isUserOwnedPlaylist } from '../services/db';
+import { Playlist } from '../types';
 import { toast } from '../stores/toastStore';
 import CreatePlaylistModal from './CreatePlaylistModal';
 
@@ -24,20 +25,21 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
   const location = useLocation();
   const navigate = useNavigate();
   const userPlaylists = useLibraryStore(s => s.userPlaylists);
-  const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
+  const createPlaylist = useLibraryStore(s => s.createPlaylist);
   const likedTracksData = usePlayerStore(s => s.likedTracksData);
   const playTrack = usePlayerStore(s => s.playTrack);
   const hasPlayerBar = usePlayerStore(s => Boolean(s.currentTrack));
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
 
-  const handleCreatePlaylist = async (name: string) => {
+  const handleCreatePlaylist = async (name: string, description?: string) => {
     try {
-      const created = await dbService.createPlaylist(name);
-      await refreshLibrary();
+      const created = await createPlaylist(name, description);
       toast(`Created playlist "${created.title}"`);
-    } catch {
+      navigate(`/playlist/${encodeURIComponent(created.id)}`);
+    } catch (err) {
       toast('Could not create playlist');
+      throw err;
     }
   };
 
@@ -167,6 +169,8 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
               {userPlaylists.map((pl) => {
                 const playlistHref = `/playlist/${encodeURIComponent(pl.id)}`;
                 const isActive = location.pathname === playlistHref;
+                const isOwned = isUserOwnedPlaylist(pl);
+                const count = pl.tracks?.length || 0;
                 return (
                   <Link
                     key={pl.id}
@@ -180,7 +184,9 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
                         {pl.title}
                       </p>
                       <p className="text-[12px] text-white/70 truncate leading-4 mt-0.5">
-                        Playlist • KV Music
+                        {isOwned
+                          ? `Your playlist • ${count} ${count === 1 ? 'song' : 'songs'}`
+                          : 'Playlist • KV Music'}
                       </p>
                     </div>
 

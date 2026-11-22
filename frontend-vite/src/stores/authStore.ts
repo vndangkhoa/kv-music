@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useLibraryStore } from './libraryStore';
 
 export interface UserProfile {
   id: string;
@@ -70,6 +71,7 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
         set({ user: mapUser(data.user), token: data.token, isLoggedIn: true, error: null });
+        void useLibraryStore.getState().syncPlaylistsFromServer(data.token);
         return true;
       },
 
@@ -82,6 +84,7 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
         set({ user: mapUser(data.user), token: data.token, isLoggedIn: true, error: null });
+        void useLibraryStore.getState().syncPlaylistsFromServer(data.token);
         return true;
       },
 
@@ -112,6 +115,7 @@ export const useAuthStore = create<AuthState>()(
           return false;
         }
         set({ user: mapUser(data.user), token: data.token, isLoggedIn: true, error: null });
+        void useLibraryStore.getState().syncPlaylistsFromServer(data.token);
         return true;
       },
 

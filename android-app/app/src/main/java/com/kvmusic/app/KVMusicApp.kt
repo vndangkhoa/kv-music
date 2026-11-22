@@ -9,6 +9,7 @@ import com.kvmusic.app.data.api.RetrofitClient
 import com.kvmusic.app.data.download.OfflineDownloadManager
 import com.kvmusic.app.data.repository.AuthRepository
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.data.repository.PlaylistManager
 import com.kvmusic.app.player.AudioCacheManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -33,10 +34,12 @@ class KVMusicApp : Application(), ImageLoaderFactory {
         OfflineDownloadManager.init(this)
         musicRepository = MusicRepository(this)
         authRepository = AuthRepository(this)
+        PlaylistManager.init(this, authRepository)
 
         appIoScope.launch {
             runCatching { AudioCacheManager.getCache(this@KVMusicApp) }
             RetrofitClient.prewarmConnection()
+            authRepository.getSavedToken()?.let { PlaylistManager.syncWithServer(it) }
         }
     }
 

@@ -118,7 +118,9 @@ import com.kvmusic.app.data.model.LyricLine
 import com.kvmusic.app.data.model.SyncedLyricsResponse
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.data.repository.PlaylistManager
 import com.kvmusic.app.player.PlayerManager
+import com.kvmusic.app.ui.components.SaveToPlaylistBottomSheet
 import com.kvmusic.app.ui.components.YtmIcons
 import com.kvmusic.app.ui.theme.YouTubeSansFontFamily
 import com.kvmusic.app.ui.theme.YtmBlue02
@@ -174,15 +176,6 @@ private object WatchPageStateHolder {
 
     private val _dislikedTrackIds = MutableStateFlow<Set<String>>(emptySet())
     val dislikedTrackIds: StateFlow<Set<String>> = _dislikedTrackIds
-
-    private val _localPlaylists = MutableStateFlow<Map<String, Set<String>>>(
-        linkedMapOf(
-            "Favorites" to emptySet(),
-            "Late Night" to emptySet(),
-            "Workout Mix" to emptySet()
-        )
-    )
-    val localPlaylists: StateFlow<Map<String, Set<String>>> = _localPlaylists
 
     private val _sleepTimerRemainingSec = MutableStateFlow<Int?>(null)
     val sleepTimerRemainingSec: StateFlow<Int?> = _sleepTimerRemainingSec
@@ -247,32 +240,6 @@ private object WatchPageStateHolder {
         if (_dislikedTrackIds.value.contains(trackId)) {
             _dislikedTrackIds.value = _dislikedTrackIds.value - trackId
         }
-    }
-
-    fun isTrackSavedInAnyPlaylist(trackId: String): Boolean {
-        return _localPlaylists.value.values.any { it.contains(trackId) }
-    }
-
-    fun toggleTrackInPlaylist(playlistName: String, trackId: String) {
-        val updated = _localPlaylists.value.toMutableMap()
-        val existing = updated[playlistName]?.toMutableSet() ?: mutableSetOf()
-        if (existing.contains(trackId)) {
-            existing.remove(trackId)
-        } else {
-            existing.add(trackId)
-        }
-        updated[playlistName] = existing
-        _localPlaylists.value = updated
-    }
-
-    fun createPlaylistAndAdd(playlistName: String, trackId: String) {
-        val trimmed = playlistName.trim()
-        if (trimmed.isEmpty()) return
-        val updated = _localPlaylists.value.toMutableMap()
-        val existing = updated[trimmed]?.toMutableSet() ?: mutableSetOf()
-        existing.add(trackId)
-        updated[trimmed] = existing
-        _localPlaylists.value = updated
     }
 
     fun startMinutesSleepTimer(context: Context, minutes: Int) {
@@ -361,7 +328,7 @@ fun FullPlayerScreen(
 
     val isVideoMode by WatchPageStateHolder.isVideoMode.collectAsState()
     val dislikedIds by WatchPageStateHolder.dislikedTrackIds.collectAsState()
-    val localPlaylists by WatchPageStateHolder.localPlaylists.collectAsState()
+    val userPlaylists by PlaylistManager.playlists.collectAsState()
     val sleepTimerSec by WatchPageStateHolder.sleepTimerRemainingSec.collectAsState()
     val sleepTimerEndTrackId by WatchPageStateHolder.sleepTimerEndOfTrackId.collectAsState()
     val repeatOneMode by WatchPageStateHolder.repeatOneMode.collectAsState()
@@ -372,7 +339,7 @@ fun FullPlayerScreen(
     val isDisliked = dislikedIds.contains(currentTrack.id)
     val isDownloaded = downloadedIds.contains(currentTrack.id)
     val currentDownloadProgress = downloadProgress[currentTrack.id]
-    val isSaved = isLiked || WatchPageStateHolder.isTrackSavedInAnyPlaylist(currentTrack.id)
+    val isSaved = isLiked || userPlaylists.any { pl -> pl.tracks.any { it.id == currentTrack.id } }
 
     // Real ExoPlayer playbackState listener for buffering spinner & REPEAT_MODE_ONE sync
     var isBuffering by remember { mutableStateOf(false) }
@@ -414,7 +381,6 @@ fun FullPlayerScreen(
     var showSaveSheet by remember { mutableStateOf(false) }
     var showSleepTimerDialog by remember { mutableStateOf(false) }
     var showCastSheet by remember { mutableStateOf(false) }
-    var showCreatePlaylistDialog by remember { mutableStateOf(false) }
     var isStartingRadio by remember { mutableStateOf(false) }
 
     // Video mode overlay state
@@ -475,15 +441,13 @@ fun FullPlayerScreen(
     }
 
     BackHandler(
-        enabled = showCreatePlaylistDialog ||
-            showSleepTimerDialog ||
+        enabled = showSleepTimerDialog ||
             showSaveSheet ||
             showOverflowSheet ||
             showCastSheet ||
             isBottomSheetOpen
     ) {
         when {
-            showCreatePlaylistDialog -> showCreatePlaylistDialog = false
             showSleepTimerDialog -> showSleepTimerDialog = false
             showSaveSheet -> showSaveSheet = false
             showOverflowSheet -> showOverflowSheet = false
@@ -1025,46 +989,9 @@ fun FullPlayerScreen(
 
         // Save to Playlist Bottom Sheet
         if (showSaveSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showSaveSheet = false },
-                sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
-                containerColor = YtmGrey11,
-                contentColor = YtmWhite,
-                tonalElevation = 0.dp,
-                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp)
-            ) {
-                SaveToPlaylistSheetContent(
-                    track = currentTrack,
-                    isLiked = isLiked,
-                    isDownloaded = isDownloaded,
-                    playlists = localPlaylists,
-                    onToggleLike = {
-                        WatchPageStateHolder.clearDislike(currentTrack.id)
-                        PlayerManager.toggleLike(currentTrack.id)
-                    },
-                    onToggleDownload = {
-                        PlayerManager.toggleDownload(context, currentTrack)
-                    },
-                    onTogglePlaylist = { name ->
-                        WatchPageStateHolder.toggleTrackInPlaylist(name, currentTrack.id)
-                    },
-                    onNewPlaylistClick = {
-                        showCreatePlaylistDialog = true
-                    },
-                    onDone = { showSaveSheet = false }
-                )
-            }
-        }
-
-        // Create New Playlist Dialog
-        if (showCreatePlaylistDialog) {
-            CreatePlaylistDialog(
-                onDismiss = { showCreatePlaylistDialog = false },
-                onCreate = { name ->
-                    WatchPageStateHolder.createPlaylistAndAdd(name, currentTrack.id)
-                    showCreatePlaylistDialog = false
-                    Toast.makeText(context, "Saved to '$name'", Toast.LENGTH_SHORT).show()
-                }
+            SaveToPlaylistBottomSheet(
+                track = currentTrack,
+                onDismiss = { showSaveSheet = false }
             )
         }
 
@@ -2823,176 +2750,6 @@ private fun OverflowMenuRow(
             )
         }
     }
-}
-
-@Composable
-private fun SaveToPlaylistSheetContent(
-    track: Track,
-    isLiked: Boolean,
-    isDownloaded: Boolean,
-    playlists: Map<String, Set<String>>,
-    onToggleLike: () -> Unit,
-    onToggleDownload: () -> Unit,
-    onTogglePlaylist: (String) -> Unit,
-    onNewPlaylistClick: () -> Unit,
-    onDone: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Save to playlist",
-                fontFamily = YouTubeSansFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp,
-                color = YtmWhite
-            )
-            TextButton(onClick = onNewPlaylistClick) {
-                Icon(
-                    imageVector = YtmIcons.Add24,
-                    contentDescription = null,
-                    tint = YtmBlue02,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text(
-                    text = "New playlist",
-                    color = YtmBlue02,
-                    fontWeight = FontWeight.Medium,
-                    fontSize = 14.sp
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(6.dp))
-
-        PlaylistCheckRow(
-            label = "Liked Music",
-            checked = isLiked,
-            onToggle = onToggleLike
-        )
-        PlaylistCheckRow(
-            label = "Offline Downloads",
-            checked = isDownloaded,
-            onToggle = onToggleDownload
-        )
-        playlists.forEach { (name, ids) ->
-            PlaylistCheckRow(
-                label = name,
-                checked = ids.contains(track.id),
-                onToggle = { onTogglePlaylist(name) }
-            )
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-        Button(
-            onClick = onDone,
-            colors = ButtonDefaults.buttonColors(
-                containerColor = YtmWhite,
-                contentColor = YtmPureBlack
-            ),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(42.dp)
-        ) {
-            Text(
-                text = "Done",
-                fontWeight = FontWeight.Bold,
-                fontSize = 14.sp
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-    }
-}
-
-@Composable
-private fun PlaylistCheckRow(
-    label: String,
-    checked: Boolean,
-    onToggle: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(46.dp)
-            .clickable(onClick = onToggle),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Checkbox(
-            checked = checked,
-            onCheckedChange = { onToggle() },
-            colors = CheckboxDefaults.colors(
-                checkedColor = YtmWhite,
-                uncheckedColor = YtmWhite67,
-                checkmarkColor = YtmPureBlack
-            )
-        )
-        Spacer(modifier = Modifier.width(8.dp))
-        Text(
-            text = label,
-            fontSize = 15.sp,
-            color = YtmWhite
-        )
-    }
-}
-
-@Composable
-private fun CreatePlaylistDialog(
-    onDismiss: () -> Unit,
-    onCreate: (String) -> Unit
-) {
-    var name by remember { mutableStateOf("") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        containerColor = YtmGrey11,
-        titleContentColor = YtmWhite,
-        textContentColor = YtmWhite,
-        title = {
-            Text(
-                text = "New playlist",
-                fontFamily = YouTubeSansFontFamily,
-                fontWeight = FontWeight.Bold,
-                fontSize = 18.sp
-            )
-        },
-        text = {
-            OutlinedTextField(
-                value = name,
-                onValueChange = { name = it },
-                placeholder = { Text("Playlist title", color = YtmWhite67) },
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = YtmWhite,
-                    unfocusedBorderColor = YtmWhite20,
-                    focusedTextColor = YtmWhite,
-                    unfocusedTextColor = YtmWhite,
-                    cursorColor = YtmWhite
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-        },
-        confirmButton = {
-            TextButton(
-                onClick = { onCreate(name) },
-                enabled = name.trim().isNotEmpty()
-            ) {
-                Text("Create", color = YtmBlue02, fontWeight = FontWeight.Bold)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("Cancel", color = YtmWhite67)
-            }
-        }
-    )
 }
 
 @Composable

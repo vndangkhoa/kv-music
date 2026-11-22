@@ -79,4 +79,15 @@ interface KVMusicApi {
     suspend fun linkPairCode(
         @Body payload: Map<String, String>
     ): Response<PairResponse>
+
+    @GET("/api/user/playlists")
+    suspend fun getUserPlaylists(
+        @Header("Authorization") authorization: String
+    ): Response<Map<String, Any>>
+
+    @PUT("/api/user/playlists")
+    suspend fun putUserPlaylists(
+        @Header("Authorization") authorization: String,
+        @Body payload: Map<String, Any>
+    ): Response<Map<String, Any>>
 }

@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ThumbsUp, Plus, Trash2, Play, Disc3, Users, Clock, Music } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useLibraryStore } from '../stores/libraryStore';
@@ -7,7 +7,7 @@ import TrackRow, { YtmMediaCard, YtmDropdown, type YtmDropdownOption } from '../
 import ArtistAvatar from '../components/ArtistAvatar';
 import Skeleton from '../components/Skeleton';
 import { usePagedList } from '../hooks/usePagedList';
-import { dbService } from '../services/db';
+import { isUserOwnedPlaylist } from '../services/db';
 import { libraryService } from '../services/library';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { toast } from '../stores/toastStore';
@@ -21,10 +21,13 @@ const SORT_OPTIONS: YtmDropdownOption<SortOrder>[] = [
 ];
 
 export default function Library() {
+    const navigate = useNavigate();
     const userPlaylists = useLibraryStore(s => s.userPlaylists);
     const followedArtists = useLibraryStore(s => s.followedArtists);
     const savedAlbums = useLibraryStore(s => s.savedAlbums);
     const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
+    const createPlaylist = useLibraryStore(s => s.createPlaylist);
+    const deletePlaylist = useLibraryStore(s => s.deletePlaylist);
     const hydrateSeedTracks = useLibraryStore(s => s.hydrateSeedTracks);
     const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
     const activeFilter = useLibraryStore(s => s.activeFilter);
@@ -68,9 +71,12 @@ export default function Library() {
         e.preventDefault();
         e.stopPropagation();
         if (confirm('Delete this playlist from your library?')) {
-            await dbService.deletePlaylist(id);
-            await refreshLibrary();
-            toast('Playlist deleted');
+            try {
+                await deletePlaylist(id);
+                toast('Playlist deleted');
+            } catch {
+                toast('Could not delete playlist');
+            }
         }
     };
 
@@ -78,13 +84,15 @@ export default function Library() {
         e.preventDefault();
         const trimmed = newPlaylistName.trim();
         if (!trimmed) return;
-        const created = await dbService.createPlaylist(trimmed);
-        if (created) {
-            await refreshLibrary();
-            toast(`Created "${trimmed}"`);
+        try {
+            const created = await createPlaylist(trimmed);
+            toast(`Created "${created.title}"`);
+            setNewPlaylistName('');
+            setShowNewPlaylist(false);
+            navigate(`/playlist/${encodeURIComponent(created.id)}`);
+        } catch {
+            toast('Could not create playlist');
         }
-        setNewPlaylistName('');
-        setShowNewPlaylist(false);
     };
 
     const playCollection = async (id: string, isAlbum: boolean) => {
@@ -109,11 +117,15 @@ export default function Library() {
 
     const sortedPlaylists = useMemo(() => {
         const list = [...userPlaylists];
-        if (sortBy === 'az') {
-            list.sort((a, b) => a.title.localeCompare(b.title));
-        } else {
-            list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
-        }
+        list.sort((a, b) => {
+            const aOwned = isUserOwnedPlaylist(a);
+            const bOwned = isUserOwnedPlaylist(b);
+            if (aOwned !== bOwned) return aOwned ? -1 : 1;
+            if (sortBy === 'az') {
+                return a.title.localeCompare(b.title);
+            }
+            return (b.createdAt || 0) - (a.createdAt || 0);
+        });
         return list;
     }, [userPlaylists, sortBy]);
 
@@ -319,8 +331,7 @@ export default function Library() {
 
                             {/* User & Seed Playlists */}
                             {sortedPlaylists.map((playlist) => {
-                                const isDeletable =
-                                    !playlist.id.startsWith('playlist-') && !playlist.id.startsWith('discovery-');
+                                const isDeletable = isUserOwnedPlaylist(playlist);
                                 return (
                                     <YtmMediaCard
                                         key={playlist.id}

@@ -1,5 +1,6 @@
-import { openDB, DBSchema } from 'idb';
+import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Track, Playlist } from '../types';
+import { safeStorage } from '../utils/safeStorage';
 
 export type { Track, Playlist };
 
@@ -16,287 +17,462 @@ interface MyDB extends DBSchema {
 
 const DB_NAME = 'audiophile-db';
 const DB_VERSION = 2;
+const USER_PLAYLISTS_STORAGE_KEY = 'kv_music_user_playlists_v1';
+const LIKED_SONGS_STORAGE_KEY = 'kv_music_liked_songs_v1';
+
+export function generateUserPlaylistId(): string {
+    try {
+        if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+            return `user-pl-${crypto.randomUUID()}`;
+        }
+        if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+            const bytes = new Uint8Array(16);
+            crypto.getRandomValues(bytes);
+            bytes[6] = (bytes[6] & 0x0f) | 0x40;
+            bytes[8] = (bytes[8] & 0x3f) | 0x80;
+            const hex = Array.from(bytes, b => b.toString(16).padStart(2, '0')).join('');
+            return `user-pl-${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+        }
+    } catch {
+        // Fallback when crypto APIs are restricted or unavailable
+    }
+    return `user-pl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+export function isUserOwnedPlaylist(playlist: { id?: string; isUserCreated?: boolean } | null | undefined): boolean {
+    if (!playlist) return false;
+    if (playlist.isUserCreated === true) return true;
+    const id = playlist.id || '';
+    if (!id) return false;
+    return (
+        !id.startsWith('playlist-') &&
+        !id.startsWith('discovery-') &&
+        !id.startsWith('VLPL') &&
+        !id.startsWith('PL')
+    );
+}
+
+function isLegacySystemSeed(p: Playlist): boolean {
+    return (p.id || '').startsWith('playlist-system-') && p.isUserCreated !== true;
+}
+
+function normalizeUserPlaylist(p: Playlist): Playlist {
+    const now = Date.now();
+    const createdAt = typeof p.createdAt === 'number' && p.createdAt > 0 ? p.createdAt : now;
+    const updatedAt = typeof p.updatedAt === 'number' && p.updatedAt > 0 ? p.updatedAt : createdAt;
+    return {
+        ...p,
+        title: (p.title || 'Untitled Playlist').trim() || 'Untitled Playlist',
+        tracks: Array.isArray(p.tracks) ? p.tracks : [],
+        createdAt,
+        updatedAt,
+        type: 'Playlist',
+        isUserCreated: true,
+    };
+}
+
+function readMirrorPlaylists(): Playlist[] {
+    try {
+        const raw = safeStorage.getItem(USER_PLAYLISTS_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        if (!Array.isArray(parsed)) return [];
+        return parsed
+            .filter((p): p is Playlist => Boolean(p && typeof p.id === 'string' && typeof p.title === 'string'))
+            .filter(p => !isLegacySystemSeed(p) && isUserOwnedPlaylist(p))
+            .map(normalizeUserPlaylist);
+    } catch {
+        return [];
+    }
+}
+
+function writeMirrorPlaylists(playlists: Playlist[]): void {
+    try {
+        const clean = playlists
+            .filter(p => !isLegacySystemSeed(p) && isUserOwnedPlaylist(p))
+            .map(normalizeUserPlaylist)
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        safeStorage.setItem(USER_PLAYLISTS_STORAGE_KEY, JSON.stringify(clean));
+    } catch {
+        // Ignore storage quota errors
+    }
+}
+
+function readMirrorLikedSongs(): Track[] {
+    try {
+        const raw = safeStorage.getItem(LIKED_SONGS_STORAGE_KEY);
+        if (!raw) return [];
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function writeMirrorLikedSongs(tracks: Track[]): void {
+    try {
+        safeStorage.setItem(LIKED_SONGS_STORAGE_KEY, JSON.stringify(tracks));
+    } catch {
+        // Ignore storage errors
+    }
+}
 
 export const initDB = async () => {
     return openDB<MyDB>(DB_NAME, DB_VERSION, {
         upgrade(db) {
-            if (db.objectStoreNames.contains('playlists')) {
-                db.deleteObjectStore('playlists');
+            if (!db.objectStoreNames.contains('playlists')) {
+                db.createObjectStore('playlists', { keyPath: 'id' });
             }
-            if (db.objectStoreNames.contains('likedSongs')) {
-                db.deleteObjectStore('likedSongs');
+            if (!db.objectStoreNames.contains('likedSongs')) {
+                db.createObjectStore('likedSongs', { keyPath: 'id' });
             }
-            db.createObjectStore('playlists', { keyPath: 'id' });
-            db.createObjectStore('likedSongs', { keyPath: 'id' });
         },
     });
 };
 
+async function openDatabaseSafe(): Promise<IDBPDatabase<MyDB> | null> {
+    try {
+        if (typeof indexedDB === 'undefined') return null;
+        return await initDB();
+    } catch {
+        return null;
+    }
+}
+
+function mergePlaylistLists(primary: Playlist[], secondary: Playlist[]): Playlist[] {
+    const map = new Map<string, Playlist>();
+    for (const raw of [...primary, ...secondary]) {
+        if (!raw || !raw.id || isLegacySystemSeed(raw) || !isUserOwnedPlaylist(raw)) continue;
+        const p = normalizeUserPlaylist(raw);
+        const existing = map.get(p.id);
+        if (!existing) {
+            map.set(p.id, p);
+            continue;
+        }
+        const existingTs = existing.updatedAt ?? existing.createdAt ?? 0;
+        const incomingTs = p.updatedAt ?? p.createdAt ?? 0;
+        if (incomingTs > existingTs || (incomingTs === existingTs && p.tracks.length > existing.tracks.length)) {
+            map.set(p.id, p);
+        }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+}
+
 export const dbService = {
-    async getPlaylists() {
-        const db = await initDB();
-        const playlists = await db.getAll('playlists');
+    async getPlaylists(): Promise<Playlist[]> {
+        const mirrorPlaylists = readMirrorPlaylists();
+        const db = await openDatabaseSafe();
+        let idbPlaylists: Playlist[] = [];
 
-        // Force re-seed if system playlist is empty (bad cache)
-        const systemPlaylist = playlists.find(p => p.id === 'playlist-system-rotations');
-        if (playlists.length === 0 || (systemPlaylist && systemPlaylist.tracks.length === 0)) {
-            if (systemPlaylist) {
-                await db.delete('playlists', 'playlist-system-rotations');
-                await db.delete('playlists', 'playlist-system-weekend');
-                await db.delete('playlists', 'playlist-system-tiktok');
+        if (db) {
+            try {
+                const all = await db.getAll('playlists');
+                idbPlaylists = all
+                    .filter(p => !isLegacySystemSeed(p) && isUserOwnedPlaylist(p))
+                    .map(normalizeUserPlaylist);
+            } catch {
+                idbPlaylists = [];
             }
-            return this.seedInitialData();
         }
 
-        // Migration: create TikTok playlist if missing
-        if (!playlists.some(p => p.id === 'playlist-system-tiktok')) {
-            try {
-                const res = await fetch('/api/search?q=TikTok Viral');
-                const tracks: Track[] = res.ok ? (await res.json()).tracks || [] : [];
-                const fallbackTracks: Track[] = tracks.length > 0 ? tracks : [
-                    {
-                        id: "fb-1",
-                        title: "Shape of You (Demo)",
-                        artist: "Ed Sheeran",
-                        album: "Divide",
-                        duration: 233,
-                        cover_url: "https://placehold.co/800x800/1DB954/191414?text=Shape+of+You",
-                        url: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=twilight-120000.mp3"
-                    },
-                    {
-                        id: "fb-2",
-                        title: "Blinding Lights (Demo)",
-                        artist: "The Weeknd",
-                        album: "After Hours",
-                        duration: 200,
-                        cover_url: "https://placehold.co/800x800/ff0000/ffffff?text=Blinding+Lights",
-                        url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_1669466e3b.mp3?filename=relaxed-vlog-131746.mp3"
-                    },
-                    {
-                        id: "fb-3",
-                        title: "Levitating (Demo)",
-                        artist: "Dua Lipa",
-                        album: "Future Nostalgia",
-                        duration: 203,
-                        cover_url: "https://placehold.co/800x800/ff00ff/ffffff?text=Levitating",
-                        url: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=sexy-fashion-beats-11176.mp3"
-                    },
-                    {
-                        id: 'fb-4',
-                        title: 'Stay (Demo)',
-                        artist: 'The Kid LAROI',
-                        album: 'F*CK LOVE 3',
-                        duration: 141,
-                        cover_url: "https://placehold.co/800x800/800080/ffffff?text=Stay",
-                        url: 'https://cdn.pixabay.com/download/audio/2022/10/25/audio_5145a278d6.mp3?filename=summer-party-12461.mp3'
-                    },
-                    {
-                        id: 'fb-5',
-                        title: 'Montero (Demo)',
-                        artist: 'Lil Nas X',
-                        album: 'Montero',
-                        duration: 137,
-                        cover_url: "https://placehold.co/800x800/ffa500/ffffff?text=Montero",
-                        url: 'https://cdn.pixabay.com/download/audio/2023/04/12/audio_496677f54c.mp3?filename=hip-hop-trap-145638.mp3'
+        const merged = mergePlaylistLists(idbPlaylists, mirrorPlaylists);
+        writeMirrorPlaylists(merged);
+
+        if (db && mirrorPlaylists.length > 0) {
+            const idbIds = new Set(idbPlaylists.map(p => p.id));
+            for (const p of merged) {
+                if (!idbIds.has(p.id)) {
+                    try {
+                        await db.put('playlists', p);
+                    } catch {
+                        // Ignore IDB backfill errors
                     }
-                ];
-                const p3: Playlist = {
-                    id: "playlist-system-tiktok",
-                    title: "TikTok Hits",
-                    tracks: fallbackTracks,
-                    createdAt: Date.now(),
-                    cover_url: fallbackTracks[2].cover_url,
-                    type: 'Playlist'
-                };
-                await db.put('playlists', p3);
-                playlists.push(p3);
-            } catch (e) {
-                console.error("Failed to migrate TikTok playlist", e);
-            }
-        }
-
-        return playlists;
-    },
-
-    async seedInitialData() {
-        try {
-            let allTracks: Track[] = [];
-
-            try {
-                const res = await fetch('/api/search?q=Top Hits Vietnam');
-                if (res.ok) {
-                    const data = await res.json();
-                    allTracks = data.tracks || [];
                 }
-            } catch (e) {
-                console.warn("API seeding failed, using fallback data");
             }
-
-            // Fallback data if API failed or returned emptiness
-            // ALWAYS use fallback if API returned 0 tracks
-            if (allTracks.length === 0) {
-                console.log("Using Mock Data for DB Seeding");
-                allTracks = [
-                    {
-                        id: "fb-1",
-                        title: "Shape of You (Demo)",
-                        artist: "Ed Sheeran",
-                        album: "Divide",
-                        duration: 233,
-                        cover_url: "https://placehold.co/800x800/1DB954/191414?text=Shape+of+You",
-                        url: "https://cdn.pixabay.com/download/audio/2022/05/27/audio_1808fbf07a.mp3?filename=twilight-120000.mp3"
-                    },
-                    {
-                        id: "fb-2",
-                        title: "Blinding Lights (Demo)",
-                        artist: "The Weeknd",
-                        album: "After Hours",
-                        duration: 200,
-                        cover_url: "https://placehold.co/800x800/ff0000/ffffff?text=Blinding+Lights",
-                        url: "https://cdn.pixabay.com/download/audio/2022/03/15/audio_1669466e3b.mp3?filename=relaxed-vlog-131746.mp3"
-                    },
-                    {
-                        id: "fb-3",
-                        title: "Levitating (Demo)",
-                        artist: "Dua Lipa",
-                        album: "Future Nostalgia",
-                        duration: 203,
-                        cover_url: "https://placehold.co/800x800/ff00ff/ffffff?text=Levitating",
-                        url: "https://cdn.pixabay.com/download/audio/2022/01/18/audio_d0a13f69d2.mp3?filename=sexy-fashion-beats-11176.mp3"
-                    },
-                    {
-                        id: 'fb-4',
-                        title: 'Stay (Demo)',
-                        artist: 'The Kid LAROI',
-                        album: 'F*CK LOVE 3',
-                        duration: 141,
-                        cover_url: "https://placehold.co/800x800/800080/ffffff?text=Stay",
-                        url: 'https://cdn.pixabay.com/download/audio/2022/10/25/audio_5145a278d6.mp3?filename=summer-party-12461.mp3'
-                    },
-                    {
-                        id: 'fb-5',
-                        title: 'Montero (Demo)',
-                        artist: 'Lil Nas X',
-                        album: 'Montero',
-                        duration: 137,
-                        cover_url: "https://placehold.co/800x800/ffa500/ffffff?text=Montero",
-                        url: 'https://cdn.pixabay.com/download/audio/2023/04/12/audio_496677f54c.mp3?filename=hip-hop-trap-145638.mp3'
-                    }
-                ];
-
-                // Force update tracks
-
-                // Note: The tracks are embedded in the playlists, so we just need to update the playlists.
-                // We'll just overwrite the initial ones if they exist or creating new ones.
-
-                const p1ID = "playlist-system-rotations";
-                const p2ID = "playlist-system-weekend";
-                const p3ID = "playlist-system-tiktok";
-
-                const p1: Playlist = {
-                    id: p1ID,
-                    title: "My Rotations",
-                    tracks: allTracks,
-                    createdAt: Date.now(),
-                    cover_url: allTracks[0].cover_url,
-                    type: 'Playlist'
-                };
-
-                const p2: Playlist = {
-                    id: p2ID,
-                    title: "Weekend Vibes",
-                    tracks: allTracks.slice(0, 3),
-                    createdAt: Date.now(),
-                    cover_url: allTracks[1].cover_url,
-                    type: 'Playlist'
-                };
-
-                const p3: Playlist = {
-                    id: p3ID,
-                    title: "TikTok Hits",
-                    tracks: allTracks.slice(0, 5),
-                    createdAt: Date.now(),
-                    cover_url: allTracks[2].cover_url,
-                    type: 'Playlist'
-                };
-
-                const db = await initDB();
-                await db.put('playlists', p1);
-                await db.put('playlists', p2);
-                await db.put('playlists', p3);
-
-                return [p1, p2, p3];
-            }
-        } catch (e) {
-            console.error("Seeding failed", e);
-            return [];
         }
+
+        return merged;
     },
 
-    async getPlaylist(id: string) {
-        const db = await initDB();
-        return db.get('playlists', id);
+    async getPlaylist(id: string): Promise<Playlist | undefined> {
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                const found = await db.get('playlists', id);
+                if (found && !isLegacySystemSeed(found)) {
+                    return normalizeUserPlaylist(found);
+                }
+            } catch {
+                // Fall back to mirror
+            }
+        }
+        const mirror = readMirrorPlaylists();
+        return mirror.find(p => p.id === id);
     },
 
-    async createPlaylist(name: string) {
-        const db = await initDB();
+    async createPlaylist(name: string, description?: string, initialTracks: Track[] = []): Promise<Playlist> {
+        const title = name.trim();
+        if (!title) {
+            throw new Error('Playlist title is required');
+        }
+        const now = Date.now();
+        const dedupedTracks: Track[] = [];
+        const seen = new Set<string>();
+        for (const t of initialTracks) {
+            if (t?.id && !seen.has(t.id)) {
+                seen.add(t.id);
+                dedupedTracks.push(t);
+            }
+        }
+
+        const trimmedDesc = description?.trim();
         const newPlaylist: Playlist = {
-            id: crypto.randomUUID(),
-            title: name,
-            tracks: [],
-            createdAt: Date.now(),
-            cover_url: `https://placehold.co/300/222/fff?text=${encodeURIComponent(name)}`
+            id: generateUserPlaylistId(),
+            title,
+            ...(trimmedDesc ? { description: trimmedDesc } : {}),
+            tracks: dedupedTracks,
+            createdAt: now,
+            updatedAt: now,
+            cover_url: dedupedTracks[0]?.cover_url || '',
+            type: 'Playlist',
+            isUserCreated: true,
         };
-        await db.put('playlists', newPlaylist);
+
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                await db.put('playlists', newPlaylist);
+            } catch {
+                // safeStorage mirror persists below
+            }
+        }
+
+        const existing = readMirrorPlaylists().filter(p => p.id !== newPlaylist.id);
+        writeMirrorPlaylists([newPlaylist, ...existing]);
         return newPlaylist;
     },
 
-    async deletePlaylist(id: string) {
-        const db = await initDB();
-        await db.delete('playlists', id);
-    },
+    async updatePlaylist(
+        id: string,
+        updates: { title?: string; description?: string },
+    ): Promise<Playlist | undefined> {
+        const existing = await this.getPlaylist(id);
+        if (!existing) return undefined;
 
-    async addToPlaylist(playlistId: string, track: Track) {
-        const db = await initDB();
-        const playlist = await db.get('playlists', playlistId);
-        if (playlist) {
-            if (playlist.tracks.length === 0 || playlist.cover_url?.includes("placehold")) {
-                playlist.cover_url = track.cover_url;
+        const nextTitle = updates.title !== undefined ? updates.title.trim() : existing.title;
+        if (!nextTitle) return existing;
+        const nextDesc = updates.description !== undefined ? updates.description.trim() : existing.description;
+
+        const updated: Playlist = {
+            ...normalizeUserPlaylist(existing),
+            title: nextTitle,
+            ...(nextDesc ? { description: nextDesc } : { description: undefined }),
+            updatedAt: Date.now(),
+        };
+
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                await db.put('playlists', updated);
+            } catch {
+                // mirror fallback below
             }
-            playlist.tracks.push(track);
-            await db.put('playlists', playlist);
+        }
+
+        const list = readMirrorPlaylists().map(p => (p.id === id ? updated : p));
+        if (!list.some(p => p.id === id)) list.unshift(updated);
+        writeMirrorPlaylists(list);
+        return updated;
+    },
+
+    async saveExternalPlaylist(source: {
+        id?: string;
+        title: string;
+        description?: string;
+        cover_url?: string;
+        tracks: Track[];
+    }): Promise<Playlist> {
+        const created = await this.createPlaylist(
+            source.title,
+            source.description,
+            source.tracks || [],
+        );
+        if (!created.cover_url && source.cover_url && !source.cover_url.includes('placehold')) {
+            const withCover: Playlist = {
+                ...created,
+                cover_url: source.cover_url,
+                updatedAt: Date.now(),
+            };
+            const db = await openDatabaseSafe();
+            if (db) {
+                try {
+                    await db.put('playlists', withCover);
+                } catch {
+                    // ignore
+                }
+            }
+            const list = readMirrorPlaylists().map(p => (p.id === withCover.id ? withCover : p));
+            writeMirrorPlaylists(list);
+            return withCover;
+        }
+        return created;
+    },
+
+    async deletePlaylist(id: string): Promise<void> {
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                await db.delete('playlists', id);
+            } catch {
+                // ignore
+            }
+        }
+        const remaining = readMirrorPlaylists().filter(p => p.id !== id);
+        writeMirrorPlaylists(remaining);
+    },
+
+    async addToPlaylist(playlistId: string, track: Track): Promise<Playlist | undefined> {
+        const playlist = await this.getPlaylist(playlistId);
+        if (!playlist) return undefined;
+
+        const normalized = normalizeUserPlaylist(playlist);
+        const alreadyPresent = normalized.tracks.some(t => t.id === track.id);
+        if (alreadyPresent) {
+            return normalized;
+        }
+
+        const shouldUpdateCover =
+            !normalized.cover_url ||
+            normalized.cover_url.includes('placehold') ||
+            normalized.tracks.length === 0;
+
+        const updated: Playlist = {
+            ...normalized,
+            cover_url: shouldUpdateCover ? (track.cover_url || normalized.cover_url || '') : normalized.cover_url,
+            tracks: [...normalized.tracks, track],
+            updatedAt: Date.now(),
+        };
+
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                await db.put('playlists', updated);
+            } catch {
+                // ignore
+            }
+        }
+        const list = readMirrorPlaylists().map(p => (p.id === playlistId ? updated : p));
+        if (!list.some(p => p.id === playlistId)) list.unshift(updated);
+        writeMirrorPlaylists(list);
+        return updated;
+    },
+
+    async removeFromPlaylist(playlistId: string, trackId: string): Promise<Playlist | undefined> {
+        const playlist = await this.getPlaylist(playlistId);
+        if (!playlist) return undefined;
+
+        const normalized = normalizeUserPlaylist(playlist);
+        const updatedTracks = normalized.tracks.filter(t => t.id !== trackId);
+        const updated: Playlist = {
+            ...normalized,
+            tracks: updatedTracks,
+            updatedAt: Date.now(),
+        };
+
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                await db.put('playlists', updated);
+            } catch {
+                // ignore
+            }
+        }
+        const list = readMirrorPlaylists().map(p => (p.id === playlistId ? updated : p));
+        if (!list.some(p => p.id === playlistId)) list.unshift(updated);
+        writeMirrorPlaylists(list);
+        return updated;
+    },
+
+    async replaceAllPlaylists(playlists: Playlist[]): Promise<void> {
+        const clean = playlists
+            .filter(p => p && p.id && !isLegacySystemSeed(p) && isUserOwnedPlaylist(p))
+            .map(normalizeUserPlaylist)
+            .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+        writeMirrorPlaylists(clean);
+
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                const existing = await db.getAll('playlists');
+                for (const item of existing) {
+                    if (isUserOwnedPlaylist(item) || isLegacySystemSeed(item)) {
+                        await db.delete('playlists', item.id);
+                    }
+                }
+                for (const item of clean) {
+                    await db.put('playlists', item);
+                }
+            } catch {
+                // ignore
+            }
         }
     },
 
-    async removeFromPlaylist(playlistId: string, trackId: string) {
-        const db = await initDB();
-        const playlist = await db.get('playlists', playlistId);
-        if (playlist) {
-            playlist.tracks = playlist.tracks.filter(t => t.id !== trackId);
-            await db.put('playlists', playlist);
+    async getLikedSongs(): Promise<Track[]> {
+        const mirror = readMirrorLikedSongs();
+        const db = await openDatabaseSafe();
+        if (!db) return mirror;
+        try {
+            const list = await db.getAll('likedSongs');
+            if (list.length > 0) {
+                writeMirrorLikedSongs(list);
+                return list;
+            }
+            return mirror;
+        } catch {
+            return mirror;
         }
     },
 
-    async getLikedSongs() {
-        const db = await initDB();
-        return db.getAll('likedSongs');
-    },
+    async toggleLike(track: Track): Promise<boolean> {
+        const db = await openDatabaseSafe();
+        const mirror = readMirrorLikedSongs();
+        let exists = mirror.some(t => t.id === track.id);
 
-    async toggleLike(track: Track) {
-        const db = await initDB();
-        const existing = await db.get('likedSongs', track.id);
-        if (existing) {
-            await db.delete('likedSongs', track.id);
+        if (db) {
+            try {
+                const existing = await db.get('likedSongs', track.id);
+                exists = Boolean(existing);
+                if (exists) {
+                    await db.delete('likedSongs', track.id);
+                } else {
+                    await db.put('likedSongs', track);
+                }
+            } catch {
+                // fall through to mirror update
+            }
+        }
+
+        if (exists) {
+            writeMirrorLikedSongs(mirror.filter(t => t.id !== track.id));
             return false;
         } else {
-            await db.put('likedSongs', track);
+            writeMirrorLikedSongs([track, ...mirror.filter(t => t.id !== track.id)]);
             return true;
         }
     },
 
-    async isLiked(trackId: string) {
-        const db = await initDB();
-        const existing = await db.get('likedSongs', trackId);
-        return !!existing;
-    }
+    async isLiked(trackId: string): Promise<boolean> {
+        const db = await openDatabaseSafe();
+        if (db) {
+            try {
+                const existing = await db.get('likedSongs', trackId);
+                if (existing) return true;
+            } catch {
+                // fallback
+            }
+        }
+        return readMirrorLikedSongs().some(t => t.id === trackId);
+    },
 };

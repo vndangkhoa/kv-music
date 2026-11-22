@@ -21,8 +21,10 @@ export interface Playlist {
     description?: string;
     tracks: Track[];
     createdAt: number;
+    updatedAt?: number;
     cover_url?: string;
     type?: 'Playlist' | 'Album' | 'Artist';
+    isUserCreated?: boolean;
 }
 
 export interface AudioQuality {

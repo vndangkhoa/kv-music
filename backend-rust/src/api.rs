@@ -9,12 +9,14 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
 use crate::auth::AuthStore;
+use crate::playlists::PlaylistStore;
 use crate::spotdl::SpotdlService;
 use crate::ytm::YtmBridge;
 
 pub struct AppState {
     pub spotdl: SpotdlService,
     pub auth: AuthStore,
+    pub playlists: PlaylistStore,
     pub ytm: YtmBridge,
     pub index_html: Arc<Vec<u8>>,
 }
@@ -99,6 +101,89 @@ pub async fn pair_link_handler(
             })),
         ),
         None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Mã Pair Code không hợp lệ"}))),
+    }
+}
+
+#[derive(Deserialize)]
+pub struct UserPlaylistsQuery {
+    pub token: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct UserPlaylistsPayload {
+    pub playlists: Vec<crate::playlists::UserPlaylistRecord>,
+}
+
+fn extract_bearer_token(headers: &axum::http::HeaderMap, query_token: Option<&str>) -> Option<String> {
+    if let Some(auth_val) = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+    {
+        let trimmed = auth_val.trim();
+        if let Some(rest) = trimmed
+            .strip_prefix("Bearer ")
+            .or_else(|| trimmed.strip_prefix("bearer "))
+        {
+            let t = rest.trim();
+            if !t.is_empty() {
+                return Some(t.to_string());
+            }
+        }
+    }
+    query_token
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+async fn authenticate_user_request(
+    state: &AppState,
+    headers: &axum::http::HeaderMap,
+    query_token: Option<&str>,
+) -> Result<crate::auth::UserRecord, Response> {
+    let Some(token) = extract_bearer_token(headers, query_token) else {
+        return Err((
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "Authentication required"})),
+        )
+            .into_response());
+    };
+    state.auth.me(&token).await.ok_or_else(|| {
+        (
+            StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "Invalid or expired session"})),
+        )
+            .into_response()
+    })
+}
+
+pub async fn get_user_playlists_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<UserPlaylistsQuery>,
+) -> impl IntoResponse {
+    match authenticate_user_request(&state, &headers, query.token.as_deref()).await {
+        Ok(user) => {
+            let playlists = state.playlists.get_for_user(&user.id);
+            (StatusCode::OK, Json(serde_json::json!({"playlists": playlists}))).into_response()
+        }
+        Err(err_resp) => err_resp,
+    }
+}
+
+pub async fn put_user_playlists_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<UserPlaylistsQuery>,
+    Json(payload): Json<UserPlaylistsPayload>,
+) -> impl IntoResponse {
+    let user = match authenticate_user_request(&state, &headers, query.token.as_deref()).await {
+        Ok(u) => u,
+        Err(err_resp) => return err_resp,
+    };
+    match state.playlists.set_for_user(&user.id, payload.playlists) {
+        Ok(saved) => (StatusCode::OK, Json(serde_json::json!({"playlists": saved}))).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))).into_response(),
     }
 }
 

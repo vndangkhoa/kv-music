@@ -110,5 +110,6 @@ class AuthRepository(context: Context) {
     private fun saveToken(token: String) {
         prefs.edit().putString("auth_token", token).apply()
         _authToken.value = token
+        PlaylistManager.syncWithServer(token)
     }
 }

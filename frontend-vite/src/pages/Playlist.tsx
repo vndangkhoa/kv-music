@@ -1,9 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, Link } from 'react-router-dom';
-import { Play, Pause, Bookmark, MoreVertical, Shuffle, ListPlus, Share2 } from 'lucide-react';
+import { useParams, Link, useNavigate } from 'react-router-dom';
+import {
+    Play,
+    Pause,
+    Bookmark,
+    MoreVertical,
+    Shuffle,
+    ListPlus,
+    Share2,
+    Pencil,
+    Trash2,
+    Plus,
+    Search,
+    Check,
+} from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useLibraryStore } from '../stores/libraryStore';
-import { dbService, Playlist as PlaylistType } from '../services/db';
+import { dbService, isUserOwnedPlaylist, Playlist as PlaylistType } from '../services/db';
 import { libraryService, streamUrl } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
@@ -11,6 +24,7 @@ import TrackRow from '../components/TrackRow';
 import DownloadMenu from '../components/DownloadMenu';
 import Skeleton from '../components/Skeleton';
 import Recommendations from '../components/Recommendations';
+import CreatePlaylistModal from '../components/CreatePlaylistModal';
 import { GENERATED_CONTENT } from '../data/seed_data';
 import { toast } from '../stores/toastStore';
 
@@ -18,12 +32,20 @@ type PlaylistData = PlaylistType | StaticPlaylist;
 
 export default function Playlist() {
     const { id: playlistId } = useParams<{ id: string }>();
+    const navigate = useNavigate();
+
     const [playlist, setPlaylist] = useState<PlaylistData | null>(null);
     const [loading, setLoading] = useState(true);
     const [loadingTracks, setLoadingTracks] = useState(false);
     const [isUserPlaylist, setIsUserPlaylist] = useState(false);
     const [saved, setSaved] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [showAddSongs, setShowAddSongs] = useState(false);
+    const [addQuery, setAddQuery] = useState('');
+    const [addResults, setAddResults] = useState<Track[]>([]);
+    const [searchingTracks, setSearchingTracks] = useState(false);
+
     const menuRef = useRef<HTMLDivElement | null>(null);
     const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
 
@@ -34,8 +56,13 @@ export default function Playlist() {
     const shuffle = usePlayerStore(s => s.shuffle);
     const toggleShuffle = usePlayerStore(s => s.toggleShuffle);
     const addToQueue = usePlayerStore(s => s.addToQueue);
+
     const userPlaylists = useLibraryStore(s => s.userPlaylists);
-    const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
+    const updatePlaylist = useLibraryStore(s => s.updatePlaylist);
+    const deletePlaylist = useLibraryStore(s => s.deletePlaylist);
+    const addTrackToPlaylist = useLibraryStore(s => s.addTrackToPlaylist);
+    const removeTrackFromPlaylist = useLibraryStore(s => s.removeTrackFromPlaylist);
+    const saveExternalPlaylist = useLibraryStore(s => s.saveExternalPlaylist);
 
     useEffect(() => {
         if (!menuOpen) return;
@@ -59,50 +86,43 @@ export default function Playlist() {
     }, [menuOpen]);
 
     useEffect(() => {
+        setShowAddSongs(false);
+        setAddQuery('');
+        setAddResults([]);
+        setSaved(false);
+    }, [playlistId]);
+
+    useEffect(() => {
         if (!playlistId) return;
-
-        const loadPlaylist = async () => {
-            const userPlaylist = userPlaylists.find(p => p.id === playlistId);
-            if (userPlaylist) {
-                setPlaylist(userPlaylist);
-                setIsUserPlaylist(!playlistId.startsWith('playlist-') && !playlistId.startsWith('discovery-'));
-                setLoading(false);
-                if (userPlaylist.tracks.length > 0) return;
-            }
-
-            const seedItem = Object.values(GENERATED_CONTENT).find(p => p.id === playlistId);
-            if (seedItem) {
-                setPlaylist({
-                    id: seedItem.id,
-                    title: seedItem.title,
-                    description: seedItem.description,
-                    cover_url: seedItem.cover_url,
-                    tracks: seedItem.tracks || [],
-                    type: 'Playlist',
-                } as StaticPlaylist);
-                setLoading(false);
-
-                if (seedItem.tracks && seedItem.tracks.length > 0) return;
-                setLoadingTracks(true);
-            } else if (!userPlaylist) {
-                setLoading(true);
-            }
-
-            await hydrateTracks(playlistId);
-        };
+        let cancelled = false;
 
         const hydrateTracks = async (id: string, attempt = 0) => {
             try {
                 const dbPlaylist = await dbService.getPlaylist(id);
                 if (dbPlaylist) {
-                    setPlaylist(dbPlaylist);
-                    setIsUserPlaylist(true);
-                    setLoading(false);
-                    setLoadingTracks(false);
+                    if (!cancelled) {
+                        setPlaylist(dbPlaylist);
+                        setIsUserPlaylist(true);
+                        setLoading(false);
+                        setLoadingTracks(false);
+                    }
+                    return;
+                }
+
+                // Never query YouTube Search with a local/user playlist ID
+                if (isUserOwnedPlaylist({ id })) {
+                    if (!cancelled) {
+                        setPlaylist(null);
+                        setIsUserPlaylist(false);
+                        setLoading(false);
+                        setLoadingTracks(false);
+                    }
                     return;
                 }
 
                 const apiPlaylist = await libraryService.getPlaylist(id);
+                if (cancelled) return;
+
                 if (apiPlaylist && apiPlaylist.tracks.length > 0) {
                     const normalizedTracks = apiPlaylist.tracks.map((track: Track) => {
                         let videoId = track.id;
@@ -122,18 +142,80 @@ export default function Playlist() {
                     setLoading(false);
                 } else if (attempt < 2) {
                     await new Promise(r => setTimeout(r, 1000));
-                    await hydrateTracks(id, attempt + 1);
+                    if (!cancelled) await hydrateTracks(id, attempt + 1);
                 } else {
                     setLoading(false);
                 }
-                setLoadingTracks(false);
+                if (!cancelled) setLoadingTracks(false);
             } catch {
-                setLoading(false);
-                setLoadingTracks(false);
+                if (!cancelled) {
+                    setLoading(false);
+                    setLoadingTracks(false);
+                }
             }
         };
 
-        loadPlaylist();
+        const loadPlaylist = async () => {
+            const storePlaylist = userPlaylists.find(p => p.id === playlistId);
+            if (storePlaylist && isUserOwnedPlaylist(storePlaylist)) {
+                setPlaylist(storePlaylist);
+                setIsUserPlaylist(true);
+                setLoading(false);
+                setLoadingTracks(false);
+                return;
+            }
+
+            const dbDirect = await dbService.getPlaylist(playlistId);
+            if (cancelled) return;
+            if (dbDirect) {
+                setPlaylist(dbDirect);
+                setIsUserPlaylist(true);
+                setLoading(false);
+                setLoadingTracks(false);
+                return;
+            }
+
+            if (isUserOwnedPlaylist({ id: playlistId })) {
+                setPlaylist(null);
+                setIsUserPlaylist(false);
+                setLoading(false);
+                setLoadingTracks(false);
+                return;
+            }
+
+            if (storePlaylist) {
+                setPlaylist(storePlaylist);
+                setIsUserPlaylist(false);
+                setLoading(false);
+                if (storePlaylist.tracks.length > 0) return;
+            }
+
+            const seedItem = Object.values(GENERATED_CONTENT).find(p => p.id === playlistId);
+            if (seedItem) {
+                setPlaylist({
+                    id: seedItem.id,
+                    title: seedItem.title,
+                    description: seedItem.description,
+                    cover_url: seedItem.cover_url,
+                    tracks: seedItem.tracks || [],
+                    type: 'Playlist',
+                } as StaticPlaylist);
+                setIsUserPlaylist(false);
+                setLoading(false);
+
+                if (seedItem.tracks && seedItem.tracks.length > 0) return;
+                setLoadingTracks(true);
+            } else if (!storePlaylist) {
+                setLoading(true);
+            }
+
+            await hydrateTracks(playlistId);
+        };
+
+        void loadPlaylist();
+        return () => {
+            cancelled = true;
+        };
     }, [playlistId, userPlaylists]);
 
     const handleMainPlay = () => {
@@ -147,12 +229,94 @@ export default function Playlist() {
 
     const handleRemoveTrack = async (track: Track) => {
         if (!playlist || !isUserPlaylist) return;
-        await dbService.removeFromPlaylist(playlist.id, track.id);
-        await refreshLibrary();
-        setPlaylist(prev =>
-            prev ? { ...prev, tracks: prev.tracks.filter(t => t.id !== track.id) } : prev
-        );
-        toast(`Removed "${track.title}"`);
+        try {
+            await removeTrackFromPlaylist(playlist.id, track.id);
+            setPlaylist(prev =>
+                prev ? { ...prev, tracks: prev.tracks.filter(t => t.id !== track.id) } : prev,
+            );
+            toast(`Removed "${track.title}"`);
+        } catch {
+            toast('Could not remove track');
+        }
+    };
+
+    const handleSaveCopyToLibrary = async () => {
+        if (!playlist || isUserPlaylist) return;
+        try {
+            const copy = await saveExternalPlaylist({
+                title: playlist.title,
+                description: 'description' in playlist ? playlist.description : undefined,
+                cover_url: playlist.cover_url,
+                tracks: playlist.tracks,
+            });
+            setSaved(true);
+            toast(`Saved "${copy.title}" to your playlists`);
+            navigate(`/playlist/${encodeURIComponent(copy.id)}`);
+        } catch {
+            toast('Could not save playlist');
+        }
+    };
+
+    const handleUpdatePlaylist = async (title: string, description?: string) => {
+        if (!playlist || !isUserPlaylist) return;
+        const updated = await updatePlaylist(playlist.id, { title, description });
+        if (updated) {
+            setPlaylist(updated);
+            toast('Playlist updated');
+        }
+    };
+
+    const handleDeleteCurrentPlaylist = async () => {
+        if (!playlist || !isUserPlaylist) return;
+        setMenuOpen(false);
+        if (!confirm(`Delete playlist "${playlist.title}"?`)) return;
+        try {
+            await deletePlaylist(playlist.id);
+            toast('Playlist deleted');
+            navigate('/library');
+        } catch {
+            toast('Could not delete playlist');
+        }
+    };
+
+    const handleSearchToAdd = async (e: React.FormEvent) => {
+        e.preventDefault();
+        const q = addQuery.trim();
+        if (!q || searchingTracks) return;
+        setSearchingTracks(true);
+        try {
+            const results = await libraryService.search(q);
+            setAddResults(results.slice(0, 15));
+        } catch {
+            toast('Search failed');
+        } finally {
+            setSearchingTracks(false);
+        }
+    };
+
+    const handleAddSearchedTrack = async (track: Track) => {
+        if (!playlist || !isUserPlaylist) return;
+        try {
+            const added = await addTrackToPlaylist(playlist.id, track);
+            if (added) {
+                setPlaylist(prev =>
+                    prev
+                        ? {
+                              ...prev,
+                              cover_url: prev.cover_url || track.cover_url,
+                              tracks: prev.tracks.some(t => t.id === track.id)
+                                  ? prev.tracks
+                                  : [...prev.tracks, track],
+                          }
+                        : prev,
+                );
+                toast(`Added "${track.title}"`);
+            } else {
+                toast('Song already in playlist');
+            }
+        } catch {
+            toast('Could not add song');
+        }
     };
 
     const handleShare = async () => {
@@ -196,10 +360,10 @@ export default function Playlist() {
                 <div className="text-center space-y-3">
                     <h2 className="text-xl font-bold text-white">Playlist not found</h2>
                     <Link
-                        to="/"
+                        to="/library"
                         className="inline-flex items-center justify-center h-9 px-5 rounded-full border border-white/20 text-sm font-medium text-white hover:bg-white/10 transition"
                     >
-                        Back to Home
+                        Back to Library
                     </Link>
                 </div>
             </div>
@@ -212,6 +376,7 @@ export default function Playlist() {
     const totalSeconds = playlist.tracks.reduce((acc, t) => acc + (t.duration || 0), 0);
     const totalMinutes = Math.floor(totalSeconds / 60);
     const seedForRecs = playlist.tracks[0]?.artist || playlist.title;
+    const shouldShowAddPanel = isUserPlaylist && (showAddSongs || playlist.tracks.length === 0);
 
     return (
         <div className="min-h-full bg-transparent text-white relative">
@@ -237,7 +402,7 @@ export default function Playlist() {
                                 src={cover}
                                 alt={playlist.title}
                                 className="w-full h-full object-cover"
-                                fallbackText="PL"
+                                fallbackText={playlist.title.substring(0, 2).toUpperCase() || 'PL'}
                             />
                         </div>
 
@@ -249,7 +414,8 @@ export default function Playlist() {
                         </h1>
 
                         <p className="text-sm text-white/70 mt-2">
-                            Playlist • {playlist.tracks.length} {playlist.tracks.length === 1 ? 'song' : 'songs'}
+                            {isUserPlaylist ? 'Your playlist' : 'Playlist'} • {playlist.tracks.length}{' '}
+                            {playlist.tracks.length === 1 ? 'song' : 'songs'}
                             {totalMinutes > 0 ? ` • ${totalMinutes} minutes` : ''}
                         </p>
 
@@ -261,17 +427,27 @@ export default function Playlist() {
 
                         {/* Centered Action Button Triad */}
                         <div className="flex items-center justify-center gap-5 mt-6">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setSaved(s => !s);
-                                    toast(saved ? 'Removed from library' : 'Saved playlist to library');
-                                }}
-                                aria-label={saved ? 'Saved playlist' : 'Save playlist'}
-                                className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
-                            >
-                                <Bookmark className="w-5 h-5" fill={saved ? 'currentColor' : 'none'} />
-                            </button>
+                            {isUserPlaylist ? (
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditModal(true)}
+                                    aria-label="Edit playlist"
+                                    title="Edit playlist"
+                                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                </button>
+                            ) : (
+                                <button
+                                    type="button"
+                                    onClick={handleSaveCopyToLibrary}
+                                    aria-label={saved ? 'Saved playlist' : 'Save playlist to library'}
+                                    title="Save copy to your playlists"
+                                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+                                >
+                                    <Bookmark className="w-5 h-5" fill={saved ? 'currentColor' : 'none'} />
+                                </button>
+                            )}
 
                             <button
                                 type="button"
@@ -305,6 +481,34 @@ export default function Playlist() {
                                         role="menu"
                                         className="absolute right-0 top-full mt-2 w-52 py-1.5 rounded-[8px] bg-[#212121] border border-white/10 shadow-2xl z-30 text-left"
                                     >
+                                        {isUserPlaylist && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    onClick={() => {
+                                                        setMenuOpen(false);
+                                                        setShowAddSongs(v => !v);
+                                                    }}
+                                                    className="w-full px-4 py-2.5 text-sm text-white hover:bg-white/[0.06] flex items-center gap-3"
+                                                >
+                                                    <Plus className="w-4 h-4 text-white/80" />
+                                                    <span>Add songs</span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    onClick={() => {
+                                                        setMenuOpen(false);
+                                                        setShowEditModal(true);
+                                                    }}
+                                                    className="w-full px-4 py-2.5 text-sm text-white hover:bg-white/[0.06] flex items-center gap-3"
+                                                >
+                                                    <Pencil className="w-4 h-4 text-white/80" />
+                                                    <span>Edit playlist</span>
+                                                </button>
+                                            </>
+                                        )}
                                         <button
                                             type="button"
                                             role="menuitem"
@@ -353,41 +557,165 @@ export default function Playlist() {
                                                 iconClassName="w-4 h-4 text-white/80"
                                             />
                                         </div>
+                                        {isUserPlaylist && (
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={handleDeleteCurrentPlaylist}
+                                                className="w-full px-4 py-2.5 text-sm text-[#ff4e45] hover:bg-white/[0.06] flex items-center gap-3 border-t border-white/10 mt-1 pt-2.5"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span>Delete playlist</span>
+                                            </button>
+                                        )}
                                     </div>
                                 )}
                             </div>
                         </div>
+
+                        {isUserPlaylist && playlist.tracks.length > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowAddSongs(v => !v)}
+                                className="mt-5 h-9 px-5 rounded-full bg-white/10 hover:bg-white/20 text-sm font-medium text-white inline-flex items-center gap-2 transition"
+                            >
+                                <Plus className="w-4 h-4" />
+                                <span>{showAddSongs ? 'Hide song search' : 'Add songs'}</span>
+                            </button>
+                        )}
                     </aside>
 
                     {/* Right Scrollable Tracklist Column */}
-                    <div className="flex-1 min-w-0 w-full space-y-1">
-                        {loadingTracks && playlist.tracks.length === 0 ? (
-                            <div className="space-y-2">
-                                {[1, 2, 3, 4, 5].map(i => (
-                                    <Skeleton key={i} className="h-14 w-full rounded-[6px]" />
-                                ))}
-                            </div>
-                        ) : playlist.tracks.length === 0 ? (
-                            <div className="p-10 text-center bg-[#181818] border border-white/10 rounded-[8px] space-y-3">
-                                <p className="text-sm text-white/70">This playlist has no tracks yet.</p>
-                                <Link
-                                    to="/search"
-                                    className="inline-flex items-center justify-center h-9 px-5 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 transition"
-                                >
-                                    Find tracks to add
-                                </Link>
-                            </div>
-                        ) : (
-                            playlist.tracks.map((track, idx) => (
-                                <TrackRow
-                                    key={`${track.id}-${idx}`}
-                                    track={track}
-                                    index={idx}
-                                    queue={playlist.tracks}
-                                    onRemoveFromPlaylist={isUserPlaylist ? handleRemoveTrack : undefined}
-                                />
-                            ))
+                    <div className="flex-1 min-w-0 w-full space-y-6">
+                        {shouldShowAddPanel && (
+                            <section className="p-4 sm:p-5 rounded-[12px] bg-[#181818] border border-white/10 space-y-4">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div>
+                                        <h2 className="text-base font-bold text-white">
+                                            Find songs to add
+                                        </h2>
+                                        <p className="text-xs text-white/60 mt-0.5">
+                                            Search for tracks or artists to add directly to &ldquo;{playlist.title}&rdquo;.
+                                        </p>
+                                    </div>
+                                    {playlist.tracks.length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setShowAddSongs(false)}
+                                            className="h-8 px-3 rounded-full text-xs text-white/70 hover:text-white hover:bg-white/10 transition"
+                                        >
+                                            Done
+                                        </button>
+                                    )}
+                                </div>
+
+                                <form onSubmit={handleSearchToAdd} className="flex items-center gap-2">
+                                    <div className="relative flex-1 min-w-0">
+                                        <Search className="w-4 h-4 text-white/50 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                                        <input
+                                            type="text"
+                                            value={addQuery}
+                                            onChange={(e) => setAddQuery(e.target.value)}
+                                            placeholder="Search songs or artists..."
+                                            className="w-full h-10 pl-10 pr-4 rounded-full bg-[#030303] border border-white/15 text-sm text-white placeholder-white/40 focus:outline-none focus:border-white/50"
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        disabled={!addQuery.trim() || searchingTracks}
+                                        className="h-10 px-5 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 disabled:opacity-40 flex-shrink-0 transition"
+                                    >
+                                        {searchingTracks ? 'Searching…' : 'Search'}
+                                    </button>
+                                </form>
+
+                                {addResults.length > 0 && (
+                                    <div className="space-y-1 max-h-80 overflow-y-auto ytm-scroller pr-1">
+                                        {addResults.map((candidate) => {
+                                            const alreadyAdded = playlist.tracks.some(
+                                                t => t.id === candidate.id,
+                                            );
+                                            return (
+                                                <div
+                                                    key={`add-res-${candidate.id}`}
+                                                    className="flex items-center justify-between gap-3 p-2 rounded-[8px] hover:bg-white/[0.06] transition"
+                                                >
+                                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                                        <CoverImage
+                                                            src={candidate.cover_url}
+                                                            alt={candidate.title}
+                                                            className="w-10 h-10 rounded-[4px] object-cover flex-shrink-0"
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="text-sm font-medium text-white truncate">
+                                                                {candidate.title}
+                                                            </p>
+                                                            <p className="text-xs text-white/60 truncate">
+                                                                {candidate.artist}
+                                                            </p>
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        disabled={alreadyAdded}
+                                                        onClick={() => handleAddSearchedTrack(candidate)}
+                                                        className={`h-8 px-3.5 rounded-full text-xs font-medium inline-flex items-center gap-1.5 flex-shrink-0 transition ${
+                                                            alreadyAdded
+                                                                ? 'bg-white/10 text-white/70 cursor-default'
+                                                                : 'bg-white text-[#030303] hover:bg-white/90'
+                                                        }`}
+                                                    >
+                                                        {alreadyAdded ? (
+                                                            <>
+                                                                <Check className="w-3.5 h-3.5" />
+                                                                <span>Added</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Plus className="w-3.5 h-3.5" />
+                                                                <span>Add</span>
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </section>
                         )}
+
+                        <div className="space-y-1">
+                            {loadingTracks && playlist.tracks.length === 0 ? (
+                                <div className="space-y-2">
+                                    {[1, 2, 3, 4, 5].map(i => (
+                                        <Skeleton key={i} className="h-14 w-full rounded-[6px]" />
+                                    ))}
+                                </div>
+                            ) : playlist.tracks.length === 0 ? (
+                                !isUserPlaylist && (
+                                    <div className="p-10 text-center bg-[#181818] border border-white/10 rounded-[8px] space-y-3">
+                                        <p className="text-sm text-white/70">This playlist has no tracks yet.</p>
+                                        <Link
+                                            to="/search"
+                                            className="inline-flex items-center justify-center h-9 px-5 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 transition"
+                                        >
+                                            Find tracks to add
+                                        </Link>
+                                    </div>
+                                )
+                            ) : (
+                                playlist.tracks.map((track, idx) => (
+                                    <TrackRow
+                                        key={`${track.id}-${idx}`}
+                                        track={track}
+                                        index={idx}
+                                        queue={playlist.tracks}
+                                        onRemoveFromPlaylist={isUserPlaylist ? handleRemoveTrack : undefined}
+                                    />
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -402,6 +730,17 @@ export default function Playlist() {
                     showPlaylists={true}
                 />
             </div>
+
+            {isUserPlaylist && (
+                <CreatePlaylistModal
+                    isOpen={showEditModal}
+                    onClose={() => setShowEditModal(false)}
+                    onCreate={handleUpdatePlaylist}
+                    mode="edit"
+                    initialTitle={playlist.title}
+                    initialDescription={'description' in playlist ? playlist.description || '' : ''}
+                />
+            )}
         </div>
     );
 }

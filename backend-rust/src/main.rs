@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod models;
+pub mod playlists;
 mod spotdl;
 mod ytm;
 
@@ -27,6 +28,7 @@ use std::io::Write;
 
 use crate::api::AppState;
 use crate::auth::AuthStore;
+use crate::playlists::PlaylistStore;
 use crate::spotdl::SpotdlService;
 use crate::ytm::YtmBridge;
 
@@ -284,6 +286,14 @@ async fn main() {
     };
     let auth = AuthStore::new(auth_file.clone());
     println!("Auth store ready. Accounts persist at: {}", auth_file);
+
+    let playlists_file = if std::path::Path::new("/app/data").exists() {
+        "/app/data/user_playlists.json".to_string()
+    } else {
+        "data/user_playlists.json".to_string()
+    };
+    let playlists = PlaylistStore::new(playlists_file.clone());
+    println!("User playlists store ready at: {}", playlists_file);
     std::io::stdout().flush().unwrap();
     
     let static_dir = resolve_static_dir();
@@ -304,6 +314,7 @@ async fn main() {
     let app_state = Arc::new(AppState {
         spotdl,
         auth,
+        playlists,
         ytm: YtmBridge::new(),
         index_html: index_html.clone(),
     });
@@ -367,6 +378,10 @@ let app = Router::new()
         .route("/api/auth/me", post(api::me_handler))
         .route("/api/auth/pair/generate", post(api::pair_generate_handler))
         .route("/api/auth/pair/link", post(api::pair_link_handler))
+        .route(
+            "/api/user/playlists",
+            get(api::get_user_playlists_handler).put(api::put_user_playlists_handler),
+        )
         .fallback_service(
             ServeDir::new(&static_dir)
                 .fallback(spa_fallback),

@@ -3,6 +3,7 @@ import { Suspense, lazy, useEffect } from 'react';
 import AppLayout from './components/layout/AppLayout';
 import { useLibraryStore } from './stores/libraryStore';
 import { usePlayerStore } from './stores/playerStore';
+import { useAuthStore } from './stores/authStore';
 
 // Route-level code splitting: each page becomes its own chunk so the initial
 // bundle (first paint) stays small. Discovery is eager (landing page),
@@ -32,12 +33,20 @@ function PageFallback() {
 
 function App() {
   const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
+  const syncPlaylistsFromServer = useLibraryStore(s => s.syncPlaylistsFromServer);
   const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
   const playHistory = usePlayerStore(s => s.playHistory);
+  const authToken = useAuthStore(s => s.token);
 
   useEffect(() => {
     refreshLibrary();
   }, [refreshLibrary]);
+
+  useEffect(() => {
+    if (authToken) {
+      void syncPlaylistsFromServer(authToken);
+    }
+  }, [authToken, syncPlaylistsFromServer]);
 
   useEffect(() => {
     deriveSavedAlbums(playHistory);

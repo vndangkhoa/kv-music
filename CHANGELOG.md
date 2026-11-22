@@ -4,6 +4,14 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.10] / [Docker 1.0.0-30] / [Android 1.2.8] - 2026-11-22
+
+### Fixed
+- **User Playlist Creation, Persistence, Editing & Cross-Device Sync (`backend-rust`, `frontend-vite`, `android-app`)**:
+  - **Backend (`playlists.rs`, `/api/user/playlists`)**: Added `PlaylistStore` persisted atomically to `/app/data/user_playlists.json` (dev `data/user_playlists.json`) with authenticated `GET`/`PUT /api/user/playlists` endpoints for account-based playlist sync across devices
+  - **Web (`db.ts`, `libraryStore.ts`, `CreatePlaylistModal.tsx`, `AddToPlaylistModal.tsx`, `Playlist.tsx`, `Library.tsx`, `SoundCloudSidebar.tsx`)**: Replaced unsafe `crypto.randomUUID()` calls with a fallback-safe `user-pl-...` ID generator, mirrored playlists to `safeStorage` alongside IndexedDB, stopped `hydrateSeedTracks()` / 6s polling from overwriting empty user playlists with YouTube searches, kept user playlists sorted above seed items, upgraded modals to native `<dialog>` with light-dismiss + focus containment, filtered `AddToPlaylistModal` to user-owned playlists with toggle support, wired external playlist Bookmark copy-to-library, and added inline song search, edit, and delete controls inside user playlist pages
+  - **Android (`PlaylistManager.kt`, `SaveToPlaylistSheet.kt`, `LibraryScreen.kt`, `DetailScreen.kt`, `FullPlayerScreen.kt`, `TrackCard.kt`, `v1.2.8` / `versionCode = 9`)**: Unified persistent user playlists with `SharedPreferences` + optional server sync, replaced volatile in-memory player playlists, opened empty/populated user playlists in `DetailScreen` with inline song search/add/remove/rename/delete instead of running YouTube searches, added `Save to playlist` / `Remove from playlist` actions to track menus, and stopped auto-injecting `currentTrack` when creating a playlist from Library
+
 ## [1.2.9] / [Docker 1.0.0-29] - 2026-11-22
 
 ### Fixed

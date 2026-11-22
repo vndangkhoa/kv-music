@@ -87,7 +87,8 @@ fun TrackListItem(
     onLikeClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     queue: List<Track> = emptyList(),
-    onPlayNext: (() -> Unit)? = null
+    onPlayNext: (() -> Unit)? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val currentTrack by PlayerManager.currentTrack.collectAsState()
@@ -104,6 +105,7 @@ fun TrackListItem(
     val effectiveLiked = likedOverride ?: (isLiked || likedIds.contains(track.id))
 
     var showMenuSheet by remember { mutableStateOf(false) }
+    var showSaveToPlaylistSheet by remember { mutableStateOf(false) }
 
     val formattedDuration = formatDuration(track.duration)
     val subtitleText = buildString {
@@ -257,10 +259,27 @@ fun TrackListItem(
                 PlayerManager.toggleDownload(context, track)
                 showMenuSheet = false
             },
+            onSaveToPlaylist = {
+                showMenuSheet = false
+                showSaveToPlaylistSheet = true
+            },
+            onRemoveFromPlaylist = onRemoveFromPlaylist?.let { removeCb ->
+                {
+                    showMenuSheet = false
+                    removeCb()
+                }
+            },
             onShare = {
                 shareTrack(context, track)
                 showMenuSheet = false
             }
+        )
+    }
+
+    if (showSaveToPlaylistSheet) {
+        SaveToPlaylistBottomSheet(
+            track = track,
+            onDismiss = { showSaveToPlaylistSheet = false }
         )
     }
 }
@@ -276,6 +295,8 @@ private fun TrackMenuBottomSheet(
     onPlayNext: () -> Unit,
     onToggleLike: () -> Unit,
     onToggleDownload: () -> Unit,
+    onSaveToPlaylist: () -> Unit,
+    onRemoveFromPlaylist: (() -> Unit)? = null,
     onShare: () -> Unit
 ) {
     ModalBottomSheet(
@@ -350,13 +371,25 @@ private fun TrackMenuBottomSheet(
                 onClick = onPlayNext
             )
             TrackMenuItem(
-                icon = if (isLiked) YtmIcons.CheckCircle24 else YtmIcons.PlaylistAdd24,
-                label = if (isLiked) "Saved to library" else "Save to library",
+                icon = if (isLiked) YtmIcons.CheckCircle24 else YtmIcons.ThumbUpOutline,
+                label = if (isLiked) "Remove from Liked music" else "Add to Liked music",
                 onClick = {
                     onToggleLike()
                     onDismiss()
                 }
             )
+            TrackMenuItem(
+                icon = YtmIcons.PlaylistAdd24,
+                label = "Save to playlist",
+                onClick = onSaveToPlaylist
+            )
+            if (onRemoveFromPlaylist != null) {
+                TrackMenuItem(
+                    icon = YtmIcons.CloseX24,
+                    label = "Remove from playlist",
+                    onClick = onRemoveFromPlaylist
+                )
+            }
             TrackMenuItem(
                 icon = if (isDownloaded) YtmIcons.Downloaded24 else YtmIcons.Download24,
                 label = when {

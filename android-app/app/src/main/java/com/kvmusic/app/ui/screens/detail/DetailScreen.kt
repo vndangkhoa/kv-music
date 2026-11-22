@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +28,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,13 +36,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.MusicRepository
+import com.kvmusic.app.data.repository.PlaylistManager
 import com.kvmusic.app.player.AudioCacheManager
 import com.kvmusic.app.player.PlayerManager
+import com.kvmusic.app.ui.components.CreatePlaylistDialog
 import com.kvmusic.app.ui.components.TrackListItem
 import com.kvmusic.app.ui.components.YtmIcons
 import com.kvmusic.app.ui.theme.*
-import org.json.JSONArray
-import org.json.JSONObject
+import kotlinx.coroutines.launch
 
 @Composable
 fun DetailScreen(
@@ -53,16 +57,36 @@ fun DetailScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     var tracks by remember { mutableStateOf<List<Track>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showInlineSearch by remember { mutableStateOf(false) }
     var filterQuery by remember { mutableStateOf("") }
     var showOverflowMenu by remember { mutableStateOf(false) }
 
+    var showAddSongsPanel by remember(id) { mutableStateOf(false) }
+    var addSongQuery by remember(id) { mutableStateOf("") }
+    var addSongResults by remember(id) { mutableStateOf<List<Track>>(emptyList()) }
+    var isSearchingAddSongs by remember(id) { mutableStateOf(false) }
+    var showRenameDialog by remember { mutableStateOf(false) }
+
     val likedIds by PlayerManager.likedTrackIds.collectAsState()
     val downloadedIds by PlayerManager.downloadedTrackIds.collectAsState()
+    val localPlaylists by PlaylistManager.playlists.collectAsState()
+    val localPlaylist = remember(localPlaylists, id) { localPlaylists.firstOrNull { it.id == id } }
+    val isLocalUserPlaylist = localPlaylist != null
 
-    LaunchedEffect(id, title, type) {
+    val displayTitle = localPlaylist?.name ?: title
+    val displayCover = localPlaylist?.coverUrl?.takeIf { it.isNotBlank() }
+        ?: localPlaylist?.tracks?.firstOrNull()?.coverUrl?.takeIf { it.isNotBlank() }
+        ?: coverUrl
+
+    LaunchedEffect(id, title, type, localPlaylist) {
+        if (localPlaylist != null) {
+            tracks = localPlaylist.tracks
+            isLoading = false
+            return@LaunchedEffect
+        }
         isLoading = true
         val query = title.ifEmpty { id }
         val res = musicRepo.search(query)
@@ -89,8 +113,9 @@ fun DetailScreen(
         }
     }
 
-    val isArtist = type.equals("artist", ignoreCase = true)
+    val isArtist = !isLocalUserPlaylist && type.equals("artist", ignoreCase = true)
     val typeLabel = when {
+        isLocalUserPlaylist -> "Your playlist"
         isArtist -> "Artist"
         type.equals("album", ignoreCase = true) -> "Album"
         else -> "Playlist"
@@ -99,7 +124,7 @@ fun DetailScreen(
         if (subtitle.isNotBlank() && isArtist) {
             "$typeLabel • $subtitle • ${tracks.size} songs"
         } else {
-            "$typeLabel • ${tracks.size} songs"
+            "$typeLabel • ${tracks.size} ${if (tracks.size == 1) "song" else "songs"}"
         }
     }
     val allDownloaded = tracks.isNotEmpty() && tracks.all { downloadedIds.contains(it.id) }
@@ -107,48 +132,35 @@ fun DetailScreen(
     fun shareEntity() {
         val shareUrl = "https://sp.khoavo.myds.me/track/${id}"
         val sendIntent = Intent(Intent.ACTION_SEND).apply {
-            putExtra(Intent.EXTRA_TEXT, "Check out '$title' on KV Music:\n$shareUrl")
+            putExtra(Intent.EXTRA_TEXT, "Check out '$displayTitle' on KV Music:\n$shareUrl")
             setType("text/plain")
         }
         context.startActivity(Intent.createChooser(sendIntent, "Share $typeLabel"))
     }
 
     fun saveToLibraryPlaylist() {
-        try {
-            val prefs = context.getSharedPreferences("kv_music_playlists", Context.MODE_PRIVATE)
-            val existing = prefs.getString("saved_playlists_json", null)
-            val arr = if (existing != null) JSONArray(existing) else JSONArray()
-            val tArr = JSONArray()
-            tracks.forEach { tr ->
-                tArr.put(
-                    JSONObject().apply {
-                        put("id", tr.id)
-                        put("title", tr.title)
-                        put("artist", tr.artist)
-                        put("album", tr.album)
-                        put("duration", tr.duration)
-                        put("cover_url", tr.coverUrl)
-                        put("url", tr.url)
-                    }
-                )
+        val saved = PlaylistManager.saveExternalPlaylist(
+            id = id,
+            name = title,
+            coverUrl = coverUrl,
+            tracks = tracks
+        )
+        Toast.makeText(context, "Saved '${saved.name}' to Library", Toast.LENGTH_SHORT).show()
+    }
+
+    fun searchSongsToAdd() {
+        val q = addSongQuery.trim()
+        if (q.isEmpty() || isSearchingAddSongs) return
+        coroutineScope.launch {
+            isSearchingAddSongs = true
+            val res = musicRepo.search(q)
+            val songs = res.getOrDefault(emptyList())
+            addSongResults = if (songs.isNotEmpty()) {
+                songs.take(15)
+            } else {
+                musicRepo.universalSearch(q).getOrNull()?.songs?.take(15) ?: emptyList()
             }
-            val newObj = JSONObject().apply {
-                put("id", id.ifBlank { title })
-                put("name", title)
-                put("cover_url", coverUrl)
-                put("tracks", tArr)
-            }
-            val nextArr = JSONArray().apply {
-                put(newObj)
-                for (i in 0 until arr.length()) {
-                    val item = arr.getJSONObject(i)
-                    if (item.optString("name") != title) put(item)
-                }
-            }
-            prefs.edit().putString("saved_playlists_json", nextArr.toString()).apply()
-            Toast.makeText(context, "Saved '$title' to Library", Toast.LENGTH_SHORT).show()
-        } catch (_: Exception) {
-            Toast.makeText(context, "Could not save playlist", Toast.LENGTH_SHORT).show()
+            isSearchingAddSongs = false
         }
     }
 
@@ -298,13 +310,39 @@ fun DetailScreen(
                                                     shuffled.firstOrNull()?.let { PlayerManager.playTrack(it, shuffled) }
                                                 }
                                             )
-                                            DropdownMenuItem(
-                                                text = { Text("Save to Library", color = YtmWhite) },
-                                                onClick = {
-                                                    showOverflowMenu = false
-                                                    saveToLibraryPlaylist()
-                                                }
-                                            )
+                                            if (isLocalUserPlaylist && localPlaylist != null) {
+                                                DropdownMenuItem(
+                                                    text = { Text(if (showAddSongsPanel) "Hide add songs" else "Add songs", color = YtmWhite) },
+                                                    onClick = {
+                                                        showOverflowMenu = false
+                                                        showAddSongsPanel = !showAddSongsPanel
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Rename playlist", color = YtmWhite) },
+                                                    onClick = {
+                                                        showOverflowMenu = false
+                                                        showRenameDialog = true
+                                                    }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Delete playlist", color = YtmRedAccent) },
+                                                    onClick = {
+                                                        showOverflowMenu = false
+                                                        PlaylistManager.deletePlaylist(localPlaylist.id)
+                                                        Toast.makeText(context, "Deleted '${localPlaylist.name}'", Toast.LENGTH_SHORT).show()
+                                                        onBack()
+                                                    }
+                                                )
+                                            } else {
+                                                DropdownMenuItem(
+                                                    text = { Text("Save to Library", color = YtmWhite) },
+                                                    onClick = {
+                                                        showOverflowMenu = false
+                                                        saveToLibraryPlaylist()
+                                                    }
+                                                )
+                                            }
                                             DropdownMenuItem(
                                                 text = { Text("Share", color = YtmWhite) },
                                                 onClick = {
@@ -337,7 +375,7 @@ fun DetailScreen(
                                     Spacer(modifier = Modifier.width(10.dp))
                                     Box(modifier = Modifier.weight(1f)) {
                                         if (filterQuery.isEmpty()) {
-                                            Text("Search in $title", fontSize = 14.sp, color = YtmWhite67)
+                                            Text("Search in $displayTitle", fontSize = 14.sp, color = YtmWhite67)
                                         }
                                         BasicTextField(
                                             value = filterQuery,
@@ -367,21 +405,35 @@ fun DetailScreen(
                             Spacer(modifier = Modifier.height(10.dp))
 
                             // Centered 200.dp x 200.dp artwork
-                            AsyncImage(
-                                model = coverUrl,
-                                contentDescription = title,
-                                contentScale = ContentScale.Crop,
+                            Box(
                                 modifier = Modifier
                                     .size(200.dp)
                                     .clip(if (isArtist) CircleShape else RoundedCornerShape(8.dp))
-                                    .background(YtmGrey10)
-                            )
+                                    .background(YtmGrey10),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (displayCover.isNotBlank()) {
+                                    AsyncImage(
+                                        model = displayCover,
+                                        contentDescription = displayTitle,
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = YtmIcons.Mix24,
+                                        contentDescription = displayTitle,
+                                        tint = YtmWhite67,
+                                        modifier = Modifier.size(64.dp)
+                                    )
+                                }
+                            }
 
                             Spacer(modifier = Modifier.height(18.dp))
 
                             // Centered 24.sp YtmEntityHeaderTitle
                             Text(
-                                text = title,
+                                text = displayTitle,
                                 style = YtmEntityHeaderTitle,
                                 textAlign = TextAlign.Center,
                                 maxLines = 2,
@@ -421,8 +473,14 @@ fun DetailScreen(
 
                                 YtmDetailCircleButton(
                                     icon = YtmIcons.PlaylistAdd24,
-                                    contentDescription = "Add to playlist",
-                                    onClick = { saveToLibraryPlaylist() }
+                                    contentDescription = if (isLocalUserPlaylist) "Add songs" else "Add to playlist",
+                                    onClick = {
+                                        if (isLocalUserPlaylist) {
+                                            showAddSongsPanel = !showAddSongsPanel
+                                        } else {
+                                            saveToLibraryPlaylist()
+                                        }
+                                    }
                                 )
 
                                 // Center 56.dp solid YtmWhite circle button with 28.dp YtmPureBlack Play36
@@ -469,6 +527,148 @@ fun DetailScreen(
                     }
                 }
 
+                // Inline "Add songs" panel for user-created playlists
+                if (isLocalUserPlaylist && localPlaylist != null && (showAddSongsPanel || tracks.isEmpty())) {
+                    item {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(YtmGrey11)
+                                .padding(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Add songs to playlist",
+                                    style = YtmTitle03,
+                                    color = YtmWhite
+                                )
+                                if (tracks.isNotEmpty()) {
+                                    TextButton(onClick = { showAddSongsPanel = false }) {
+                                        Text("Done", color = YtmWhite67, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(40.dp)
+                                        .clip(RoundedCornerShape(20.dp))
+                                        .background(YtmGrey13)
+                                        .padding(horizontal = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = YtmIcons.SearchOutline,
+                                        contentDescription = null,
+                                        tint = YtmWhite67,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        if (addSongQuery.isEmpty()) {
+                                            Text("Search songs or artists...", fontSize = 14.sp, color = YtmWhite67)
+                                        }
+                                        BasicTextField(
+                                            value = addSongQuery,
+                                            onValueChange = { addSongQuery = it },
+                                            singleLine = true,
+                                            textStyle = TextStyle(fontSize = 14.sp, color = YtmWhite),
+                                            cursorBrush = SolidColor(YtmWhite),
+                                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                                            keyboardActions = KeyboardActions(onSearch = { searchSongsToAdd() }),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Button(
+                                    onClick = { searchSongsToAdd() },
+                                    enabled = addSongQuery.trim().isNotEmpty() && !isSearchingAddSongs,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = YtmWhite,
+                                        contentColor = YtmPureBlack
+                                    ),
+                                    shape = RoundedCornerShape(20.dp),
+                                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                                    modifier = Modifier.height(40.dp)
+                                ) {
+                                    Text(if (isSearchingAddSongs) "..." else "Search", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+
+                            if (addSongResults.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                addSongResults.forEach { candidate ->
+                                    val alreadyIn = localPlaylist.tracks.any { it.id == candidate.id }
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = candidate.coverUrl,
+                                            contentDescription = candidate.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(44.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(YtmGrey10)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = candidate.title,
+                                                style = YtmTitle02,
+                                                color = YtmWhite,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = candidate.artist,
+                                                style = YtmSubtitle01,
+                                                color = YtmWhite67,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Button(
+                                            onClick = {
+                                                if (!alreadyIn) {
+                                                    PlaylistManager.addTrack(localPlaylist.id, candidate)
+                                                    Toast.makeText(context, "Added '${candidate.title}'", Toast.LENGTH_SHORT).show()
+                                                }
+                                            },
+                                            enabled = !alreadyIn,
+                                            colors = ButtonDefaults.buttonColors(
+                                                containerColor = if (alreadyIn) YtmWhite10 else YtmWhite,
+                                                contentColor = if (alreadyIn) YtmWhite67 else YtmPureBlack
+                                            ),
+                                            shape = RoundedCornerShape(18.dp),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(34.dp)
+                                        ) {
+                                            Text(if (alreadyIn) "Added" else "Add", fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Tracklist rendered with TrackListItem (rankNumber = index + 1)
                 if (filteredTracks.isEmpty()) {
                     item {
@@ -479,7 +679,11 @@ fun DetailScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (filterQuery.isNotBlank()) "No matching tracks" else "No tracks found",
+                                text = when {
+                                    filterQuery.isNotBlank() -> "No matching tracks"
+                                    isLocalUserPlaylist -> "Search above to add songs to this playlist."
+                                    else -> "No tracks found"
+                                },
                                 style = YtmSubtitle01
                             )
                         }
@@ -491,12 +695,34 @@ fun DetailScreen(
                             rankNumber = index + 1,
                             onTrackClick = { PlayerManager.playTrack(track, filteredTracks) },
                             isLiked = likedIds.contains(track.id),
-                            onLikeClick = { PlayerManager.toggleLike(track.id) }
+                            onLikeClick = { PlayerManager.toggleLike(track.id) },
+                            onRemoveFromPlaylist = if (isLocalUserPlaylist && localPlaylist != null) {
+                                {
+                                    PlaylistManager.removeTrack(localPlaylist.id, track.id)
+                                    Toast.makeText(context, "Removed '${track.title}'", Toast.LENGTH_SHORT).show()
+                                }
+                            } else {
+                                null
+                            }
                         )
                     }
                 }
             }
         }
+    }
+
+    if (showRenameDialog && localPlaylist != null) {
+        CreatePlaylistDialog(
+            title = "Rename playlist",
+            initialName = localPlaylist.name,
+            confirmLabel = "Save",
+            onDismiss = { showRenameDialog = false },
+            onConfirm = { nextName ->
+                PlaylistManager.renamePlaylist(localPlaylist.id, nextName)
+                showRenameDialog = false
+                Toast.makeText(context, "Renamed to '$nextName'", Toast.LENGTH_SHORT).show()
+            }
+        )
     }
 }
 

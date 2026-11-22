@@ -1,7 +1,6 @@
 package com.kvmusic.app.ui.screens.library
 
-import android.content.Context
-import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,13 +31,12 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.kvmusic.app.data.model.Track
 import com.kvmusic.app.data.repository.AuthRepository
+import com.kvmusic.app.data.repository.PlaylistManager
 import com.kvmusic.app.player.PlayerManager
+import com.kvmusic.app.ui.components.CreatePlaylistDialog
 import com.kvmusic.app.ui.components.TrackListItem
 import com.kvmusic.app.ui.components.YtmIcons
 import com.kvmusic.app.ui.theme.*
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.UUID
 
 private val libraryFilterChips = listOf(
     "Playlists",
@@ -52,87 +50,6 @@ private enum class LibrarySortMode(val label: String) {
     RECENT_ACTIVITY("Recent activity"),
     TITLE_AZ("A–Z"),
     ARTIST_AZ("Artist")
-}
-
-private data class LocalUserPlaylist(
-    val id: String,
-    val name: String,
-    val coverUrl: String,
-    val tracks: List<Track>
-)
-
-private const val PLAYLIST_PREFS_NAME = "kv_music_playlists"
-private const val PLAYLIST_PREFS_KEY = "saved_playlists_json"
-
-private fun loadLocalPlaylists(context: Context): List<LocalUserPlaylist> {
-    return try {
-        val raw = context.getSharedPreferences(PLAYLIST_PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(PLAYLIST_PREFS_KEY, null) ?: return emptyList()
-        val arr = JSONArray(raw)
-        buildList {
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val tracksArr = obj.optJSONArray("tracks") ?: JSONArray()
-                val tracks = buildList {
-                    for (j in 0 until tracksArr.length()) {
-                        val t = tracksArr.getJSONObject(j)
-                        add(
-                            Track(
-                                id = t.optString("id"),
-                                title = t.optString("title"),
-                                artist = t.optString("artist"),
-                                album = t.optString("album"),
-                                duration = t.optInt("duration", 0),
-                                coverUrl = t.optString("cover_url"),
-                                url = t.optString("url")
-                            )
-                        )
-                    }
-                }
-                add(
-                    LocalUserPlaylist(
-                        id = obj.optString("id"),
-                        name = obj.optString("name"),
-                        coverUrl = obj.optString("cover_url"),
-                        tracks = tracks
-                    )
-                )
-            }
-        }
-    } catch (_: Exception) {
-        emptyList()
-    }
-}
-
-private fun saveLocalPlaylists(context: Context, playlists: List<LocalUserPlaylist>) {
-    val arr = JSONArray()
-    playlists.forEach { pl ->
-        val obj = JSONObject().apply {
-            put("id", pl.id)
-            put("name", pl.name)
-            put("cover_url", pl.coverUrl)
-            val tArr = JSONArray()
-            pl.tracks.forEach { tr ->
-                tArr.put(
-                    JSONObject().apply {
-                        put("id", tr.id)
-                        put("title", tr.title)
-                        put("artist", tr.artist)
-                        put("album", tr.album)
-                        put("duration", tr.duration)
-                        put("cover_url", tr.coverUrl)
-                        put("url", tr.url)
-                    }
-                )
-            }
-            put("tracks", tArr)
-        }
-        arr.put(obj)
-    }
-    context.getSharedPreferences(PLAYLIST_PREFS_NAME, Context.MODE_PRIVATE)
-        .edit()
-        .putString(PLAYLIST_PREFS_KEY, arr.toString())
-        .apply()
 }
 
 @Composable
@@ -157,26 +74,23 @@ fun LibraryScreen(
     var activeFilter by remember { mutableStateOf<String?>(null) }
     var sortMode by remember { mutableStateOf(LibrarySortMode.RECENT_ACTIVITY) }
     var showCreatePlaylistDialog by remember { mutableStateOf(false) }
-    var newPlaylistName by remember { mutableStateOf("") }
     var showInlineFilter by remember { mutableStateOf(false) }
     var inlineFilterQuery by remember { mutableStateOf("") }
     var showLikedCollectionOnly by remember { mutableStateOf(false) }
     var showScopeMenu by remember { mutableStateOf(false) }
 
-    var userPlaylists by remember { mutableStateOf(loadLocalPlaylists(context)) }
+    val userPlaylists by PlaylistManager.playlists.collectAsState()
 
-    // Sync playlists whenever SharedPreferences changes (e.g. saved from DetailScreen)
-    DisposableEffect(context) {
-        val prefs = context.getSharedPreferences(PLAYLIST_PREFS_NAME, Context.MODE_PRIVATE)
-        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
-            if (key == PLAYLIST_PREFS_KEY) {
-                userPlaylists = loadLocalPlaylists(context)
-            }
+    val displayedPlaylists = remember(userPlaylists, sortMode, inlineFilterQuery) {
+        val filtered = if (inlineFilterQuery.isBlank()) {
+            userPlaylists
+        } else {
+            val q = inlineFilterQuery.trim()
+            userPlaylists.filter { it.name.contains(q, ignoreCase = true) }
         }
-        prefs.registerOnSharedPreferenceChangeListener(listener)
-        userPlaylists = loadLocalPlaylists(context)
-        onDispose {
-            prefs.unregisterOnSharedPreferenceChangeListener(listener)
+        when (sortMode) {
+            LibrarySortMode.RECENT_ACTIVITY -> filtered
+            LibrarySortMode.TITLE_AZ, LibrarySortMode.ARTIST_AZ -> filtered.sortedBy { it.name.lowercase() }
         }
     }
 
@@ -600,21 +514,17 @@ fun LibraryScreen(
                     }
 
                     // User-created & saved playlists
-                    items(userPlaylists) { playlist ->
+                    items(displayedPlaylists) { playlist ->
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable {
-                                    if (playlist.tracks.isNotEmpty()) {
-                                        PlayerManager.playTrack(playlist.tracks.first(), playlist.tracks)
-                                    } else {
-                                        onPlaylistClick(
-                                            playlist.id,
-                                            playlist.name,
-                                            playlist.coverUrl,
-                                            "Playlist"
-                                        )
-                                    }
+                                    onPlaylistClick(
+                                        playlist.id,
+                                        playlist.name,
+                                        playlist.coverUrl,
+                                        "Your playlist"
+                                    )
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
@@ -626,9 +536,12 @@ fun LibraryScreen(
                                     .background(YtmGrey10),
                                 contentAlignment = Alignment.Center
                             ) {
-                                if (playlist.coverUrl.isNotBlank()) {
+                                val cover = playlist.coverUrl.ifBlank {
+                                    playlist.tracks.firstOrNull()?.coverUrl.orEmpty()
+                                }
+                                if (cover.isNotBlank()) {
                                     AsyncImage(
-                                        model = playlist.coverUrl,
+                                        model = cover,
                                         contentDescription = playlist.name,
                                         contentScale = ContentScale.Crop,
                                         modifier = Modifier.fillMaxSize()
@@ -655,19 +568,34 @@ fun LibraryScreen(
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Spacer(modifier = Modifier.height(2.dp))
+                                val count = playlist.tracks.size
                                 Text(
-                                    text = "Playlist • ${playlist.tracks.size} songs",
+                                    text = "Playlist • $count ${if (count == 1) "song" else "songs"}",
                                     fontSize = 13.sp,
                                     color = YtmWhite67,
                                     maxLines = 1
                                 )
                             }
 
+                            if (playlist.tracks.isNotEmpty()) {
+                                IconButton(
+                                    onClick = {
+                                        PlayerManager.playTrack(playlist.tracks.first(), playlist.tracks)
+                                    }
+                                ) {
+                                    Icon(
+                                        imageVector = YtmIcons.PlayCircle24,
+                                        contentDescription = "Play ${playlist.name}",
+                                        tint = YtmWhite,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
+                            }
+
                             IconButton(
                                 onClick = {
-                                    val updated = userPlaylists.filterNot { it.id == playlist.id }
-                                    userPlaylists = updated
-                                    saveLocalPlaylists(context, updated)
+                                    PlaylistManager.deletePlaylist(playlist.id)
+                                    Toast.makeText(context, "Deleted '${playlist.name}'", Toast.LENGTH_SHORT).show()
                                 }
                             ) {
                                 Icon(
@@ -681,7 +609,7 @@ fun LibraryScreen(
                     }
 
                     // New playlist quick row
-                    if (activeFilter == "Playlists") {
+                    if (activeFilter == null || activeFilter == "Playlists") {
                         item {
                             Row(
                                 modifier = Modifier
@@ -920,72 +848,16 @@ fun LibraryScreen(
     }
 
     if (showCreatePlaylistDialog) {
-        AlertDialog(
-            onDismissRequest = {
-                showCreatePlaylistDialog = false
-                newPlaylistName = ""
-            },
-            containerColor = YtmGrey12,
-            titleContentColor = YtmWhite,
-            textContentColor = YtmWhite67,
-            title = {
-                Text("New playlist", style = YtmTitle03)
-            },
-            text = {
-                OutlinedTextField(
-                    value = newPlaylistName,
-                    onValueChange = { newPlaylistName = it },
-                    label = { Text("Playlist title") },
-                    singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = YtmWhite,
-                        unfocusedBorderColor = YtmWhite20,
-                        focusedContainerColor = YtmGrey13,
-                        unfocusedContainerColor = YtmGrey13,
-                        focusedTextColor = YtmWhite,
-                        unfocusedTextColor = YtmWhite,
-                        focusedLabelColor = YtmWhite,
-                        unfocusedLabelColor = YtmWhite67,
-                        cursorColor = YtmWhite
-                    ),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        val trimmed = newPlaylistName.trim()
-                        if (trimmed.isNotEmpty()) {
-                            val created = LocalUserPlaylist(
-                                id = UUID.randomUUID().toString(),
-                                name = trimmed,
-                                coverUrl = currentTrack?.coverUrl.orEmpty(),
-                                tracks = currentTrack?.let { listOf(it) } ?: emptyList()
-                            )
-                            val updated = listOf(created) + userPlaylists
-                            userPlaylists = updated
-                            saveLocalPlaylists(context, updated)
-                            newPlaylistName = ""
-                            showCreatePlaylistDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = YtmWhite,
-                        contentColor = YtmPureBlack
-                    ),
-                    shape = RoundedCornerShape(20.dp)
-                ) {
-                    Text("Create", fontWeight = FontWeight.Medium)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = {
-                        showCreatePlaylistDialog = false
-                        newPlaylistName = ""
-                    }
-                ) {
-                    Text("Cancel", color = YtmWhite67)
+        CreatePlaylistDialog(
+            title = "New playlist",
+            confirmLabel = "Create",
+            onDismiss = { showCreatePlaylistDialog = false },
+            onConfirm = { trimmed ->
+                if (trimmed.isNotEmpty()) {
+                    val created = PlaylistManager.createPlaylist(trimmed)
+                    showCreatePlaylistDialog = false
+                    Toast.makeText(context, "Created '${created.name}'", Toast.LENGTH_SHORT).show()
+                    onPlaylistClick(created.id, created.name, created.coverUrl, "Your playlist")
                 }
             }
         )
