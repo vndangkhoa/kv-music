@@ -39,7 +39,14 @@ class KVMusicApp : Application(), ImageLoaderFactory {
         appIoScope.launch {
             runCatching { AudioCacheManager.getCache(this@KVMusicApp) }
             RetrofitClient.prewarmConnection()
-            authRepository.getSavedToken()?.let { PlaylistManager.syncWithServer(it) }
+            if (authRepository.getSavedToken() != null) {
+                val valid = authRepository.restoreSession()
+                if (valid) {
+                    authRepository.getSavedToken()?.let { token ->
+                        PlaylistManager.syncWithServer(token, authRepository.currentUser.value?.id)
+                    }
+                }
+            }
         }
     }
 

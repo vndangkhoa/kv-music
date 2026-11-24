@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { Home, Compass, TrendingUp, Library, Plus, Play, Pin } from 'lucide-react';
+import { Home, Compass, TrendingUp, Library, Plus, Play, Pin, Trash2 } from 'lucide-react';
 import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { libraryService } from '../services/library';
@@ -8,6 +8,7 @@ import { isUserOwnedPlaylist } from '../services/db';
 import { Playlist } from '../types';
 import { toast } from '../stores/toastStore';
 import CreatePlaylistModal from './CreatePlaylistModal';
+import ConfirmDialog from './ConfirmDialog';
 
 export interface YtmGuideSidebarProps {
   collapsed?: boolean;
@@ -21,16 +22,29 @@ const GUIDE_LINKS = [
   { to: '/library', label: 'Library', icon: Library, match: (p: string) => p === '/library' },
 ] as const;
 
+function isViewingPlaylist(pathname: string, playlistId: string): boolean {
+  const encoded = `/playlist/${encodeURIComponent(playlistId)}`;
+  if (pathname === encoded) return true;
+  try {
+    return decodeURIComponent(pathname) === `/playlist/${playlistId}`;
+  } catch {
+    return false;
+  }
+}
+
 export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuideSidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const userPlaylists = useLibraryStore(s => s.userPlaylists);
   const createPlaylist = useLibraryStore(s => s.createPlaylist);
+  const deletePlaylist = useLibraryStore(s => s.deletePlaylist);
   const likedTracksData = usePlayerStore(s => s.likedTracksData);
   const playTrack = usePlayerStore(s => s.playTrack);
   const hasPlayerBar = usePlayerStore(s => Boolean(s.currentTrack));
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Playlist | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const handleCreatePlaylist = async (name: string, description?: string) => {
     try {
@@ -58,6 +72,41 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
       /* fallback to navigating to playlist */
     }
     navigate(`/playlist/${encodeURIComponent(pl.id)}`);
+  };
+
+  const handleRemovePlaylist = async (pl: Playlist) => {
+    const isOwned = isUserOwnedPlaylist(pl);
+    if (isOwned) {
+      setConfirmDelete(pl);
+      return;
+    }
+    try {
+      await deletePlaylist(pl.id);
+      toast(`Removed "${pl.title}" from library`);
+      if (isViewingPlaylist(location.pathname, pl.id)) {
+        navigate('/library');
+      }
+    } catch {
+      toast('Could not remove playlist');
+    }
+  };
+
+  const handleConfirmDeleteOwned = async () => {
+    if (!confirmDelete || deleting) return;
+    const target = confirmDelete;
+    setDeleting(true);
+    try {
+      await deletePlaylist(target.id);
+      toast(`Deleted "${target.title}"`);
+      setConfirmDelete(null);
+      if (isViewingPlaylist(location.pathname, target.id)) {
+        navigate('/library');
+      }
+    } catch {
+      toast('Could not delete playlist');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   return (
@@ -131,13 +180,12 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
 
             <div className="flex-1 min-h-0 overflow-y-auto ytm-scroller px-2 space-y-0.5">
               {/* Pinned Liked Music */}
-              <Link
-                to="/collection/tracks"
+              <div
                 className={`group relative flex items-center justify-between gap-2 h-14 px-4 rounded-[8px] transition-colors ${
                   location.pathname === '/collection/tracks' ? 'bg-white/10' : 'hover:bg-white/10'
                 }`}
               >
-                <div className="min-w-0 flex-1">
+                <Link to="/collection/tracks" className="min-w-0 flex-1 py-1">
                   <p className="text-[14px] font-medium text-white truncate leading-[18px]">
                     Liked Music
                   </p>
@@ -147,39 +195,34 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
                       Auto playlist{likedTracksData.length > 0 ? ` • ${likedTracksData.length}` : ''}
                     </span>
                   </p>
-                </div>
+                </Link>
 
                 {likedTracksData.length > 0 && (
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      playTrack(likedTracksData[0], likedTracksData);
-                    }}
+                    onClick={() => playTrack(likedTracksData[0], likedTracksData)}
                     aria-label="Play Liked Music"
                     className="w-6 h-6 rounded-full bg-white text-[#030303] flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:scale-105 transition shadow"
                   >
                     <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
                   </button>
                 )}
-              </Link>
+              </div>
 
               {/* Saved User & Curated Playlists */}
               {userPlaylists.map((pl) => {
                 const playlistHref = `/playlist/${encodeURIComponent(pl.id)}`;
-                const isActive = location.pathname === playlistHref;
+                const isActive = isViewingPlaylist(location.pathname, pl.id);
                 const isOwned = isUserOwnedPlaylist(pl);
                 const count = pl.tracks?.length || 0;
                 return (
-                  <Link
+                  <div
                     key={pl.id}
-                    to={playlistHref}
-                    className={`group relative flex items-center justify-between gap-2 h-14 px-4 rounded-[8px] transition-colors ${
+                    className={`group relative flex items-center justify-between gap-1.5 h-14 px-4 rounded-[8px] transition-colors ${
                       isActive ? 'bg-white/10' : 'hover:bg-white/10'
                     }`}
                   >
-                    <div className="min-w-0 flex-1">
+                    <Link to={playlistHref} className="min-w-0 flex-1 py-1">
                       <p className="text-[14px] font-medium text-white truncate leading-[18px]">
                         {pl.title}
                       </p>
@@ -188,21 +231,29 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
                           ? `Your playlist • ${count} ${count === 1 ? 'song' : 'songs'}`
                           : 'Playlist • KV Music'}
                       </p>
-                    </div>
+                    </Link>
 
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handlePlayPlaylist(pl);
-                      }}
-                      aria-label={`Play ${pl.title}`}
-                      className="w-6 h-6 rounded-full bg-white text-[#030303] flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:scale-105 transition shadow"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
-                    </button>
-                  </Link>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => void handlePlayPlaylist(pl)}
+                        aria-label={`Play ${pl.title}`}
+                        title={`Play ${pl.title}`}
+                        className="w-6 h-6 rounded-full bg-white text-[#030303] flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 hover:scale-105 transition shadow"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleRemovePlaylist(pl)}
+                        aria-label={isOwned ? `Delete ${pl.title}` : `Remove ${pl.title} from library`}
+                        title={isOwned ? 'Delete playlist' : 'Remove from library'}
+                        className="w-6 h-6 rounded-full text-white/60 hover:text-[#ff4e45] hover:bg-white/10 flex items-center justify-center flex-shrink-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 transition"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
                 );
               })}
             </div>
@@ -214,6 +265,22 @@ export function YtmGuideSidebar({ collapsed = false, onCreatePlaylist }: YtmGuid
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         onCreate={handleCreatePlaylist}
+      />
+
+      <ConfirmDialog
+        isOpen={Boolean(confirmDelete)}
+        title="Delete playlist?"
+        message={
+          confirmDelete
+            ? `Permanently delete "${confirmDelete.title}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={handleConfirmDeleteOwned}
+        onCancel={() => {
+          if (!deleting) setConfirmDelete(null);
+        }}
       />
     </>
   );

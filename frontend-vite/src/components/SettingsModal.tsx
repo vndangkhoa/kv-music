@@ -26,6 +26,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     const currentUser = useAuthStore(s => s.user);
     const generatePairCode = useAuthStore(s => s.generatePairCode);
     const linkPairCode = useAuthStore(s => s.linkPairCode);
+    const openAuthModal = useAuthStore(s => s.openAuthModal);
 
     const [isUpdating, setIsUpdating] = useState(false);
     const [updateLog, setUpdateLog] = useState<string>('');
@@ -318,22 +319,49 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="bg-[#181818] p-4 rounded-xl border border-white/5 text-center flex flex-col items-center justify-center">
-                                <p className="text-[11px] text-neutral-400 font-bold mb-1">Your Device Pair Code</p>
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className="text-2xl font-black text-[#ff5500] tracking-widest">{currentUser?.pairCode || 'KV-849201'}</span>
-                                    <button
-                                        onClick={handleCopyPairCode}
-                                        className="p-1.5 rounded-lg bg-white/5 text-[#ff5500] hover:bg-white/10 transition"
-                                    >
-                                        {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-                                    </button>
-                                </div>
-                                <button
-                                    onClick={handleGeneratePairCode}
-                                    className="text-[11px] font-bold text-[#ff5500] hover:underline"
-                                >
-                                    Generate New Code
-                                </button>
+                                {currentUser ? (
+                                    <>
+                                        <p className="text-[11px] text-neutral-400 font-bold mb-1">Your Device Pair Code</p>
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <span className="text-2xl font-black text-[#ff5500] tracking-widest">
+                                                {currentUser.pairCode || '------'}
+                                            </span>
+                                            {currentUser.pairCode && (
+                                                <button
+                                                    type="button"
+                                                    onClick={handleCopyPairCode}
+                                                    aria-label="Copy pair code"
+                                                    className="p-1.5 rounded-lg bg-white/5 text-[#ff5500] hover:bg-white/10 transition"
+                                                >
+                                                    {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
+                                                </button>
+                                            )}
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={handleGeneratePairCode}
+                                            className="text-[11px] font-bold text-[#ff5500] hover:underline"
+                                        >
+                                            Generate New Code
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <p className="text-xs font-semibold text-neutral-300 mb-2">
+                                            Sign in to get a pair code
+                                        </p>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                onClose();
+                                                openAuthModal('login');
+                                            }}
+                                            className="px-4 py-2 rounded-lg bg-[#ff5500] hover:bg-[#ff7a00] text-white text-xs font-bold transition"
+                                        >
+                                            Sign in / Create account
+                                        </button>
+                                    </>
+                                )}
                             </div>
 
                             <form onSubmit={handleLinkPairCodeSubmit} className="bg-[#181818] p-4 rounded-xl border border-white/5 space-y-2">
@@ -618,7 +646,7 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
                 {/* Footer */}
                 <div className="p-4 border-t border-white/10 bg-[#121212] text-center">
-                    <p className="text-[11px] font-extrabold text-[#ff5500]">KV Music PRO • v1.2.4</p>
+                    <p className="text-[11px] font-extrabold text-[#ff5500]">KV Music PRO • v1.2.11</p>
                     <p className="text-[10px] text-neutral-400 mt-0.5">Hi-Res Audio &amp; Synced Lyrics Engine</p>
                 </div>
             </div>

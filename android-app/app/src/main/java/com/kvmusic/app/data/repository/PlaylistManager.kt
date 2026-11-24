@@ -33,6 +33,9 @@ object PlaylistManager {
     private const val TAG = "PlaylistManager"
     private const val PREFS_NAME = "kv_music_playlists"
     private const val PREFS_KEY = "saved_playlists_json"
+    private const val KEY_LAST_SYNCED_USER_ID = "last_synced_user_id"
+    private const val KEY_PENDING_DELETED_IDS = "pending_deleted_ids"
+    private const val KEY_HAS_PENDING_CHANGES = "has_pending_changes"
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var prefs: SharedPreferences? = null
@@ -55,6 +58,64 @@ object PlaylistManager {
     @Synchronized
     fun attachAuth(authRepo: AuthRepository) {
         authRepository = authRepo
+    }
+
+    @Synchronized
+    fun clearForLogout() {
+        _playlists.value = emptyList()
+        prefs?.edit()
+            ?.remove(PREFS_KEY)
+            ?.remove(KEY_LAST_SYNCED_USER_ID)
+            ?.remove(KEY_PENDING_DELETED_IDS)
+            ?.remove(KEY_HAS_PENDING_CHANGES)
+            ?.apply()
+    }
+
+    private fun isLegacySystemPlaylistId(id: String): Boolean = id.startsWith("playlist-system-")
+
+    private fun isDemoTrack(id: String, title: String): Boolean {
+        return id.matches(Regex("^fb-\\d+$")) || title.trim().endsWith("(Demo)", ignoreCase = true)
+    }
+
+    private fun loadLastSyncedUserId(): String? {
+        return prefs?.getString(KEY_LAST_SYNCED_USER_ID, null)?.takeIf { it.isNotBlank() }
+    }
+
+    private fun saveLastSyncedUserId(userId: String?) {
+        val editor = prefs?.edit() ?: return
+        if (userId.isNullOrBlank()) {
+            editor.remove(KEY_LAST_SYNCED_USER_ID)
+        } else {
+            editor.putString(KEY_LAST_SYNCED_USER_ID, userId)
+        }
+        editor.apply()
+    }
+
+    private fun loadPendingDeletedIds(): List<String> {
+        val raw = prefs?.getString(KEY_PENDING_DELETED_IDS, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            buildList {
+                for (i in 0 until arr.length()) {
+                    val v = arr.optString(i).trim()
+                    if (v.isNotEmpty() && !contains(v)) add(v)
+                }
+            }
+        }.getOrElse { emptyList() }
+    }
+
+    private fun savePendingDeletedIds(ids: List<String>) {
+        val arr = JSONArray()
+        ids.distinct().forEach { if (it.isNotBlank()) arr.put(it) }
+        prefs?.edit()?.putString(KEY_PENDING_DELETED_IDS, arr.toString())?.apply()
+    }
+
+    private fun hasPendingChanges(): Boolean {
+        return prefs?.getBoolean(KEY_HAS_PENDING_CHANGES, false) ?: false
+    }
+
+    private fun setHasPendingChanges(value: Boolean) {
+        prefs?.edit()?.putBoolean(KEY_HAS_PENDING_CHANGES, value)?.apply()
     }
 
     private fun loadFromPrefs(): List<UserPlaylist> {
@@ -113,17 +174,18 @@ object PlaylistManager {
                 val obj = arr.optJSONObject(i) ?: continue
                 val id = obj.optString("id").trim()
                 val name = obj.optString("name").ifBlank { obj.optString("title") }.trim()
-                if (id.isEmpty() || name.isEmpty()) continue
+                if (id.isEmpty() || name.isEmpty() || isLegacySystemPlaylistId(id)) continue
                 val tracksArr = obj.optJSONArray("tracks") ?: JSONArray()
                 val tracks = buildList {
                     for (j in 0 until tracksArr.length()) {
                         val t = tracksArr.optJSONObject(j) ?: continue
                         val tid = t.optString("id").trim()
-                        if (tid.isEmpty()) continue
+                        val title = t.optString("title")
+                        if (tid.isEmpty() || isDemoTrack(tid, title)) continue
                         add(
                             Track(
                                 id = tid,
-                                title = t.optString("title"),
+                                title = title,
                                 artist = t.optString("artist"),
                                 album = t.optString("album"),
                                 duration = t.optInt("duration", 0),
@@ -194,6 +256,8 @@ object PlaylistManager {
             createdAt = now,
             updatedAt = now
         )
+        setHasPendingChanges(true)
+        savePendingDeletedIds(loadPendingDeletedIds().filterNot { it == created.id })
         commit(listOf(created) + _playlists.value)
         return created
     }
@@ -214,11 +278,14 @@ object PlaylistManager {
                 pl
             }
         }
+        setHasPendingChanges(true)
         commit(updated)
     }
 
     @Synchronized
     fun deletePlaylist(id: String) {
+        savePendingDeletedIds(loadPendingDeletedIds() + id)
+        setHasPendingChanges(true)
         commit(_playlists.value.filterNot { it.id == id })
     }
 
@@ -241,6 +308,7 @@ object PlaylistManager {
             }
         }
         if (added) {
+            setHasPendingChanges(true)
             commit(updated)
         }
         return added
@@ -251,14 +319,23 @@ object PlaylistManager {
         val now = System.currentTimeMillis()
         val updated = _playlists.value.map { pl ->
             if (pl.id == playlistId) {
+                val removed = pl.tracks.firstOrNull { it.id == trackId }
+                val remaining = pl.tracks.filterNot { it.id == trackId }
+                val nextCover = if (remaining.isEmpty() || (removed != null && removed.coverUrl == pl.coverUrl)) {
+                    remaining.firstOrNull()?.coverUrl.orEmpty()
+                } else {
+                    pl.coverUrl
+                }
                 pl.copy(
-                    tracks = pl.tracks.filterNot { it.id == trackId },
+                    coverUrl = nextCover,
+                    tracks = remaining,
                     updatedAt = now
                 )
             } else {
                 pl
             }
         }
+        setHasPendingChanges(true)
         commit(updated)
     }
 
@@ -302,12 +379,14 @@ object PlaylistManager {
                 updatedAt = now
             )
         }
+        setHasPendingChanges(true)
+        savePendingDeletedIds(loadPendingDeletedIds().filterNot { it == saved.id })
         val next = listOf(saved) + _playlists.value.filterNot { it.id == saved.id }
         commit(next)
         return saved
     }
 
-    fun syncWithServer(token: String) {
+    fun syncWithServer(token: String, userId: String? = null) {
         if (token.isBlank()) return
         scope.launch {
             runCatching {
@@ -319,6 +398,10 @@ object PlaylistManager {
                     .build()
 
                 val serverPlaylists = RetrofitClient.getMediaOkHttpClient().newCall(req).execute().use { resp ->
+                    if (resp.code == 401) {
+                        authRepository?.handleUnauthorized()
+                        return@runCatching
+                    }
                     if (!resp.isSuccessful) return@runCatching
                     val bodyStr = resp.body?.string().orEmpty()
                     val json = JSONObject(bodyStr)
@@ -329,16 +412,40 @@ object PlaylistManager {
                 var needsPush = false
                 val merged: List<UserPlaylist>
                 synchronized(this@PlaylistManager) {
-                    val map = LinkedHashMap<String, UserPlaylist>()
-                    serverPlaylists.forEach { map[it.id] = it }
-                    _playlists.value.forEach { local ->
-                        val remote = map[local.id]
-                        if (remote == null || local.updatedAt > remote.updatedAt) {
-                            map[local.id] = local
-                            needsPush = true
+                    val lastSyncedUserId = loadLastSyncedUserId()
+                    val pendingDeleted = loadPendingDeletedIds().toSet()
+                    val pendingChanges = hasPendingChanges()
+
+                    if (lastSyncedUserId != null && userId != null && lastSyncedUserId != userId) {
+                        // Different user: server is authoritative
+                        merged = serverPlaylists.sortedByDescending { it.createdAt }
+                    } else if (lastSyncedUserId == null || pendingChanges || pendingDeleted.isNotEmpty()) {
+                        // Guest -> signed-in, or local changes/deletions pending
+                        val map = LinkedHashMap<String, UserPlaylist>()
+                        serverPlaylists.forEach { sp ->
+                            if (pendingDeleted.contains(sp.id)) {
+                                needsPush = true
+                            } else {
+                                map[sp.id] = sp
+                            }
                         }
+                        _playlists.value.forEach { local ->
+                            if (pendingDeleted.contains(local.id)) return@forEach
+                            val remote = map[local.id]
+                            if (remote == null || local.updatedAt > remote.updatedAt) {
+                                map[local.id] = local
+                                needsPush = true
+                            }
+                        }
+                        merged = map.values.sortedByDescending { it.createdAt }
+                    } else {
+                        // Same user with no pending local changes: server is authoritative
+                        merged = serverPlaylists.sortedByDescending { it.createdAt }
                     }
-                    merged = map.values.sortedByDescending { it.createdAt }
+
+                    savePendingDeletedIds(emptyList())
+                    setHasPendingChanges(false)
+                    saveLastSyncedUserId(userId ?: lastSyncedUserId)
                     commit(merged, pushToServer = false)
                 }
 
@@ -362,7 +469,16 @@ object PlaylistManager {
                 .header("Authorization", "Bearer $token")
                 .put(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
                 .build()
-            RetrofitClient.getMediaOkHttpClient().newCall(req).execute().close()
+            RetrofitClient.getMediaOkHttpClient().newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    synchronized(this@PlaylistManager) {
+                        savePendingDeletedIds(emptyList())
+                        setHasPendingChanges(false)
+                    }
+                } else if (resp.code == 401) {
+                    authRepository?.handleUnauthorized()
+                }
+            }
         }.onFailure { e ->
             Log.d(TAG, "Playlist push failed: ${e.message}")
         }

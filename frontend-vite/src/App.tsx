@@ -36,17 +36,27 @@ function App() {
   const syncPlaylistsFromServer = useLibraryStore(s => s.syncPlaylistsFromServer);
   const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
   const playHistory = usePlayerStore(s => s.playHistory);
-  const authToken = useAuthStore(s => s.token);
+  const verifySession = useAuthStore(s => s.verifySession);
 
   useEffect(() => {
-    refreshLibrary();
-  }, [refreshLibrary]);
-
-  useEffect(() => {
-    if (authToken) {
-      void syncPlaylistsFromServer(authToken);
-    }
-  }, [authToken, syncPlaylistsFromServer]);
+    let cancelled = false;
+    const init = async () => {
+      await refreshLibrary();
+      if (cancelled) return;
+      if (useAuthStore.getState().token) {
+        const valid = await verifySession();
+        if (cancelled || !valid) return;
+        const { token, user } = useAuthStore.getState();
+        if (token) {
+          await syncPlaylistsFromServer(token, user?.id);
+        }
+      }
+    };
+    void init();
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshLibrary, verifySession, syncPlaylistsFromServer]);
 
   useEffect(() => {
     deriveSavedAlbums(playHistory);

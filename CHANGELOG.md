@@ -4,6 +4,14 @@ All notable changes to KV Music will be documented in this file.
 
 ## [Unreleased]
 
+## [1.2.11] / [Docker 1.0.0-31] / [Android 1.2.9] - 2026-11-24
+
+### Fixed
+- **Persistent Account Auth, Session Recovery & Playlist Removal Across Devices (`backend-rust`, `frontend-vite`, `android-app`)**:
+  - **Backend (`auth.rs`, `playlists.rs`, `api.rs`, `main.rs`)**: Fixed `UserRecord.password_hash` persistence (`users.json`), persisted active tokens to `sessions.json` across restarts, added input validation + in-place recovery for legacy accounts missing `password_hash`, accepted both `KV-XXXXXX` and 6-digit pair codes, added `GET /api/auth/me`, `POST /api/user/playlists`, and `DELETE /api/user/playlists/{id}`, and synced `removed_playlist_ids` alongside playlists
+  - **Web (`db.ts`, `authStore.ts`, `libraryStore.ts`, `ConfirmDialog.tsx`, `LoginModal.tsx`, `SoundCloudSidebar.tsx`, `Library.tsx`, `Playlist.tsx`, `Profile.tsx`)**: Purged legacy `playlist-system-*` and `(Demo)` tracks from IndexedDB/storage, enabled creating/editing/deleting personal playlists and removing any curated playlist (with `Restore defaults`), converted auth/confirmation modals to accessible native `<dialog>` elements, added startup session verification, and cleared local playlist state on sign-out to prevent cross-account leaks
+  - **Android (`AuthRepository.kt`, `KVMusicApp.kt`, `PlaylistManager.kt`, `SettingsScreen.kt`, `v1.2.9` / `versionCode = 10`)**: Restored and validated saved auth sessions on app launch, cleared user playlists on sign-out, applied deletion tombstones + server-authoritative sync across devices, surfaced server error details in Settings auth, and purged any legacy demo playlists
+
 ## [1.2.10] / [Docker 1.0.0-30] / [Android 1.2.8] - 2026-11-22
 
 ### Fixed

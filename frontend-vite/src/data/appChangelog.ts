@@ -13,6 +13,15 @@ export interface AppChangelogEntry {
 
 export const APP_CHANGELOG: AppChangelogEntry[] = [
     {
+        version: '1.0.0-31',
+        date: '2026-11-24',
+        highlights: [
+            'Persistent account registration & login sessions across server restarts (plus recovery for legacy accounts)',
+            'Create, edit, delete personal playlists and remove or restore any curated playlist in Sidebar, Library, Profile & Playlist views',
+            'Removed broken legacy demo playlists and added cross-account logout isolation + Web/Android deletion sync',
+        ],
+    },
+    {
         version: '1.0.0-27',
         date: '2026-11-18',
         highlights: [

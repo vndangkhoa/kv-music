@@ -27,6 +27,8 @@ export default function CreatePlaylistModal({
     const dialogRef = useRef<HTMLDialogElement>(null);
     const titleInputRef = useRef<HTMLInputElement>(null);
     const titleId = useId();
+    const titleInputId = useId();
+    const descInputId = useId();
 
     useModalDialog(dialogRef, isOpen, onClose);
 
@@ -73,9 +75,9 @@ export default function CreatePlaylistModal({
         >
             <div className="p-6">
                 <div className="flex items-center justify-between mb-5">
-                    <h2 id={titleId} className="text-lg font-bold tracking-tight text-white">
+                    <h1 id={titleId} className="text-lg font-bold tracking-tight text-white">
                         {heading}
-                    </h2>
+                    </h1>
                     <button
                         type="button"
                         onClick={() => dialogRef.current?.close()}
@@ -88,10 +90,11 @@ export default function CreatePlaylistModal({
 
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <label className="block text-xs font-medium text-white/70 mb-1.5">
+                        <label htmlFor={titleInputId} className="block text-xs font-medium text-white/70 mb-1.5">
                             Title
                         </label>
                         <input
+                            id={titleInputId}
                             ref={titleInputRef}
                             type="text"
                             value={name}
@@ -104,10 +107,11 @@ export default function CreatePlaylistModal({
                     </div>
 
                     <div>
-                        <label className="block text-xs font-medium text-white/70 mb-1.5">
+                        <label htmlFor={descInputId} className="block text-xs font-medium text-white/70 mb-1.5">
                             Description
                         </label>
                         <input
+                            id={descInputId}
                             type="text"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}

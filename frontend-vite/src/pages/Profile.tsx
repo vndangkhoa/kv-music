@@ -1,11 +1,14 @@
 import { useState } from 'react';
-import { Settings, ThumbsUp, ListMusic, History, Link2, Copy, RefreshCw, LogIn } from 'lucide-react';
+import { Settings, ThumbsUp, ListMusic, History, Link2, Copy, RefreshCw, LogIn, UserPlus, Trash2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../stores/authStore';
 import { usePlayerStore } from '../stores/playerStore';
 import { useLibraryStore } from '../stores/libraryStore';
 import TrackRow, { YtmMediaCard } from '../components/TrackRow';
+import ConfirmDialog from '../components/ConfirmDialog';
+import { isUserOwnedPlaylist } from '../services/db';
 import { toast } from '../stores/toastStore';
+import type { Playlist } from '../types';
 
 function getAvatarGradient(avatarColor?: string): string {
   try {
@@ -25,17 +28,53 @@ export default function Profile() {
   const isLoggedIn = useAuthStore(s => s.isLoggedIn);
   const generatePairCode = useAuthStore(s => s.generatePairCode);
   const linkPairCode = useAuthStore(s => s.linkPairCode);
+  const openAuthModal = useAuthStore(s => s.openAuthModal);
   const authError = useAuthStore(s => s.error);
 
   const setIsSettingsOpen = usePlayerStore(s => s.setIsSettingsOpen);
   const likedTracksData = usePlayerStore(s => s.likedTracksData);
   const playHistory = usePlayerStore(s => s.playHistory);
   const userPlaylists = useLibraryStore(s => s.userPlaylists);
+  const deletePlaylist = useLibraryStore(s => s.deletePlaylist);
   const followedArtists = useLibraryStore(s => s.followedArtists);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'likes' | 'playlists' | 'history'>('overview');
   const [pairInput, setPairInput] = useState('');
   const [pairingBusy, setPairingBusy] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Playlist | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const isPairCodeValid = /^(?:KV-)?\d{6}$/i.test(pairInput.trim());
+
+  const handleRemovePlaylist = async (e: React.MouseEvent, playlist: Playlist) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (isUserOwnedPlaylist(playlist)) {
+      setConfirmDelete(playlist);
+      return;
+    }
+    try {
+      await deletePlaylist(playlist.id);
+      toast(`Removed "${playlist.title}" from library`);
+    } catch {
+      toast('Could not remove playlist');
+    }
+  };
+
+  const handleConfirmDeleteOwned = async () => {
+    if (!confirmDelete || deleting) return;
+    const target = confirmDelete;
+    setDeleting(true);
+    try {
+      await deletePlaylist(target.id);
+      toast(`Deleted "${target.title}"`);
+      setConfirmDelete(null);
+    } catch {
+      toast('Could not delete playlist');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const avatarGradient = user ? getAvatarGradient(user.avatarColor) : 'linear-gradient(135deg, #272727, #3f3f46)';
 
@@ -52,9 +91,9 @@ export default function Profile() {
 
   const handleLinkCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    const cleaned = pairInput.trim();
-    if (cleaned.length !== 6) {
-      toast('Enter a 6-digit pairing code');
+    const cleaned = pairInput.trim().toUpperCase();
+    if (!/^(?:KV-)?\d{6}$/.test(cleaned)) {
+      toast('Enter a valid KV-XXXXXX or 6-digit pairing code');
       return;
     }
     setPairingBusy(true);
@@ -64,7 +103,7 @@ export default function Profile() {
       setPairInput('');
       toast('Account linked across devices');
     } else {
-      toast(authError || 'Invalid pairing code');
+      toast(useAuthStore.getState().error || authError || 'Invalid pairing code');
     }
   };
 
@@ -115,16 +154,26 @@ export default function Profile() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex flex-wrap items-center justify-center gap-2.5 flex-shrink-0">
             {!isLoggedIn && (
-              <button
-                type="button"
-                onClick={() => setIsSettingsOpen(true)}
-                className="h-9 px-5 rounded-full bg-white text-[#030303] hover:bg-white/90 text-sm font-medium inline-flex items-center gap-2 transition"
-              >
-                <LogIn className="w-4 h-4" />
-                <span>Sign in</span>
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('login')}
+                  className="h-9 px-5 rounded-full bg-white text-[#030303] hover:bg-white/90 text-sm font-medium inline-flex items-center gap-2 transition"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Sign in</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openAuthModal('register')}
+                  className="h-9 px-5 rounded-full bg-white/10 hover:bg-white/20 border border-white/15 text-white text-sm font-medium inline-flex items-center gap-2 transition"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Create account</span>
+                </button>
+              </>
             )}
             <button
               type="button"
@@ -183,16 +232,17 @@ export default function Profile() {
             <form onSubmit={handleLinkCode} className="flex items-center gap-2">
               <input
                 type="text"
-                inputMode="numeric"
-                maxLength={6}
+                maxLength={9}
                 value={pairInput}
-                onChange={(e) => setPairInput(e.target.value.replace(/\D/g, '').slice(0, 6))}
-                placeholder="Enter 6-digit code"
-                className="w-40 h-9 px-3 rounded-[8px] bg-[#212121] border border-white/15 text-sm font-mono tracking-wider text-white placeholder-white/40 focus:outline-none focus:border-white/40"
+                onChange={(e) =>
+                  setPairInput(e.target.value.toUpperCase().replace(/[^KV0-9-]/g, '').slice(0, 9))
+                }
+                placeholder="KV-849201 or 849201"
+                className="w-44 h-9 px-3 rounded-[8px] bg-[#212121] border border-white/15 text-sm font-mono tracking-wider text-white placeholder-white/40 uppercase focus:outline-none focus:border-white/40"
               />
               <button
                 type="submit"
-                disabled={pairingBusy || pairInput.length !== 6}
+                disabled={pairingBusy || !isPairCodeValid}
                 className="h-9 px-4 rounded-full bg-white text-[#030303] hover:bg-white/90 text-sm font-medium transition disabled:opacity-40"
               >
                 Link
@@ -304,16 +354,38 @@ export default function Profile() {
                 </div>
               ) : (
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-                  {userPlaylists.slice(0, 12).map(playlist => (
-                    <YtmMediaCard
-                      key={playlist.id}
-                      title={playlist.title}
-                      subtitle={`Playlist • ${playlist.tracks?.length || 0} songs`}
-                      imageUrl={playlist.cover_url}
-                      to={`/playlist/${encodeURIComponent(playlist.id)}`}
-                      fallbackText="PL"
-                    />
-                  ))}
+                  {userPlaylists.slice(0, 12).map(playlist => {
+                    const isOwned = isUserOwnedPlaylist(playlist);
+                    return (
+                      <YtmMediaCard
+                        key={playlist.id}
+                        title={playlist.title}
+                        subtitle={
+                          isOwned
+                            ? `Your playlist • ${playlist.tracks?.length || 0} songs`
+                            : `Playlist • ${playlist.tracks?.length || 0} songs`
+                        }
+                        imageUrl={playlist.cover_url}
+                        to={`/playlist/${encodeURIComponent(playlist.id)}`}
+                        fallbackText={playlist.title?.substring(0, 2).toUpperCase() || 'PL'}
+                        topRightSlot={
+                          <button
+                            type="button"
+                            onClick={(e) => void handleRemovePlaylist(e, playlist)}
+                            aria-label={
+                              isOwned
+                                ? `Delete ${playlist.title}`
+                                : `Remove ${playlist.title} from library`
+                            }
+                            title={isOwned ? 'Delete playlist' : 'Remove from library'}
+                            className="w-8 h-8 rounded-full bg-black/75 hover:bg-[#ff4e45] text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        }
+                      />
+                    );
+                  })}
                 </div>
               )}
             </section>
@@ -338,18 +410,47 @@ export default function Profile() {
 
         {/* Tab 3: Playlists */}
         {activeTab === 'playlists' && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
-            {userPlaylists.map(playlist => (
-              <YtmMediaCard
-                key={playlist.id}
-                title={playlist.title}
-                subtitle={`Playlist • ${playlist.tracks?.length || 0} songs`}
-                imageUrl={playlist.cover_url}
-                to={`/playlist/${encodeURIComponent(playlist.id)}`}
-                fallbackText="PL"
-              />
-            ))}
-          </div>
+          userPlaylists.length === 0 ? (
+            <div className="bg-[#181818] border border-white/10 rounded-[12px] p-10 text-center space-y-2">
+              <ListMusic className="w-10 h-10 text-white/30 mx-auto" />
+              <h3 className="text-base font-bold text-white">No playlists in your library</h3>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
+              {userPlaylists.map(playlist => {
+                const isOwned = isUserOwnedPlaylist(playlist);
+                return (
+                  <YtmMediaCard
+                    key={playlist.id}
+                    title={playlist.title}
+                    subtitle={
+                      isOwned
+                        ? `Your playlist • ${playlist.tracks?.length || 0} songs`
+                        : `Playlist • ${playlist.tracks?.length || 0} songs`
+                    }
+                    imageUrl={playlist.cover_url}
+                    to={`/playlist/${encodeURIComponent(playlist.id)}`}
+                    fallbackText={playlist.title?.substring(0, 2).toUpperCase() || 'PL'}
+                    topRightSlot={
+                      <button
+                        type="button"
+                        onClick={(e) => void handleRemovePlaylist(e, playlist)}
+                        aria-label={
+                          isOwned
+                            ? `Delete ${playlist.title}`
+                            : `Remove ${playlist.title} from library`
+                        }
+                        title={isOwned ? 'Delete playlist' : 'Remove from library'}
+                        className="w-8 h-8 rounded-full bg-black/75 hover:bg-[#ff4e45] text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    }
+                  />
+                );
+              })}
+            </div>
+          )
         )}
 
         {/* Tab 4: History */}
@@ -368,6 +469,22 @@ export default function Profile() {
           </div>
         )}
       </div>
+
+      <ConfirmDialog
+        isOpen={Boolean(confirmDelete)}
+        title="Delete playlist?"
+        message={
+          confirmDelete
+            ? `Permanently delete "${confirmDelete.title}"? This action cannot be undone.`
+            : ''
+        }
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={handleConfirmDeleteOwned}
+        onCancel={() => {
+          if (!deleting) setConfirmDelete(null);
+        }}
+      />
     </div>
   );
 }

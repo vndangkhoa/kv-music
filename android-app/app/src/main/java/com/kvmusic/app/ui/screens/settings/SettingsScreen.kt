@@ -503,10 +503,18 @@ fun SettingsScreen(
                                 authError = null
                                 if (isRegisterMode) {
                                     val res = authRepo.register(nameInput, emailInput, passwordInput)
-                                    if (res.isFailure) authError = "Registration failed"
+                                    if (res.isFailure) {
+                                        authError = res.exceptionOrNull()?.message ?: "Registration failed"
+                                    } else {
+                                        passwordInput = ""
+                                    }
                                 } else {
                                     val res = authRepo.login(emailInput, passwordInput)
-                                    if (res.isFailure) authError = "Login failed"
+                                    if (res.isFailure) {
+                                        authError = res.exceptionOrNull()?.message ?: "Login failed"
+                                    } else {
+                                        passwordInput = ""
+                                    }
                                 }
                             }
                         },
@@ -570,7 +578,11 @@ fun SettingsScreen(
                     onClick = {
                         coroutineScope.launch {
                             val res = authRepo.linkPairCode(pairCodeInput)
-                            pairStatusMessage = if (res.isSuccess) "Device paired successfully!" else "Invalid pair code"
+                            pairStatusMessage = if (res.isSuccess) {
+                                "Device paired successfully!"
+                            } else {
+                                res.exceptionOrNull()?.message ?: "Invalid pair code"
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(

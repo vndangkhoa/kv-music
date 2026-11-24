@@ -1,16 +1,20 @@
 import { Link, useNavigate } from 'react-router-dom';
-import { ThumbsUp, Plus, Trash2, Play, Disc3, Users, Clock, Music } from 'lucide-react';
+import { ThumbsUp, Plus, Trash2, Play, Disc3, Users, Clock, Music, RotateCcw, LogIn, UserPlus } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useLibraryStore } from '../stores/libraryStore';
 import { usePlayerStore } from '../stores/playerStore';
+import { useAuthStore } from '../stores/authStore';
 import TrackRow, { YtmMediaCard, YtmDropdown, type YtmDropdownOption } from '../components/TrackRow';
 import ArtistAvatar from '../components/ArtistAvatar';
 import Skeleton from '../components/Skeleton';
+import CreatePlaylistModal from '../components/CreatePlaylistModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { usePagedList } from '../hooks/usePagedList';
 import { isUserOwnedPlaylist } from '../services/db';
 import { libraryService } from '../services/library';
 import { usePullToRefresh } from '../hooks/usePullToRefresh';
 import { toast } from '../stores/toastStore';
+import type { Playlist } from '../types';
 
 type LibraryTabKey = 'all' | 'playlists' | 'liked' | 'albums' | 'artists' | 'recent';
 type SortOrder = 'recent' | 'az';
@@ -25,13 +29,18 @@ export default function Library() {
     const userPlaylists = useLibraryStore(s => s.userPlaylists);
     const followedArtists = useLibraryStore(s => s.followedArtists);
     const savedAlbums = useLibraryStore(s => s.savedAlbums);
+    const removedPlaylistIds = useLibraryStore(s => s.removedPlaylistIds);
     const refreshLibrary = useLibraryStore(s => s.refreshLibrary);
     const createPlaylist = useLibraryStore(s => s.createPlaylist);
     const deletePlaylist = useLibraryStore(s => s.deletePlaylist);
+    const restoreDefaultPlaylists = useLibraryStore(s => s.restoreDefaultPlaylists);
     const hydrateSeedTracks = useLibraryStore(s => s.hydrateSeedTracks);
     const deriveSavedAlbums = useLibraryStore(s => s.deriveSavedAlbums);
     const activeFilter = useLibraryStore(s => s.activeFilter);
     const setActiveFilter = useLibraryStore(s => s.setActiveFilter);
+
+    const isLoggedIn = useAuthStore(s => s.isLoggedIn);
+    const openAuthModal = useAuthStore(s => s.openAuthModal);
 
     const likedTracksData = usePlayerStore(s => s.likedTracksData);
     const playHistory = usePlayerStore(s => s.playHistory);
@@ -40,8 +49,9 @@ export default function Library() {
 
     const [localTab, setLocalTab] = useState<LibraryTabKey>(activeFilter || 'all');
     const [sortBy, setSortBy] = useState<SortOrder>('recent');
-    const [showNewPlaylist, setShowNewPlaylist] = useState(false);
-    const [newPlaylistName, setNewPlaylistName] = useState('');
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [confirmDelete, setConfirmDelete] = useState<Playlist | null>(null);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         if (activeFilter && localTab !== 'recent') {
@@ -67,31 +77,53 @@ export default function Library() {
         }
     };
 
-    const handleDeletePlaylist = async (e: React.MouseEvent, id: string) => {
+    const handleRemovePlaylist = async (e: React.MouseEvent, playlist: Playlist) => {
         e.preventDefault();
         e.stopPropagation();
-        if (confirm('Delete this playlist from your library?')) {
-            try {
-                await deletePlaylist(id);
-                toast('Playlist deleted');
-            } catch {
-                toast('Could not delete playlist');
-            }
+        if (isUserOwnedPlaylist(playlist)) {
+            setConfirmDelete(playlist);
+            return;
+        }
+        try {
+            await deletePlaylist(playlist.id);
+            toast(`Removed "${playlist.title}" from library`);
+        } catch {
+            toast('Could not remove playlist');
         }
     };
 
-    const handleCreatePlaylist = async (e: React.FormEvent) => {
-        e.preventDefault();
-        const trimmed = newPlaylistName.trim();
-        if (!trimmed) return;
+    const handleConfirmDeleteOwned = async () => {
+        if (!confirmDelete || deleting) return;
+        const target = confirmDelete;
+        setDeleting(true);
         try {
-            const created = await createPlaylist(trimmed);
-            toast(`Created "${created.title}"`);
-            setNewPlaylistName('');
-            setShowNewPlaylist(false);
-            navigate(`/playlist/${encodeURIComponent(created.id)}`);
+            await deletePlaylist(target.id);
+            toast(`Deleted "${target.title}"`);
+            setConfirmDelete(null);
         } catch {
+            toast('Could not delete playlist');
+        } finally {
+            setDeleting(false);
+        }
+    };
+
+    const handleRestoreDefaults = async () => {
+        try {
+            await restoreDefaultPlaylists();
+            toast('Default playlists restored');
+        } catch {
+            toast('Could not restore playlists');
+        }
+    };
+
+    const handleCreatePlaylist = async (name: string, description?: string) => {
+        try {
+            const created = await createPlaylist(name, description);
+            toast(`Created "${created.title}"`);
+            navigate(`/playlist/${encodeURIComponent(created.id)}`);
+        } catch (err) {
             toast('Could not create playlist');
+            throw err;
         }
     };
 
@@ -212,7 +244,7 @@ export default function Library() {
                             />
                             <button
                                 type="button"
-                                onClick={() => setShowNewPlaylist(v => !v)}
+                                onClick={() => setShowCreateModal(true)}
                                 className="h-9 px-4 rounded-full bg-white/10 hover:bg-white/20 text-sm font-medium text-white inline-flex items-center gap-1.5 transition"
                             >
                                 <Plus className="w-4 h-4" />
@@ -220,38 +252,6 @@ export default function Library() {
                             </button>
                         </div>
                     </div>
-
-                    {showNewPlaylist && (
-                        <form
-                            onSubmit={handleCreatePlaylist}
-                            className="flex flex-wrap items-center gap-2 p-3 rounded-[8px] bg-[#212121] border border-white/10 max-w-md"
-                        >
-                            <input
-                                type="text"
-                                value={newPlaylistName}
-                                onChange={(e) => setNewPlaylistName(e.target.value)}
-                                placeholder="Playlist title"
-                                autoFocus
-                                className="flex-1 min-w-[180px] h-9 px-3 rounded-[6px] bg-[#030303] border border-white/15 text-sm text-white placeholder-white/50 focus:outline-none focus:border-white/40"
-                            />
-                            <button
-                                type="submit"
-                                className="h-9 px-4 rounded-full bg-white text-[#030303] text-sm font-medium hover:bg-white/90 transition"
-                            >
-                                Create
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    setShowNewPlaylist(false);
-                                    setNewPlaylistName('');
-                                }}
-                                className="h-9 px-3 rounded-full text-sm text-white/70 hover:text-white hover:bg-white/10 transition"
-                            >
-                                Cancel
-                            </button>
-                        </form>
-                    )}
 
                     {/* Filter Chips */}
                     <div
@@ -281,19 +281,62 @@ export default function Library() {
                     </div>
                 </header>
 
+                {!isLoggedIn && (
+                    <div className="flex flex-wrap items-center justify-between gap-4 px-4 py-3.5 rounded-[10px] bg-[#181818] border border-white/10">
+                        <div className="min-w-0">
+                            <p className="text-sm font-semibold text-white">
+                                Sync your playlists across devices
+                            </p>
+                            <p className="text-xs text-white/60 mt-0.5">
+                                Create an account or sign in to save your playlists and removals to your profile.
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => openAuthModal('login')}
+                                className="h-8 px-4 rounded-full bg-white/10 hover:bg-white/20 text-xs font-medium text-white inline-flex items-center gap-1.5 transition"
+                            >
+                                <LogIn className="w-3.5 h-3.5" />
+                                <span>Sign in</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => openAuthModal('register')}
+                                className="h-8 px-4 rounded-full bg-white text-[#030303] hover:bg-white/90 text-xs font-medium inline-flex items-center gap-1.5 transition"
+                            >
+                                <UserPlus className="w-3.5 h-3.5" />
+                                <span>Create account</span>
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {/* 1. Playlists Grid (includes Pinned Liked Music auto-playlist) */}
                 {showPlaylists && (
                     <section className="space-y-4">
-                        <div className="flex items-center justify-between">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
                             <h2
                                 className="text-[20px] md:text-[24px] font-bold tracking-tight text-white"
                                 style={{ fontFamily: 'var(--ytmusic-display-text-font-family, "YouTube Sans", "YT Sans", Roboto, sans-serif)' }}
                             >
                                 Playlists
                             </h2>
-                            <span className="text-xs text-white/60 tabular-nums">
-                                {sortedPlaylists.length + 1} items
-                            </span>
+                            <div className="flex items-center gap-3">
+                                {removedPlaylistIds.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => void handleRestoreDefaults()}
+                                        className="h-7 px-3 rounded-full bg-white/10 hover:bg-white/20 text-xs font-medium text-white/80 hover:text-white inline-flex items-center gap-1.5 transition"
+                                    >
+                                        <RotateCcw className="w-3 h-3" />
+                                        <span>Restore defaults</span>
+                                    </button>
+                                )}
+                                <span className="text-xs text-white/60 tabular-nums">
+                                    {sortedPlaylists.length + 1} items
+                                </span>
+                            </div>
                         </div>
 
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-6">
@@ -331,12 +374,16 @@ export default function Library() {
 
                             {/* User & Seed Playlists */}
                             {sortedPlaylists.map((playlist) => {
-                                const isDeletable = isUserOwnedPlaylist(playlist);
+                                const isOwned = isUserOwnedPlaylist(playlist);
                                 return (
                                     <YtmMediaCard
                                         key={playlist.id}
                                         title={playlist.title}
-                                        subtitle={`Playlist • ${playlist.tracks?.length || 0} songs`}
+                                        subtitle={
+                                            isOwned
+                                                ? `Your playlist • ${playlist.tracks?.length || 0} songs`
+                                                : `Playlist • ${playlist.tracks?.length || 0} songs`
+                                        }
                                         imageUrl={playlist.cover_url}
                                         to={`/playlist/${encodeURIComponent(playlist.id)}`}
                                         onPlay={() =>
@@ -346,17 +393,19 @@ export default function Library() {
                                         }
                                         fallbackText={playlist.title?.substring(0, 2).toUpperCase() || 'PL'}
                                         topRightSlot={
-                                            isDeletable ? (
-                                                <button
-                                                    type="button"
-                                                    onClick={(e) => handleDeletePlaylist(e, playlist.id)}
-                                                    aria-label={`Delete ${playlist.title}`}
-                                                    title="Delete playlist"
-                                                    className="w-8 h-8 rounded-full bg-black/70 hover:bg-[#ff4e45] text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition"
-                                                >
-                                                    <Trash2 className="w-4 h-4" />
-                                                </button>
-                                            ) : undefined
+                                            <button
+                                                type="button"
+                                                onClick={(e) => void handleRemovePlaylist(e, playlist)}
+                                                aria-label={
+                                                    isOwned
+                                                        ? `Delete ${playlist.title}`
+                                                        : `Remove ${playlist.title} from library`
+                                                }
+                                                title={isOwned ? 'Delete playlist' : 'Remove from library'}
+                                                className="w-8 h-8 rounded-full bg-black/75 hover:bg-[#ff4e45] text-white flex items-center justify-center opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100 transition"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
                                         }
                                     />
                                 );
@@ -566,6 +615,28 @@ export default function Library() {
                     </section>
                 )}
             </div>
+
+            <CreatePlaylistModal
+                isOpen={showCreateModal}
+                onClose={() => setShowCreateModal(false)}
+                onCreate={handleCreatePlaylist}
+            />
+
+            <ConfirmDialog
+                isOpen={Boolean(confirmDelete)}
+                title="Delete playlist?"
+                message={
+                    confirmDelete
+                        ? `Permanently delete "${confirmDelete.title}"? This action cannot be undone.`
+                        : ''
+                }
+                confirmLabel="Delete"
+                busy={deleting}
+                onConfirm={handleConfirmDeleteOwned}
+                onCancel={() => {
+                    if (!deleting) setConfirmDelete(null);
+                }}
+            />
         </div>
     );
 }

@@ -1,6 +1,7 @@
 import { openDB, DBSchema, IDBPDatabase } from 'idb';
 import { Track, Playlist } from '../types';
 import { safeStorage } from '../utils/safeStorage';
+import { streamUrl } from './library';
 
 export type { Track, Playlist };
 
@@ -52,18 +53,38 @@ export function isUserOwnedPlaylist(playlist: { id?: string; isUserCreated?: boo
     );
 }
 
+export function isLegacySystemPlaylistId(id?: string): boolean {
+    return Boolean(id && id.startsWith('playlist-system-'));
+}
+
+export function isDemoTrack(track?: Track | null): boolean {
+    if (!track) return false;
+    return /^fb-\d+$/.test(track.id || '') || /\(Demo\)\s*$/i.test(track.title || '');
+}
+
 function isLegacySystemSeed(p: Playlist): boolean {
-    return (p.id || '').startsWith('playlist-system-') && p.isUserCreated !== true;
+    return isLegacySystemPlaylistId(p.id);
+}
+
+function normalizeTrackForPlaylist(t: Track): Track {
+    const id = (t.id || '').trim();
+    if (/^[a-zA-Z0-9_-]{11}$/.test(id)) {
+        return { ...t, id, url: streamUrl(id) };
+    }
+    return t;
 }
 
 function normalizeUserPlaylist(p: Playlist): Playlist {
     const now = Date.now();
     const createdAt = typeof p.createdAt === 'number' && p.createdAt > 0 ? p.createdAt : now;
     const updatedAt = typeof p.updatedAt === 'number' && p.updatedAt > 0 ? p.updatedAt : createdAt;
+    const cleanTracks = Array.isArray(p.tracks)
+        ? p.tracks.filter(t => t && t.id && !isDemoTrack(t)).map(normalizeTrackForPlaylist)
+        : [];
     return {
         ...p,
         title: (p.title || 'Untitled Playlist').trim() || 'Untitled Playlist',
-        tracks: Array.isArray(p.tracks) ? p.tracks : [],
+        tracks: cleanTracks,
         createdAt,
         updatedAt,
         type: 'Playlist',
@@ -167,6 +188,15 @@ export const dbService = {
         if (db) {
             try {
                 const all = await db.getAll('playlists');
+                for (const p of all) {
+                    if (isLegacySystemPlaylistId(p.id)) {
+                        try {
+                            await db.delete('playlists', p.id);
+                        } catch {
+                            // ignore delete error
+                        }
+                    }
+                }
                 idbPlaylists = all
                     .filter(p => !isLegacySystemSeed(p) && isUserOwnedPlaylist(p))
                     .map(normalizeUserPlaylist);
@@ -372,9 +402,15 @@ export const dbService = {
         if (!playlist) return undefined;
 
         const normalized = normalizeUserPlaylist(playlist);
+        const removedTrack = normalized.tracks.find(t => t.id === trackId);
         const updatedTracks = normalized.tracks.filter(t => t.id !== trackId);
+        const nextCover =
+            updatedTracks.length === 0 || (removedTrack?.cover_url && removedTrack.cover_url === normalized.cover_url)
+                ? (updatedTracks[0]?.cover_url || '')
+                : normalized.cover_url;
         const updated: Playlist = {
             ...normalized,
+            cover_url: nextCover,
             tracks: updatedTracks,
             updatedAt: Date.now(),
         };

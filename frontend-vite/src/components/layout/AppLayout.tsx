@@ -7,10 +7,12 @@ import MobileFullPlayer from '../player/MobileFullPlayer';
 import PlayerBar from './PlayerBar';
 import MiniPlayer from '../player/MiniPlayer';
 import SettingsModal from '../SettingsModal';
+import LoginModal from '../LoginModal';
 import Toast from '../Toast';
 import SWUpdateBanner from '../SWUpdateBanner';
 import { YtmGuideSidebar } from '../SoundCloudSidebar';
 import { usePlayerStore } from '../../stores/playerStore';
+import { useAuthStore } from '../../stores/authStore';
 import { libraryService } from '../../services/library';
 
 function useMediaQuery(query: string) {
@@ -41,6 +43,9 @@ export default function AppLayout() {
 
   const isSettingsOpen = usePlayerStore(s => s.isSettingsOpen);
   const setIsSettingsOpen = usePlayerStore(s => s.setIsSettingsOpen);
+  const authModalOpen = useAuthStore(s => s.authModalOpen);
+  const authModalTab = useAuthStore(s => s.authModalTab);
+  const closeAuthModal = useAuthStore(s => s.closeAuthModal);
   const currentTrack = usePlayerStore(s => s.currentTrack);
   const loadTrack = usePlayerStore(s => s.loadTrack);
 
@@ -132,6 +137,7 @@ export default function AppLayout() {
 
       {/* Modals & Toasts */}
       <SettingsModal isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+      <LoginModal isOpen={authModalOpen} initialTab={authModalTab} onClose={closeAuthModal} />
       <Toast />
     </div>
   );

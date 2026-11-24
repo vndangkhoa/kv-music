@@ -8,7 +8,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::auth::AuthStore;
+use crate::auth::{AuthError, AuthStore};
 use crate::playlists::PlaylistStore;
 use crate::spotdl::SpotdlService;
 use crate::ytm::YtmBridge;
@@ -19,6 +19,16 @@ pub struct AppState {
     pub playlists: PlaylistStore,
     pub ytm: YtmBridge,
     pub index_html: Arc<Vec<u8>>,
+}
+
+fn auth_error_response(err: AuthError) -> Response {
+    let status = match &err {
+        AuthError::Validation(_) => StatusCode::BAD_REQUEST,
+        AuthError::Conflict(_) => StatusCode::CONFLICT,
+        AuthError::Unauthorized(_) => StatusCode::UNAUTHORIZED,
+        AuthError::Storage(_) => StatusCode::INTERNAL_SERVER_ERROR,
+    };
+    (status, Json(serde_json::json!({"error": err.message()}))).into_response()
 }
 
 // ── Auth handlers ────────────────────────────────────────────────────────────
@@ -32,15 +42,20 @@ pub async fn register_handler(
     } else {
         payload.avatar_color
     };
-    match state.auth.register(&payload.name, &payload.email, &payload.password, &avatar_color).await {
+    match state
+        .auth
+        .register(&payload.name, &payload.email, &payload.password, &avatar_color)
+        .await
+    {
         Ok((user, token)) => (
             StatusCode::OK,
             Json(serde_json::json!({
                 "user": crate::auth::public_user(&user),
                 "token": token,
             })),
-        ),
-        Err(e) => (StatusCode::CONFLICT, Json(serde_json::json!({"error": e}))),
+        )
+            .into_response(),
+        Err(e) => auth_error_response(e),
     }
 }
 
@@ -55,8 +70,9 @@ pub async fn login_handler(
                 "user": crate::auth::public_user(&user),
                 "token": token,
             })),
-        ),
-        Err(e) => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e}))),
+        )
+            .into_response(),
+        Err(e) => auth_error_response(e),
     }
 }
 
@@ -74,7 +90,22 @@ pub async fn me_handler(
 ) -> impl IntoResponse {
     match state.auth.me(&payload.token).await {
         Some(user) => (StatusCode::OK, Json(serde_json::json!({"user": crate::auth::public_user(&user)}))),
-        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Phiên đăng nhập hết hạn"}))),
+        None => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": "Session expired"}))),
+    }
+}
+
+pub async fn me_get_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<UserPlaylistsQuery>,
+) -> impl IntoResponse {
+    match authenticate_user_request(&state, &headers, query.token.as_deref()).await {
+        Ok(user) => (
+            StatusCode::OK,
+            Json(serde_json::json!({"user": crate::auth::public_user(&user)})),
+        )
+            .into_response(),
+        Err(err_resp) => err_resp,
     }
 }
 
@@ -83,8 +114,8 @@ pub async fn pair_generate_handler(
     Json(payload): Json<crate::auth::AuthToken>,
 ) -> impl IntoResponse {
     match state.auth.generate_pair_code_for(&payload.token).await {
-        Ok(code) => (StatusCode::OK, Json(serde_json::json!({"pair_code": code}))),
-        Err(e) => (StatusCode::UNAUTHORIZED, Json(serde_json::json!({"error": e}))),
+        Ok(code) => (StatusCode::OK, Json(serde_json::json!({"pair_code": code}))).into_response(),
+        Err(e) => auth_error_response(e),
     }
 }
 
@@ -100,7 +131,7 @@ pub async fn pair_link_handler(
                 "token": token,
             })),
         ),
-        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Mã Pair Code không hợp lệ"}))),
+        None => (StatusCode::NOT_FOUND, Json(serde_json::json!({"error": "Invalid pair code"}))),
     }
 }
 
@@ -112,6 +143,21 @@ pub struct UserPlaylistsQuery {
 #[derive(Deserialize)]
 pub struct UserPlaylistsPayload {
     pub playlists: Vec<crate::playlists::UserPlaylistRecord>,
+    #[serde(default, alias = "removedPlaylistIds")]
+    pub removed_playlist_ids: Option<Vec<String>>,
+}
+
+#[derive(Deserialize)]
+pub struct CreatePlaylistPayload {
+    #[serde(default)]
+    pub id: String,
+    pub title: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default, alias = "coverUrl")]
+    pub cover_url: Option<String>,
+    #[serde(default)]
+    pub tracks: Vec<crate::playlists::UserPlaylistTrack>,
 }
 
 fn extract_bearer_token(headers: &axum::http::HeaderMap, query_token: Option<&str>) -> Option<String> {
@@ -164,8 +210,15 @@ pub async fn get_user_playlists_handler(
 ) -> impl IntoResponse {
     match authenticate_user_request(&state, &headers, query.token.as_deref()).await {
         Ok(user) => {
-            let playlists = state.playlists.get_for_user(&user.id);
-            (StatusCode::OK, Json(serde_json::json!({"playlists": playlists}))).into_response()
+            let bundle = state.playlists.get_bundle_for_user(&user.id);
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "playlists": bundle.playlists,
+                    "removed_playlist_ids": bundle.removed_playlist_ids,
+                })),
+            )
+                .into_response()
         }
         Err(err_resp) => err_resp,
     }
@@ -181,9 +234,72 @@ pub async fn put_user_playlists_handler(
         Ok(u) => u,
         Err(err_resp) => return err_resp,
     };
-    match state.playlists.set_for_user(&user.id, payload.playlists) {
-        Ok(saved) => (StatusCode::OK, Json(serde_json::json!({"playlists": saved}))).into_response(),
+    match state
+        .playlists
+        .set_for_user(&user.id, payload.playlists, payload.removed_playlist_ids)
+    {
+        Ok(saved) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "playlists": saved.playlists,
+                "removed_playlist_ids": saved.removed_playlist_ids,
+            })),
+        )
+            .into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({"error": e}))).into_response(),
+    }
+}
+
+pub async fn post_user_playlist_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Query(query): Query<UserPlaylistsQuery>,
+    Json(payload): Json<CreatePlaylistPayload>,
+) -> impl IntoResponse {
+    let user = match authenticate_user_request(&state, &headers, query.token.as_deref()).await {
+        Ok(u) => u,
+        Err(err_resp) => return err_resp,
+    };
+    let record = crate::playlists::UserPlaylistRecord {
+        id: payload.id,
+        title: payload.title,
+        description: payload.description,
+        cover_url: payload.cover_url,
+        tracks: payload.tracks,
+        created_at: 0,
+        updated_at: 0,
+    };
+    match state.playlists.create_for_user(&user.id, record) {
+        Ok(created) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({ "playlist": created })),
+        )
+            .into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response(),
+    }
+}
+
+pub async fn delete_user_playlist_handler(
+    State(state): State<Arc<AppState>>,
+    headers: axum::http::HeaderMap,
+    Path(playlist_id): Path<String>,
+    Query(query): Query<UserPlaylistsQuery>,
+) -> impl IntoResponse {
+    let user = match authenticate_user_request(&state, &headers, query.token.as_deref()).await {
+        Ok(u) => u,
+        Err(err_resp) => return err_resp,
+    };
+    match state.playlists.delete_for_user(&user.id, &playlist_id) {
+        Ok(bundle) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "ok": true,
+                "playlists": bundle.playlists,
+                "removed_playlist_ids": bundle.removed_playlist_ids,
+            })),
+        )
+            .into_response(),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({"error": e}))).into_response(),
     }
 }
 

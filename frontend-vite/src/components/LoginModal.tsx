@@ -1,11 +1,25 @@
-import React, { useState } from 'react';
-import { useAuthStore } from '../stores/authStore';
-import { LogIn, UserPlus, QrCode, X, Check, Copy, Loader2, AlertCircle } from 'lucide-react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { useAuthStore, type AuthModalTab } from '../stores/authStore';
+import { useModalDialog } from '../hooks/useModalDialog';
+import { toast } from '../stores/toastStore';
+import {
+  LogIn,
+  UserPlus,
+  QrCode,
+  X,
+  Check,
+  Copy,
+  Loader2,
+  AlertCircle,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
 import Logo from './Logo';
 
 interface LoginModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialTab?: AuthModalTab;
 }
 
 interface GradientColor {
@@ -24,7 +38,11 @@ const AVATAR_COLORS: GradientColor[] = [
   { from: '#55efc4', to: '#00b894' },
 ];
 
-const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
+const LoginModal: React.FC<LoginModalProps> = ({
+  isOpen,
+  onClose,
+  initialTab = 'login',
+}) => {
   const login = useAuthStore(s => s.login);
   const register = useAuthStore(s => s.register);
   const linkPairCode = useAuthStore(s => s.linkPairCode);
@@ -33,23 +51,36 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
   const clearError = useAuthStore(s => s.clearError);
   const currentUser = useAuthStore(s => s.user);
 
-  const [activeTab, setActiveTab] = useState<'login' | 'register' | 'pair'>('login');
+  const [activeTab, setActiveTab] = useState<AuthModalTab>(initialTab);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [pairInput, setPairInput] = useState('');
   const [selectedColorIndex, setSelectedColorIndex] = useState(0);
   const [copied, setCopied] = useState(false);
   const [pairSuccess, setPairSuccess] = useState(false);
 
-  if (!isOpen) return null;
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+
+  useModalDialog(dialogRef, isOpen, onClose);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+      setShowPassword(false);
+      setPairSuccess(false);
+      clearError();
+    }
+  }, [isOpen, initialTab, clearError]);
 
   const selectedColor = AVATAR_COLORS[selectedColorIndex];
   const displayLetter = name.trim().length > 0 ? name.trim()[0].toUpperCase() : '?';
 
-  const handleTabChange = (tab: 'login' | 'register' | 'pair') => {
+  const handleTabChange = (tab: AuthModalTab) => {
     setActiveTab(tab);
+    setShowPassword(false);
     clearError();
   };
 
@@ -57,16 +88,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     e.preventDefault();
     if (!email.trim() || !password) return;
     const ok = await login(email.trim(), password);
-    if (ok) onClose();
+    if (ok) {
+      toast('Signed in — playlists synced');
+      dialogRef.current?.close('submitted');
+    }
   };
 
   const handleRegisterSubmit = async (e: React.FormEvent): Promise<void> => {
     e.preventDefault();
     if (!name.trim() || !email.trim()) return;
     if (password.length < 6) return;
-    if (password !== confirmPassword) return;
     const ok = await register(name.trim(), email.trim(), password, JSON.stringify(selectedColor));
-    if (ok) onClose();
+    if (ok) {
+      toast('Account created — playlists synced');
+      dialogRef.current?.close('submitted');
+    }
   };
 
   const handlePairSubmit = async (e: React.FormEvent): Promise<void> => {
@@ -76,10 +112,11 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     const ok = await linkPairCode(pairInput.trim());
     if (ok) {
       setPairSuccess(true);
+      toast('Device paired — playlists synced');
       setTimeout(() => {
         setPairSuccess(false);
-        onClose();
-      }, 1000);
+        dialogRef.current?.close('submitted');
+      }, 700);
     }
   };
 
@@ -91,40 +128,51 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
     }
   };
 
-  const inputCls = "w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-[#ff5500] focus:outline-none transition";
-  const labelCls = "block text-xs font-bold text-neutral-300 mb-1.5";
+  const inputCls =
+    'w-full bg-[#121212] border border-white/15 rounded-xl px-4 py-2.5 text-white placeholder-neutral-500 text-sm focus:border-[#ff5500] focus:outline-none transition';
+  const labelCls = 'block text-xs font-bold text-neutral-300 mb-1.5';
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-end md:items-center justify-center md:p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div
-        className="relative w-full max-w-md bg-[#181818] border border-white/10 rounded-t-[28px] md:rounded-2xl p-6 sm:p-8 pb-[calc(1.75rem+env(safe-area-inset-bottom))] shadow-2xl text-white overflow-hidden"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Mobile Drag Indicator */}
-        <div className="flex justify-center md:hidden pt-1 pb-3">
-          <div className="w-9 h-1.5 rounded-full bg-white/20" />
-        </div>
-
+    <dialog
+      ref={dialogRef}
+      aria-labelledby={titleId}
+      {...({ closedby: 'any' } as any)}
+      className="m-auto w-[calc(100%-1.5rem)] max-w-md max-h-[90dvh] overflow-y-auto ytm-scroller rounded-2xl bg-[#181818] border border-white/10 text-white p-0 shadow-2xl"
+    >
+      <div className="relative p-6 sm:p-8">
         {/* Close Button */}
         <button
-          onClick={onClose}
+          type="button"
+          onClick={() => dialogRef.current?.close()}
+          aria-label="Close dialog"
           className="absolute top-5 right-5 p-2 rounded-full text-neutral-400 hover:text-white hover:bg-white/10 transition"
         >
           <X className="w-5 h-5" />
         </button>
 
-        {/* SoundCloud Header Logo */}
+        {/* Header */}
         <div className="text-center mb-6">
           <div className="inline-flex justify-center mb-3">
             <Logo />
           </div>
-          <h2 className="text-2xl font-extrabold text-white tracking-tight">Account & Sync</h2>
-          <p className="text-neutral-400 text-xs mt-1">Sign in to sync your music and playlists across devices</p>
+          <h1 id={titleId} className="text-2xl font-extrabold text-white tracking-tight">
+            Account &amp; Sync
+          </h1>
+          <p className="text-neutral-400 text-xs mt-1">
+            Sign in or register to save and sync your playlists across devices
+          </p>
         </div>
 
-        {/* SoundCloud Filter Tab Navigation */}
-        <div className="grid grid-cols-3 gap-1 bg-[#121212] p-1 rounded-xl text-xs font-extrabold text-center mb-6 border border-white/5">
+        {/* Tab Navigation */}
+        <div
+          role="tablist"
+          aria-label="Account options"
+          className="grid grid-cols-3 gap-1 bg-[#121212] p-1 rounded-xl text-xs font-extrabold text-center mb-6 border border-white/5"
+        >
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'login'}
             onClick={() => handleTabChange('login')}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
               activeTab === 'login' ? 'bg-[#ff5500] text-white shadow' : 'text-neutral-400 hover:text-white'
@@ -134,15 +182,21 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
             <span>Sign In</span>
           </button>
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'register'}
             onClick={() => handleTabChange('register')}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
               activeTab === 'register' ? 'bg-[#ff5500] text-white shadow' : 'text-neutral-400 hover:text-white'
             }`}
           >
             <UserPlus className="w-3.5 h-3.5" />
-            <span>Sign Up</span>
+            <span>Create Account</span>
           </button>
           <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'pair'}
             onClick={() => handleTabChange('pair')}
             className={`py-2 rounded-lg flex items-center justify-center gap-1.5 transition ${
               activeTab === 'pair' ? 'bg-[#ff5500] text-white shadow' : 'text-neutral-400 hover:text-white'
@@ -155,37 +209,65 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
 
         {/* Error Notification Banner */}
         {error && (
-          <div className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold">
+          <div
+            role="alert"
+            className="mb-4 flex items-center gap-2 px-4 py-2.5 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-xs font-semibold"
+          >
             <AlertCircle className="w-4 h-4 flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
 
-        {/* TAB 1: LOGIN */}
+        {/* TAB 1: SIGN IN */}
         {activeTab === 'login' && (
           <form onSubmit={handleLoginSubmit} className="space-y-4">
             <div>
-              <label className={labelCls}>Email Address</label>
+              <label htmlFor="auth-login-email" className={labelCls}>
+                Email Address
+              </label>
               <input
+                id="auth-login-email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                spellCheck={false}
+                enterKeyHint="next"
                 required
+                autoFocus
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="khoavo@kvmusic.com"
+                placeholder="you@example.com"
                 className={inputCls}
               />
             </div>
 
             <div>
-              <label className={labelCls}>Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={inputCls}
-              />
+              <label htmlFor="auth-login-password" className={labelCls}>
+                Password
+              </label>
+              <div className="relative">
+                <input
+                  id="auth-login-password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  enterKeyHint="done"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={`${inputCls} pr-11`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <button
@@ -194,104 +276,149 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
               className="w-full mt-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
             >
               {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              Sign In
+              <span>Sign In</span>
             </button>
+
+            <p className="text-center text-xs text-neutral-400 pt-1">
+              Don&apos;t have an account?{' '}
+              <button
+                type="button"
+                onClick={() => handleTabChange('register')}
+                className="text-white font-semibold hover:underline"
+              >
+                Create one
+              </button>
+            </p>
           </form>
         )}
 
         {/* TAB 2: REGISTER */}
         {activeTab === 'register' && (
           <form onSubmit={handleRegisterSubmit} className="space-y-4">
-            <div className="flex justify-center mb-2">
-              <div
-                className="w-16 h-16 rounded-full text-white text-2xl font-black flex items-center justify-center shadow-lg border-2 border-[#ff5500]"
-                style={{ background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})` }}
-              >
-                {displayLetter}
-              </div>
-            </div>
-
             <div>
-              <label className={labelCls}>Full Name</label>
+              <label htmlFor="auth-register-name" className={labelCls}>
+                Full Name
+              </label>
               <input
+                id="auth-register-name"
+                name="name"
                 type="text"
+                autoComplete="name"
+                enterKeyHint="next"
                 required
+                autoFocus
                 value={name}
                 onChange={e => setName(e.target.value)}
-                placeholder="Your Display Name"
+                placeholder="Your display name"
                 className={inputCls}
               />
             </div>
 
             <div>
-              <label className={labelCls}>Email Address</label>
+              <label htmlFor="auth-register-email" className={labelCls}>
+                Email Address
+              </label>
               <input
+                id="auth-register-email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                spellCheck={false}
+                enterKeyHint="next"
                 required
                 value={email}
                 onChange={e => setEmail(e.target.value)}
-                placeholder="user@kvmusic.com"
+                placeholder="you@example.com"
                 className={inputCls}
               />
             </div>
 
             <div>
-              <label className={labelCls}>Password (at least 6 characters)</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                placeholder="••••••••"
-                className={inputCls}
-              />
+              <label htmlFor="auth-register-password" className={labelCls}>
+                Password (at least 6 characters)
+              </label>
+              <div className="relative">
+                <input
+                  id="auth-register-password"
+                  name="new-password"
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="new-password"
+                  minLength={6}
+                  enterKeyHint="done"
+                  required
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className={`${inputCls} pr-11`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  aria-pressed={showPassword}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-neutral-400 hover:text-white hover:bg-white/10 transition"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
               {password.length > 0 && password.length < 6 && (
-                <p className="text-[11px] text-red-400 mt-1">Password must be at least 6 characters</p>
+                <p className="text-[11px] text-red-400 mt-1">
+                  Password must be at least 6 characters
+                </p>
               )}
             </div>
 
-            <div>
-              <label className={labelCls}>Confirm Password</label>
-              <input
-                type="password"
-                required
-                value={confirmPassword}
-                onChange={e => setConfirmPassword(e.target.value)}
-                placeholder="••••••••"
-                className={inputCls}
-              />
-              {confirmPassword.length > 0 && confirmPassword !== password && (
-                <p className="text-[11px] text-red-400 mt-1">Passwords do not match</p>
-              )}
-            </div>
+            <button
+              type="submit"
+              disabled={loading || !name.trim() || !email.trim() || password.length < 6}
+              className="w-full bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              <span>Create Account</span>
+            </button>
 
-            <div>
-              <label className="block text-xs font-bold text-neutral-400 mb-2">Avatar Color Accent</label>
-              <div className="flex items-center justify-center gap-2.5 flex-wrap">
+            <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div
+                  className="w-9 h-9 rounded-full text-white text-sm font-black flex items-center justify-center border border-white/20 flex-shrink-0"
+                  style={{
+                    background: `linear-gradient(135deg, ${selectedColor.from}, ${selectedColor.to})`,
+                  }}
+                  aria-hidden="true"
+                >
+                  {displayLetter}
+                </div>
+                <span className="text-xs font-bold text-neutral-400">Avatar Accent</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
                 {AVATAR_COLORS.map((color, idx) => (
                   <button
                     key={idx}
                     type="button"
+                    aria-label={`Select avatar color ${idx + 1}`}
+                    aria-pressed={selectedColorIndex === idx}
                     onClick={() => setSelectedColorIndex(idx)}
-                    className="w-7 h-7 rounded-full border-2 transition transform active:scale-95"
+                    className="w-6 h-6 rounded-full border-2 transition transform active:scale-95"
                     style={{
                       background: `linear-gradient(135deg, ${color.from}, ${color.to})`,
                       borderColor: selectedColorIndex === idx ? '#ffffff' : 'transparent',
-                      transform: selectedColorIndex === idx ? 'scale(1.15)' : 'scale(1)',
+                      transform: selectedColorIndex === idx ? 'scale(1.12)' : 'scale(1)',
                     }}
                   />
                 ))}
               </div>
             </div>
 
-            <button
-              type="submit"
-              disabled={loading || !name.trim() || !email.trim() || password.length < 6 || confirmPassword !== password}
-              className="w-full mt-2 bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
-            >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              Create Account
-            </button>
+            <p className="text-center text-xs text-neutral-400">
+              Already have an account?{' '}
+              <button
+                type="button"
+                onClick={() => handleTabChange('login')}
+                className="text-white font-semibold hover:underline"
+              >
+                Sign in
+              </button>
+            </p>
           </form>
         )}
 
@@ -300,32 +427,50 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
           <div className="space-y-5">
             {currentUser?.pairCode && (
               <div className="p-4 bg-[#121212] border border-white/10 rounded-xl text-center">
-                <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-wider mb-1">Your Device Pair Code</p>
+                <p className="text-[11px] text-neutral-400 font-bold uppercase tracking-wider mb-1">
+                  Your Device Pair Code
+                </p>
                 <div className="flex items-center justify-center gap-2">
-                  <span className="text-2xl font-black tracking-widest text-[#ff5500]">{currentUser.pairCode}</span>
+                  <span className="text-2xl font-black tracking-widest text-[#ff5500]">
+                    {currentUser.pairCode}
+                  </span>
                   <button
+                    type="button"
                     onClick={copyCurrentPairCode}
                     className="p-1.5 rounded-lg bg-white/5 text-[#ff5500] hover:bg-white/10 transition"
+                    aria-label="Copy pair code"
                     title="Copy code"
                   >
                     {copied ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
                   </button>
                 </div>
-                <p className="text-[10px] text-neutral-400 mt-1">Enter this code on your TV or other device to pair!</p>
+                <p className="text-[10px] text-neutral-400 mt-1">
+                  Enter this code on another device to pair!
+                </p>
               </div>
             )}
 
             <form onSubmit={handlePairSubmit} className="space-y-3">
-              <label className="block text-xs font-bold text-neutral-300">Enter Pair Code From Other Device</label>
+              <label htmlFor="auth-pair-code" className="block text-xs font-bold text-neutral-300">
+                Enter Pair Code From Other Device
+              </label>
               <input
+                id="auth-pair-code"
+                name="pairCode"
                 type="text"
+                autoFocus
+                maxLength={12}
+                enterKeyHint="done"
+                required
                 value={pairInput}
                 onChange={e => setPairInput(e.target.value)}
-                placeholder="EX: KV-849201"
-                className="w-full bg-[#121212] border border-white/10 rounded-xl px-4 py-3 text-center text-lg font-black tracking-widest text-[#ff5500] placeholder-neutral-500 uppercase focus:border-[#ff5500] focus:outline-none transition"
+                placeholder="KV-849201 or 849201"
+                className="w-full bg-[#121212] border border-white/15 rounded-xl px-4 py-3 text-center text-lg font-black tracking-widest text-[#ff5500] placeholder-neutral-500 uppercase focus:border-[#ff5500] focus:outline-none transition"
               />
 
-              {pairSuccess && <p className="text-xs text-green-400 text-center font-bold">✅ Pair successful!</p>}
+              {pairSuccess && (
+                <p className="text-xs text-green-400 text-center font-bold">Pair successful!</p>
+              )}
 
               <button
                 type="submit"
@@ -333,13 +478,13 @@ const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onClose }) => {
                 className="w-full bg-[#ff5500] hover:bg-[#ff7a00] text-white font-extrabold py-3 rounded-xl shadow-lg transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-                Connect & Sync Device
+                <span>Connect &amp; Sync Device</span>
               </button>
             </form>
           </div>
         )}
       </div>
-    </div>
+    </dialog>
   );
 };
 

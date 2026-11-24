@@ -375,12 +375,18 @@ let app = Router::new()
         .route("/api/auth/register", post(api::register_handler))
         .route("/api/auth/login", post(api::login_handler))
         .route("/api/auth/logout", post(api::logout_handler))
-        .route("/api/auth/me", post(api::me_handler))
+        .route("/api/auth/me", post(api::me_handler).get(api::me_get_handler))
         .route("/api/auth/pair/generate", post(api::pair_generate_handler))
         .route("/api/auth/pair/link", post(api::pair_link_handler))
         .route(
             "/api/user/playlists",
-            get(api::get_user_playlists_handler).put(api::put_user_playlists_handler),
+            get(api::get_user_playlists_handler)
+                .put(api::put_user_playlists_handler)
+                .post(api::post_user_playlist_handler),
+        )
+        .route(
+            "/api/user/playlists/{id}",
+            axum::routing::delete(api::delete_user_playlist_handler),
         )
         .fallback_service(
             ServeDir::new(&static_dir)

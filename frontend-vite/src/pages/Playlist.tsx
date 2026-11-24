@@ -16,7 +16,12 @@ import {
 } from 'lucide-react';
 import { usePlayerStore } from '../stores/playerStore';
 import { useLibraryStore } from '../stores/libraryStore';
-import { dbService, isUserOwnedPlaylist, Playlist as PlaylistType } from '../services/db';
+import {
+    dbService,
+    isLegacySystemPlaylistId,
+    isUserOwnedPlaylist,
+    Playlist as PlaylistType,
+} from '../services/db';
 import { libraryService, streamUrl } from '../services/library';
 import { Track, StaticPlaylist } from '../types';
 import CoverImage from '../components/CoverImage';
@@ -25,6 +30,7 @@ import DownloadMenu from '../components/DownloadMenu';
 import Skeleton from '../components/Skeleton';
 import Recommendations from '../components/Recommendations';
 import CreatePlaylistModal from '../components/CreatePlaylistModal';
+import ConfirmDialog from '../components/ConfirmDialog';
 import { GENERATED_CONTENT } from '../data/seed_data';
 import { toast } from '../stores/toastStore';
 
@@ -41,6 +47,8 @@ export default function Playlist() {
     const [saved, setSaved] = useState(false);
     const [menuOpen, setMenuOpen] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
+    const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [deletingPlaylist, setDeletingPlaylist] = useState(false);
     const [showAddSongs, setShowAddSongs] = useState(false);
     const [addQuery, setAddQuery] = useState('');
     const [addResults, setAddResults] = useState<Track[]>([]);
@@ -48,6 +56,7 @@ export default function Playlist() {
 
     const menuRef = useRef<HTMLDivElement | null>(null);
     const menuTriggerRef = useRef<HTMLButtonElement | null>(null);
+    const loadedExternalIdRef = useRef<string | null>(null);
 
     const playTrack = usePlayerStore(s => s.playTrack);
     const currentTrack = usePlayerStore(s => s.currentTrack);
@@ -87,14 +96,24 @@ export default function Playlist() {
 
     useEffect(() => {
         setShowAddSongs(false);
+        setShowDeleteConfirm(false);
         setAddQuery('');
         setAddResults([]);
         setSaved(false);
+        loadedExternalIdRef.current = null;
     }, [playlistId]);
 
     useEffect(() => {
         if (!playlistId) return;
         let cancelled = false;
+
+        if (isLegacySystemPlaylistId(playlistId)) {
+            setPlaylist(null);
+            setIsUserPlaylist(false);
+            setLoading(false);
+            setLoadingTracks(false);
+            return;
+        }
 
         const hydrateTracks = async (id: string, attempt = 0) => {
             try {
@@ -137,6 +156,7 @@ export default function Playlist() {
                         }
                         return { ...track, id: videoId, url: `${streamUrl(videoId)}` };
                     });
+                    loadedExternalIdRef.current = id;
                     setPlaylist({ ...apiPlaylist, tracks: normalizedTracks });
                     setIsUserPlaylist(false);
                     setLoading(false);
@@ -144,6 +164,7 @@ export default function Playlist() {
                     await new Promise(r => setTimeout(r, 1000));
                     if (!cancelled) await hydrateTracks(id, attempt + 1);
                 } else {
+                    loadedExternalIdRef.current = id;
                     setLoading(false);
                 }
                 if (!cancelled) setLoadingTracks(false);
@@ -156,7 +177,7 @@ export default function Playlist() {
         };
 
         const loadPlaylist = async () => {
-            const storePlaylist = userPlaylists.find(p => p.id === playlistId);
+            const storePlaylist = useLibraryStore.getState().userPlaylists.find(p => p.id === playlistId);
             if (storePlaylist && isUserOwnedPlaylist(storePlaylist)) {
                 setPlaylist(storePlaylist);
                 setIsUserPlaylist(true);
@@ -187,7 +208,10 @@ export default function Playlist() {
                 setPlaylist(storePlaylist);
                 setIsUserPlaylist(false);
                 setLoading(false);
-                if (storePlaylist.tracks.length > 0) return;
+                if (storePlaylist.tracks.length > 0) {
+                    loadedExternalIdRef.current = playlistId;
+                    return;
+                }
             }
 
             const seedItem = Object.values(GENERATED_CONTENT).find(p => p.id === playlistId);
@@ -203,19 +227,41 @@ export default function Playlist() {
                 setIsUserPlaylist(false);
                 setLoading(false);
 
-                if (seedItem.tracks && seedItem.tracks.length > 0) return;
+                if (seedItem.tracks && seedItem.tracks.length > 0) {
+                    loadedExternalIdRef.current = playlistId;
+                    return;
+                }
                 setLoadingTracks(true);
             } else if (!storePlaylist) {
                 setLoading(true);
             }
 
-            await hydrateTracks(playlistId);
+            if (loadedExternalIdRef.current !== playlistId) {
+                await hydrateTracks(playlistId);
+            }
         };
 
         void loadPlaylist();
         return () => {
             cancelled = true;
         };
+    }, [playlistId]);
+
+    useEffect(() => {
+        if (!playlistId || isLegacySystemPlaylistId(playlistId)) return;
+        const storePlaylist = userPlaylists.find(p => p.id === playlistId);
+        if (!storePlaylist) return;
+        if (isUserOwnedPlaylist(storePlaylist)) {
+            setPlaylist(storePlaylist);
+            setIsUserPlaylist(true);
+            setLoading(false);
+            setLoadingTracks(false);
+        } else if (storePlaylist.tracks.length > 0) {
+            setPlaylist(prev =>
+                prev && prev.id === playlistId && prev.tracks.length === 0 ? storePlaylist : prev,
+            );
+            setLoadingTracks(false);
+        }
     }, [playlistId, userPlaylists]);
 
     const handleMainPlay = () => {
@@ -266,16 +312,36 @@ export default function Playlist() {
         }
     };
 
-    const handleDeleteCurrentPlaylist = async () => {
+    const handleDeleteCurrentPlaylist = () => {
         if (!playlist || !isUserPlaylist) return;
         setMenuOpen(false);
-        if (!confirm(`Delete playlist "${playlist.title}"?`)) return;
+        setShowDeleteConfirm(true);
+    };
+
+    const handleConfirmDeleteCurrentPlaylist = async () => {
+        if (!playlist || !isUserPlaylist || deletingPlaylist) return;
+        setDeletingPlaylist(true);
         try {
             await deletePlaylist(playlist.id);
-            toast('Playlist deleted');
+            toast(`Deleted "${playlist.title}"`);
+            setShowDeleteConfirm(false);
             navigate('/library');
         } catch {
             toast('Could not delete playlist');
+        } finally {
+            setDeletingPlaylist(false);
+        }
+    };
+
+    const handleRemoveFromLibrary = async () => {
+        if (!playlist || isUserPlaylist) return;
+        setMenuOpen(false);
+        try {
+            await deletePlaylist(playlist.id);
+            toast(`Removed "${playlist.title}" from library`);
+            navigate('/library');
+        } catch {
+            toast('Could not remove playlist');
         }
     };
 
@@ -377,6 +443,7 @@ export default function Playlist() {
     const totalMinutes = Math.floor(totalSeconds / 60);
     const seedForRecs = playlist.tracks[0]?.artist || playlist.title;
     const shouldShowAddPanel = isUserPlaylist && (showAddSongs || playlist.tracks.length === 0);
+    const isInLibrary = userPlaylists.some(p => p.id === playlist.id);
 
     return (
         <div className="min-h-full bg-transparent text-white relative">
@@ -441,9 +508,10 @@ export default function Playlist() {
                                 <button
                                     type="button"
                                     onClick={handleSaveCopyToLibrary}
+                                    disabled={loadingTracks}
                                     aria-label={saved ? 'Saved playlist' : 'Save playlist to library'}
-                                    title="Save copy to your playlists"
-                                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition"
+                                    title={loadingTracks ? 'Loading tracks…' : 'Save copy to your playlists'}
+                                    className="w-10 h-10 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition disabled:opacity-40 disabled:pointer-events-none"
                                 >
                                     <Bookmark className="w-5 h-5" fill={saved ? 'currentColor' : 'none'} />
                                 </button>
@@ -557,7 +625,7 @@ export default function Playlist() {
                                                 iconClassName="w-4 h-4 text-white/80"
                                             />
                                         </div>
-                                        {isUserPlaylist && (
+                                        {isUserPlaylist ? (
                                             <button
                                                 type="button"
                                                 role="menuitem"
@@ -567,7 +635,17 @@ export default function Playlist() {
                                                 <Trash2 className="w-4 h-4" />
                                                 <span>Delete playlist</span>
                                             </button>
-                                        )}
+                                        ) : isInLibrary ? (
+                                            <button
+                                                type="button"
+                                                role="menuitem"
+                                                onClick={() => void handleRemoveFromLibrary()}
+                                                className="w-full px-4 py-2.5 text-sm text-[#ff4e45] hover:bg-white/[0.06] flex items-center gap-3 border-t border-white/10 mt-1 pt-2.5"
+                                            >
+                                                <Trash2 className="w-4 h-4" />
+                                                <span>Remove from library</span>
+                                            </button>
+                                        ) : null}
                                     </div>
                                 )}
                             </div>
@@ -732,14 +810,27 @@ export default function Playlist() {
             </div>
 
             {isUserPlaylist && (
-                <CreatePlaylistModal
-                    isOpen={showEditModal}
-                    onClose={() => setShowEditModal(false)}
-                    onCreate={handleUpdatePlaylist}
-                    mode="edit"
-                    initialTitle={playlist.title}
-                    initialDescription={'description' in playlist ? playlist.description || '' : ''}
-                />
+                <>
+                    <CreatePlaylistModal
+                        isOpen={showEditModal}
+                        onClose={() => setShowEditModal(false)}
+                        onCreate={handleUpdatePlaylist}
+                        mode="edit"
+                        initialTitle={playlist.title}
+                        initialDescription={'description' in playlist ? playlist.description || '' : ''}
+                    />
+                    <ConfirmDialog
+                        isOpen={showDeleteConfirm}
+                        title="Delete playlist?"
+                        message={`Permanently delete "${playlist.title}"? This action cannot be undone.`}
+                        confirmLabel="Delete"
+                        busy={deletingPlaylist}
+                        onConfirm={handleConfirmDeleteCurrentPlaylist}
+                        onCancel={() => {
+                            if (!deletingPlaylist) setShowDeleteConfirm(false);
+                        }}
+                    />
+                </>
             )}
         </div>
     );

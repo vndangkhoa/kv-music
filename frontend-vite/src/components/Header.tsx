@@ -1,10 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { Search, Settings, LogOut, X, Menu, ArrowLeft } from 'lucide-react';
+import { Search, Settings, LogOut, User, X, Menu, ArrowLeft } from 'lucide-react';
 import { useNavigate, useSearchParams, Link, useLocation } from 'react-router-dom';
 import Logo from './Logo';
 import { usePlayerStore } from '../stores/playerStore';
 import { useAuthStore } from '../stores/authStore';
-import LoginModal from './LoginModal';
+import { toast } from '../stores/toastStore';
 
 export interface HeaderProps {
   onToggleGuide?: () => void;
@@ -41,7 +41,7 @@ export default function Header({ onToggleGuide, isGuideCollapsed, scrolled }: He
   const user = useAuthStore(s => s.user);
   const isLoggedIn = useAuthStore(s => s.isLoggedIn);
   const logout = useAuthStore(s => s.logout);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const openAuthModal = useAuthStore(s => s.openAuthModal);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -307,7 +307,7 @@ export default function Header({ onToggleGuide, isGuideCollapsed, scrolled }: He
               ) : (
                 <button
                   type="button"
-                  onClick={() => setIsLoginOpen(true)}
+                  onClick={() => openAuthModal('login')}
                   className="h-8 px-4 rounded-full bg-white text-[#030303] hover:bg-white/90 text-[14px] font-medium transition active:scale-95 whitespace-nowrap"
                 >
                   Sign in
@@ -318,8 +318,16 @@ export default function Header({ onToggleGuide, isGuideCollapsed, scrolled }: He
                 <div className="absolute right-0 top-10 w-52 bg-[#212121] border border-white/15 rounded-[8px] shadow-2xl py-1.5 z-[70]">
                   <div className="px-4 py-2.5 border-b border-white/10">
                     <p className="text-[14px] font-medium text-white truncate">{user?.name}</p>
-                    <p className="text-[12px] text-white/60 truncate">KV Music Member</p>
+                    <p className="text-[12px] text-white/60 truncate">{user?.email || 'KV Music Member'}</p>
                   </div>
+                  <Link
+                    to="/profile"
+                    onClick={() => setIsDropdownOpen(false)}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] text-white/90 hover:text-white hover:bg-white/10 transition text-left"
+                  >
+                    <User className="w-4 h-4 text-white/70" />
+                    <span>Profile</span>
+                  </Link>
                   <button
                     type="button"
                     onClick={() => {
@@ -336,6 +344,7 @@ export default function Header({ onToggleGuide, isGuideCollapsed, scrolled }: He
                     onClick={async () => {
                       await logout();
                       setIsDropdownOpen(false);
+                      toast('Signed out');
                     }}
                     className="w-full flex items-center gap-3 px-4 py-2.5 text-[14px] text-white/90 hover:text-white hover:bg-white/10 transition text-left"
                   >
@@ -426,8 +435,6 @@ export default function Header({ onToggleGuide, isGuideCollapsed, scrolled }: He
           </div>
         )}
       </header>
-
-      <LoginModal isOpen={isLoginOpen} onClose={() => setIsLoginOpen(false)} />
     </>
   );
 }
